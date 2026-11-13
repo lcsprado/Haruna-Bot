@@ -12,22 +12,60 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icons/alpha-192.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/alpha-192.png">
-  <link rel="stylesheet" href="/styles.css?v=20261028-seven-sins-web-v1">
+  <link rel="stylesheet" href="/styles.css?v=20261113-web-password-v1">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
-    <form id="linkForm" class="login-card">
+    <section class="login-card" aria-label="Acesso seguro ao Alpha RPG">
       <div class="brand-mark">A</div>
       <p class="eyebrow">ALPHA BOT // RPG</p>
-      <h1>Conectar ao WhatsApp</h1>
-      <p class="muted">No grupo onde vocês jogam, envie <b>!web</b>. Digite aqui o código de uso único recebido do Alpha Bot.</p>
-      <label for="linkCode">Código</label>
-      <input id="linkCode" autocomplete="one-time-code" maxlength="12" placeholder="ABCD1234" required>
-      <button class="btn primary" type="submit">Conectar</button>
+      <h1>Entrar no Alpha RPG</h1>
+      <p class="muted">Sua conta do jogo continua vinculada ao seu WhatsApp. Entre com o usuário e a senha que você cadastrou.</p>
+
+      <form id="passwordLoginForm">
+        <label for="loginUsername">Usuário</label>
+        <input id="loginUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="24" placeholder="seu_usuario" required>
+        <label for="loginPassword">Senha</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" placeholder="Sua senha" required>
+        <button class="btn primary" type="submit">Entrar</button>
+      </form>
+
+      <button id="showCodeFormBtn" class="btn" type="button">Primeiro acesso ou recuperar senha</button>
+
+      <div id="codePanel" class="hidden">
+        <p class="muted">Envie <b>!web</b> no privado do Alpha Bot pelo WhatsApp e abra o link recebido. Se necessário, digite o código abaixo.</p>
+        <form id="linkForm">
+          <label for="linkCode">Código do WhatsApp</label>
+          <input id="linkCode" type="text" autocomplete="one-time-code" inputmode="text" maxlength="12" placeholder="ABCD1234" required>
+          <button class="btn primary" type="submit">Validar código</button>
+        </form>
+
+        <form id="registerForm" class="hidden">
+          <p class="muted">Primeiro acesso: escolha seu usuário e crie uma senha. Não cria personagem novo.</p>
+          <label for="registerUsername">Escolher usuário</label>
+          <input id="registerUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="24" placeholder="exemplo_123" required>
+          <label for="registerPassword">Criar senha</label>
+          <input id="registerPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Mínimo de 10 caracteres" required>
+          <label for="registerConfirm">Confirmar senha</label>
+          <input id="registerConfirm" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Repita a senha" required>
+          <button class="btn primary" type="submit">Criar minha conta e entrar</button>
+        </form>
+
+        <form id="recoverForm" class="hidden">
+          <p class="muted">Esta conta já tem usuário cadastrado. Se esqueceu a senha, crie uma nova com o código recebido no WhatsApp. Isso encerra as outras sessões.</p>
+          <label for="recoverPassword">Nova senha</label>
+          <input id="recoverPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Mínimo de 10 caracteres" required>
+          <label for="recoverConfirm">Confirmar nova senha</label>
+          <input id="recoverConfirm" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Repita a senha" required>
+          <button class="btn primary" type="submit">Redefinir senha e entrar</button>
+        </form>
+        <button id="backToPasswordBtn" class="btn" type="button">Voltar ao login</button>
+      </div>
+
+      <p id="linkError" class="form-error" role="alert" aria-live="polite"></p>
       <button class="btn" type="button" data-pwa-install hidden>📲 Instalar Alpha RPG</button>
-      <p id="linkError" class="form-error"></p>
-      <small>Use <b>!web</b> dentro do grupo para que Raid e Boss do navegador usem a mesma sessão do WhatsApp.</small>
-    </form>
+      <small>O código do <b>!web</b> é individual, expira e só pode ser usado uma vez. Nunca compartilhe.</small>
+    </section>
   </div>
 
   <div id="app" class="app hidden">
@@ -113,6 +151,6 @@
       refreshInstallButtons();
     })();
   </script>
-  <script type="module" src="/app.js?v=20261028-seven-sins-web-v1"></script>
+  <script type="module" src="/app.js?v=20261113-web-password-v1"></script>
 </body>
 </html>
