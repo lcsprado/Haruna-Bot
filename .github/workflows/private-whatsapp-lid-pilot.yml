@@ -1,0 +1,27 @@
+name: Private WhatsApp LID pilot
+
+on:
+  push:
+    paths:
+      - src/neon/whatsapp-private-lid-router.js
+      - src/neon/index.js
+      - test/whatsapp-private-lid-pilot-20261113.test.mjs
+      - .github/workflows/private-whatsapp-lid-pilot.yml
+  pull_request:
+    paths:
+      - src/neon/whatsapp-private-lid-router.js
+      - src/neon/index.js
+      - test/whatsapp-private-lid-pilot-20261113.test.mjs
+      - .github/workflows/private-whatsapp-lid-pilot.yml
+
+jobs:
+  verify-lid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/whatsapp-private-lid-pilot-20261113.test.mjs test/whatsapp-outbound-retry-store.test.mjs
+      - run: node --check src/neon/index.js && node --check src/neon/whatsapp-private-lid-router.js
