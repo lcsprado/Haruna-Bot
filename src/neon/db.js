@@ -1522,19 +1522,20 @@ COALESCE(eu.level,1)::int AS equipment_level,
 COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
 COALESCE(sf.stars,1)::int AS equipment_stars,
 COALESCE(sf.level,0)::int AS forged_level,
-(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) AS equipped,
+(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) AS equipped,
 CASE
 WHEN s.weapon_id=i.item_id THEN 'weapon'
 WHEN s.armor_id=i.item_id THEN 'armor'
 WHEN s.boot_id=i.item_id THEN 'boots'
 WHEN s.helmet_id=i.item_id THEN 'helmet'
 WHEN s.shield_id=i.item_id THEN 'shield'
+WHEN ar.item_id=i.item_id THEN 'relic'
 ELSE NULL
 END AS equipped_slot,
 CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
 0,
 i.quantity-GREATEST(COALESCE(bi.quantity,0),
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 1 ELSE 0 END)
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) THEN 1 ELSE 0 END)
 ) END::int AS sellable_quantity,
 CASE
 WHEN it.sellable=FALSE THEN 0
@@ -1567,6 +1568,7 @@ END::bigint AS sell_unit
 FROM inventories i
 JOIN items it ON it.id=i.item_id
 LEFT JOIN stats s ON s.jid=i.jid
+LEFT JOIN player_active_relics ar ON ar.jid=i.jid
 LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
 LEFT JOIN equipment_star_forges sf ON sf.jid=i.jid AND sf.item_id=i.item_id
 LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('level',level,'quantity',quantity)
@@ -1578,7 +1580,7 @@ FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
 ) bi ON TRUE
 WHERE i.jid=$1 AND i.quantity>0
 ORDER BY
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 0 ELSE 1 END,
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) THEN 0 ELSE 1 END,
 CASE it.category
 WHEN 'weapon' THEN 1
 WHEN 'armor' THEN 2
