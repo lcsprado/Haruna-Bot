@@ -7,6 +7,7 @@ import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {planShopForge5} from './shop-forge5-plan.js'
+import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
@@ -2549,6 +2550,124 @@ await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES
 return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
+// !autoforja somente do inventario; nao compra copias e nunca consome
+// equipados/vinculados como doadores. O mesmo snapshot planeja e executa.
+async function autoForgeInventoryQuoteClient(c,jid,itemId,lock=false){
+ const shield=ANTI_CRIT_SHIELDS.some(s=>s.id===itemId)
+ const origin=RAID_GEAR_FORGE_ORIGINS[itemId]||null
+ const shopStandard=Boolean(SHOP_FORGE5_STATS_IDS.has(itemId))
+ if(!EQUIPMENT[itemId]||(!origin&&!shield&&!shopStandard))
+   throw new Error('Este modelo nao possui Forja Estelar automatizavel.')
+ const suffix=lock?' FOR UPDATE':''
+ const inv=(await c.query(`SELECT inv.quantity,i.name,i.category,i.rarity
+   FROM inventories inv JOIN items i ON i.id=inv.item_id
+   WHERE inv.jid=$1 AND inv.item_id=$2${lock?' FOR UPDATE OF inv':''}`,[jid,itemId])).rows[0]
+ if(!inv||Number(inv.quantity)<1)throw new Error('Equipamento nao existe mais no inventario.')
+ const [tiers,forged,bound,profile,money,material]=await Promise.all([
+   c.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level'+suffix,[jid,itemId]),
+   c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2'+suffix,[jid,itemId]),
+   c.query('SELECT quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2'+suffix,[jid,itemId]),
+   c.query('SELECT weapon_id,armor_id,shield_id FROM stats WHERE jid=$1'+suffix,[jid]),
+   c.query('SELECT cash,bank FROM wallets WHERE jid=$1'+suffix,[jid]),
+   origin?c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2'+suffix,[jid,origin.materialId]):Promise.resolve({rows:[{quantity:0}]})
+ ])
+ const eq=profile.rows[0]||{}
+ const equipped=[eq.weapon_id,eq.armor_id,eq.shield_id].includes(itemId)
+ const cash=Number(money.rows[0]?.cash||0),bank=Number(money.rows[0]?.bank||0)
+ const fees=shield?Object.fromEntries([1,2,3,4].map(s=>[s,shieldForgeCost(itemId,s)])):{}
+ return planInventoryAutoForge({
+   itemId,name:inv.name,category:inv.category,rarity:inv.rarity,
+   quantity:Number(inv.quantity),tiers:tiers.rows,
+   forged:forged.rows[0]||null,
+   bound:bound.rows.reduce((n,r)=>n+Number(r.quantity||0),0),
+   equipped,materialId:origin?.materialId||'',
+   materialName:origin?.materialName||'',materials:Number(material.rows[0]?.quantity||0),
+   materialCosts:FORGE_STAR_MATERIALS,shieldFees:fees,
+   shopStandard,collab:Boolean(origin?.collab),
+   upgradeBase:UPGRADE_BASE_COST[String(inv.rarity||'common')]||2500,cash,bank
+ })
+}
+export async function listAutoForgeInventoryOptions(jid){
+ await ensureUser(jid)
+ const ids=new Set([...Object.keys(RAID_GEAR_FORGE_ORIGINS),
+  ...ANTI_CRIT_SHIELDS.map(g=>g.id),...SHOP_FORGE5_STATS_IDS])
+ const inventory=(await db.query('SELECT item_id FROM inventories WHERE jid=$1 AND quantity>0',[jid])).rows
+ const quotes=[]
+ for(const row of inventory){
+   if(!ids.has(row.item_id))continue
+   const quote=await autoForgeInventoryQuoteClient(db,jid,row.item_id)
+   if(quote?.potential||quote?.steps?.length)quotes.push(quote)
+ }
+ return quotes.sort((a,b)=>Number(b.canExecute)-Number(a.canExecute)||
+  String(a.name).localeCompare(String(b.name),'pt-BR'))
+}
+export async function getAutoForgeInventoryQuote(jid,itemId){
+ await ensureUser(jid)
+ return autoForgeInventoryQuoteClient(db,jid,itemId)
+}
+export async function executeAutoForgeInventory(jid,itemId,expectedQuoteKey){
+ await ensureUser(jid)
+ return transaction(async c=>{
+   // Mesmo lock de !forjar e !forja5, e as linhas ficam travadas ate COMMIT.
+   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['equipment-forge:'+jid])
+   const plan=await autoForgeInventoryQuoteClient(c,jid,itemId,true)
+   if(!plan?.canExecute||!plan?.steps?.length)
+     throw new Error('A forja nao esta mais disponivel; consulte !autoforja.')
+   if(plan.quoteKey!==expectedQuoteKey)
+     throw new Error('Inventario, fragmentos ou saldo mudaram. Reabra !autoforja para nova proposta.')
+   const cashUsed=Math.min(plan.cash,plan.total),bankUsed=plan.total-cashUsed
+   const paid=await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+
+     ' WHERE jid=$3 AND cash>=$1 AND bank>=$2 RETURNING cash,bank',[cashUsed,bankUsed,jid])
+   if(!paid.rowCount)throw new Error('Saldo alterado: nenhuma forja foi realizada.')
+   // Retirar apenas as copias aprimoradas selecionadas para serem principal/doadoras.
+   // As demais copias, inclusive as protegidas, mantem seus niveis originais.
+   for(const tier of plan.consumedTiers){
+     const row=(await c.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 FOR UPDATE',
+       [jid,itemId,tier.level])).rows[0]
+     if(Number(row?.quantity||0)<tier.qty)
+       throw new Error('Copia aprimorada alterada. Operacao inteiramente revertida.')
+     const changed=Number(row.quantity)===tier.qty
+       ?await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=$4 RETURNING 1',
+         [jid,itemId,tier.level,tier.qty])
+       :await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>$4 RETURNING 1',
+         [jid,itemId,tier.level,tier.qty])
+     if(!changed.rowCount)throw new Error('Copia nao pode ser reservada. Operacao revertida.')
+   }
+   const donors=plan.donorLevels.length
+   if(donors){
+     const removed=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>$3 RETURNING quantity',
+       [jid,itemId,donors])
+     if(!removed.rowCount||Number(removed.rows[0].quantity)!==plan.quantityAfter)
+       throw new Error('Copias doadoras insuficientes; nenhuma forja aplicada.')
+   }
+   if(plan.fragments){
+     const spent=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',
+       [jid,plan.materialId,plan.fragments])
+     if(!spent.rowCount)throw new Error('Fragmentos insuficientes; nenhuma forja aplicada.')
+   }
+   // A coluna stars guarda 1 unica peca principal por modelo; em cada fusao
+   // o nivel seria reiniciado em 1 e reaprimorado: cobramos todos esses custos
+   // no planejamento, finalizando apenas apos completar as etapas confirmadas.
+   await c.query('INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,$3,10,'+
+     nowSql+') ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,level=10,updated_at=EXCLUDED.updated_at',
+     [jid,itemId,plan.starsAfter])
+   await syncEffectiveGear(c,jid,itemId)
+   const [sf,remaining]=await Promise.all([
+     c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId]),
+     c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,itemId])
+   ])
+   if(Number(sf.rows[0]?.stars)!==plan.starsAfter||Number(sf.rows[0]?.level)!==10||
+      Number(remaining.rows[0]?.quantity)!==plan.quantityAfter)
+      throw new Error('Falha de integridade no resultado da forja; operacao revertida.')
+   await c.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,\'forge\',$2,\'equipment_inventory_auto_forge\',$3)',
+     [jid,plan.total,itemId+' estrelas '+plan.starsBefore+'->'+plan.starsAfter+
+      ' | doadoras '+donors+' | upgrades '+plan.upgrades+
+      ' | forja '+plan.forgeFees+' | taxa '+plan.serviceFee+
+      ' | fragmentos '+plan.fragments+' '+plan.materialId])
+   return {...plan,cash:Number(paid.rows[0].cash),bank:Number(paid.rows[0].bank)}
+ })
+}
+
 export const listStarForgeWeapons=listStarForgeEquipment
 export const forgeWeaponStar=forgeEquipmentStar
 // !forja5 e separado da forja tradicional. So itens permanentes da loja comum.
