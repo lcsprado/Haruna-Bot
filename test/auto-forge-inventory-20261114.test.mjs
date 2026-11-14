@@ -68,12 +68,31 @@ test('escudos consomem apenas doadores Lv.1 e cobram taxa oficial',()=>{
   name:'Egide',category:'shield',quantity:3,tiers:[{level:7,quantity:1}],
   materialId:'',materials:0,rarity:'legendary',shieldFees:{1:112500,2:225000,
    3:337500,4:450000},collab:false})
- assert.equal(p.starsAfter,3)
- assert.deepEqual(p.donorLevels,[1,1])
+ assert.equal(p.starsAfter,2)
+ assert.deepEqual(p.donorLevels,[1])
  assert.equal(p.fragments,0)
- assert.equal(p.forgeFees,337500)
+ assert.equal(p.forgeFees,112500)
  assert.ok(p.total>p.upgrades+p.forgeFees)
- assert.deepEqual(p.consumedTiers,[{level:7,qty:1}])
+ // O escudo Lv.7 nao e convertido em doador ou principal por engano.
+ assert.equal(p.principalLevel,1)
+ assert.deepEqual(p.consumedTiers,[])
+ assert.equal(planInventoryAutoForge({...base,itemId:'escudo_ferro',
+   category:'shield',quantity:2,tiers:[{level:10,quantity:1}],
+   shieldFees:{1:7500},materialId:'',materials:0}),null)
+})
+
+test('copia comum vinculada nao vira doadora de uma forja ja estrelada',()=>{
+ const quote=planInventoryAutoForge({...base,
+   forged:{stars:2,level:10},quantity:3,
+   tiers:[{level:10,quantity:1}],bound:1,materials:50})
+ assert.equal(quote.canExecute,true)
+ assert.equal(quote.starsAfter,3)
+ assert.deepEqual(quote.donorLevels,[1])
+ assert.deepEqual(quote.consumedTiers,[])
+ assert.equal(quote.quantityAfter,2)
+ const blocked=planInventoryAutoForge({...base,
+   forged:{stars:2,level:10},quantity:2,bound:1,materials:50})
+ assert.equal(blocked,null)
 })
 
 test('sete pecados: 1 unica copia + 280 fragmentos => ★5 sem consumir copia',()=>{
