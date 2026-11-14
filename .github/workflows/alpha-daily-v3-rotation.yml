@@ -1,0 +1,34 @@
+name: Alpha Daily V3 - rotation and no reset
+on:
+  pull_request:
+    paths:
+      - 'src/neon/daily-v2.js'
+      - 'src/neon/daily-mission-rotation.js'
+      - 'test/daily-missions-v3-rotation.test.mjs'
+      - '.github/workflows/alpha-daily-v3-rotation.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/daily-v2.js'
+      - 'src/neon/daily-mission-rotation.js'
+      - 'test/daily-missions-v3-rotation.test.mjs'
+permissions:
+  contents: read
+jobs:
+  daily-rotation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static syntax validation
+        run: |
+          node --check src/neon/daily-v2.js
+          node --check src/neon/daily-mission-rotation.js
+          node --check test/daily-missions-v3-rotation.test.mjs
+      - name: Rotation / 90-day snapshot regression
+        run: node --test test/daily-missions-v3-rotation.test.mjs
