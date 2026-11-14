@@ -30,7 +30,7 @@ import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listAutoForgeInventoryOptions, getAutoForgeInventoryQuote, executeAutoForgeInventory, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
 acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
 ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
 ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -5183,7 +5183,7 @@ const commandPages={
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
-*!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)
+*!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)\n*!autoforja* — evolui cópias existentes, funde até onde alcançar e cobra taxa extra após confirmar
 *!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ 500 mil)
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
@@ -7082,6 +7082,74 @@ const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
 if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
 await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
 return true
+}
+if(flow.stage==='autoforge_select'){
+ const items=flow.data?.items||[]
+ const n=Number(input)
+ if(!Number.isSafeInteger(n)||n<1||n>items.length){
+   await reply('⚒️ Escolha um numero da lista do !autoforja ou 0 para cancelar.')
+   return true
+ }
+ let p
+ try{p=await getAutoForgeInventoryQuote(sender,items[n-1])}
+ catch(err){clearQuickFlow(chat,sender);await reply('❌ '+(err?.message||'Falha na consulta da forja.'));return true}
+ if(!p){clearQuickFlow(chat,sender);await reply('🔒 O equipamento nao esta mais disponivel para autoforja.');return true}
+ const breakdown='⚒️ *AUTOFORJA — ORÇAMENTO*\n\n'
+  +'🎯 *'+p.name+'*\n'
+  +'🌟 Estrelas: *'+p.starsBefore+' → '+(p.canExecute?p.starsAfter:p.starsBefore+1)+'*\n'
+  +'⭐ Resultado: *Lv.10*\n'
+  +'📦 Cópias no inventário: *'+(p.quantityBefore||'—')+'*\n'
+  +'🛡️ Doadores consumidos: *'+(p.donorLevels?.length||0)+'*\n'
+  +'⬆️ Aprimoramentos: *R$ '+fmt(p.upgrades||p.firstStep?.upgrades||0)+'*\n'
+  +'⚒️ Custos de forja dos escudos: *R$ '+fmt(p.forgeFees||p.firstStep?.forgeFee||0)+'*\n'
+  +'🧩 Fragmentos usados: *'+(p.fragments||p.firstStep?.materials||0)+'*'+(p.materialName?' ('+p.materialName+')':'')+'\n'
+  +'⚙️ Taxa extra de automação: *R$ '+fmt(p.serviceFee||p.firstStep?.serviceFee||0)+'*\n'
+  +'💰 *TOTAL: R$ '+fmt(p.total)+'*\n'
+  +'🏦 Disponível: R$ '+fmt(p.cash+p.bank)+' (carteira + banco)\n'
+ if(!p.canExecute){
+   clearQuickFlow(chat,sender)
+   await reply(breakdown+'\n🔒 Faltam *R$ '+fmt(p.shortage)+'*. Não foi realizado nenhum upgrade nem consumo.')
+   return true
+ }
+ setQuickFlow(chat,sender,'autoforge_confirm',{itemId:p.itemId,quoteKey:p.quoteKey},90000)
+ await reply(breakdown+
+   '\n📌 Será usada somente a quantidade atual de cópias e fragmentos, sem comprar equipamentos. As cópias doadoras terão os níveis necessários pagos automaticamente; após cada fusão, a peça principal será levada de volta ao Lv.10. Equipados, vinculados e encantamentos são preservados.\n'+
+   '✅ Tudo ocorre em uma transação: se qualquer etapa falhar, valores e itens voltam ao estado anterior.\n\n'+
+   '1️⃣ Confirmar autoforja e pagar\n2️⃣ Cancelar')
+ return true
+}
+if(flow.stage==='autoforge_confirm'){
+ if(input==='2'){
+   clearQuickFlow(chat,sender)
+   await reply('✅ Autoforja cancelada. Nenhum material ou dinheiro consumido.')
+   return true
+ }
+ if(input!=='1'){
+   await reply('⚒️ Escolha 1 para confirmar ou 2 para cancelar.')
+   return true
+ }
+ const chosen=flow.data
+ clearQuickFlow(chat,sender)
+ try{
+   const r=await executeAutoForgeInventory(sender,chosen.itemId,chosen.quoteKey)
+   await reply('🌟 *AUTOFORJA CONCLUÍDA!*\n\n'
+    +'🎯 *'+r.name+'*\n'
+    +'🌟 '+forgeStarsIcon(r.starsBefore)+' → *'+forgeStarsIcon(r.starsAfter)+'* • ⭐ *Lv.10*\n'
+    +'⚒️ Fusões: *'+r.steps.length+'*\n'
+    +'📦 Cópias doadoras consumidas: *'+r.donorLevels.length+'*\n'
+    +'🧩 Fragmentos utilizados: *'+r.fragments+'*'+(r.materialName?' ('+r.materialName+')':'')+'\n'
+    +'⬆️ Evoluções pagas: R$ '+fmt(r.upgrades)+'\n'
+    +'🛡️ Taxas dos escudos: R$ '+fmt(r.forgeFees)+'\n'
+    +'⚙️ Taxa automática: R$ '+fmt(r.serviceFee)+'\n'
+    +'💸 *Total pago: R$ '+fmt(r.total)+'*\n'
+    +'📦 Cópias restantes: *'+r.quantityAfter+'*\n'
+    +'🏦 Saldo restante: R$ '+fmt(r.cash+r.bank)+'\n\n'
+    +'✅ Equipados, vinculados e encantamentos mantidos.')
+ }catch(err){
+   await reply('❌ '+(err?.message||'Autoforja não concluída; operação revertida.')+
+     '\nUse !autoforja para gerar uma nova proposta.')
+ }
+ return true
 }
 if(flow.stage==='shopforge5_select'){
  const ids=flow.data?.items||[]
@@ -12298,6 +12366,22 @@ text+='\n💵 Total recebido: *R$ '+fmt(r.total)+'*'
 text+='\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
 text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
 await reply(text)
+} else if(cmd==='autoforja'){
+ const available=await listAutoForgeInventoryOptions(sender)
+ if(!available.length)return await reply('⚒️ *AUTOFORJA*\n\nNão há equipamentos do seu inventário que possam ganhar uma nova estrela com as cópias e fragmentos disponíveis.\n\nEste comando não compra equipamentos nem usa cópias protegidas.')
+ setQuickFlow(chat,sender,'autoforge_select',{items:available.map(p=>p.itemId)},5*60*1000)
+ let out='⚒️ *AUTOFORJA — SEU INVENTÁRIO*\n\n'
+ available.forEach((p,i)=>{
+   out+='*'+(i+1)+'.* '+(['armor','shield'].includes(p.category)?'🛡️':'⚔️')+' *'+p.name+'*\n'
+   out+='   🌟 '+forgeStarsIcon(p.starsBefore)+' → '+forgeStarsIcon(p.canExecute?p.starsAfter:p.starsBefore+1)+' • ⭐ Lv.10\n'
+   out+='   '+(p.canExecute?'✅':'🔒')+' Custo com taxa: R$ '+fmt(p.total)
+     +(p.canExecute?'':' • faltam R$ '+fmt(p.shortage))+'\n'
+ })
+ out+='\n⚙️ Taxa extra: R$ 25.000 por fusão + 10% dos custos em dinheiro, arredondados para cima ao milhar.\n'
+ out+='🧩 Usa apenas fragmentos e cópias existentes; nunca compra novas peças.\n'
+ out+='🔒 Itens equipados/vinculados nunca são consumidos como doadores.\n'
+ out+='📋 Escolha o número para ver todas as etapas e confirmar.\n0️⃣ Cancelar'
+ return await reply(out)
 } else if(cmd==='forja5'){
  const choices=await listShopForge5Equipment()
  if(!choices.length)return await reply('⚒️ Nenhuma arma, armadura ou escudo elegivel na loja comum.')
