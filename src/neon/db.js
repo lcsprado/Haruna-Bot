@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {nextScheduledSummon} from './pet-summon-schedule.js'
 import {requireVerifiedAdminWalletJid} from './admin-wallet-identity.js'
 import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
 import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
@@ -5568,6 +5569,21 @@ if(summonCost-missing>0)await client.query('UPDATE inventories SET quantity=quan
 if(missing)await client.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_universal_raid'",[missing,jid])
 const forcedKey='forced_summon:'+jid+':'+altar.materialId
 const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
+// Invocação programada por posição, sem alterar chances nem resultados anteriores.
+// O lock do jogador e o da configuração serializam invocações únicas e em lote.
+const scheduledKey='scheduled_summon:'+jid+':'+altar.materialId
+const scheduledRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[scheduledKey])).rows[0]
+const scheduled=nextScheduledSummon(scheduledRow?.value,altar.pets)
+if(scheduled){
+  if(scheduled.clear){
+    await client.query('DELETE FROM trevo_settings WHERE key=$1',[scheduledKey])
+  }else{
+    await client.query(`UPDATE trevo_settings
+      SET value=jsonb_set(value,'{completed}',to_jsonb($2::integer),true),
+          updated_at=EXTRACT(EPOCH FROM NOW())::bigint
+      WHERE key=$1`,[scheduledKey,scheduled.completed])
+  }
+}
 const specialGuaranteeKey='raid50_fenix_once_20261012:'+jid
 const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
 const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
@@ -5576,7 +5592,7 @@ const sphinxKey='raid65_esfinge_once_20261017:'+jid
 const sphinxEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
 const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
 const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
-const forcedSpecies=sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||''))
+const forcedSpecies=scheduled?.forcedSpecies||(sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')))
 let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
 if(specialGuaranteeActive){
 await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[

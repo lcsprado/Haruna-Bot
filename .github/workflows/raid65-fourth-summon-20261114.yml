@@ -1,0 +1,35 @@
+name: Raid 65 - fourth summon one-time regression
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/pet-summon-schedule.js'
+      - 'test/raid65-fourth-summon-once-20261114.test.mjs'
+      - '.github/workflows/raid65-fourth-summon-20261114.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/pet-summon-schedule.js'
+      - 'test/raid65-fourth-summon-once-20261114.test.mjs'
+permissions:
+  contents: read
+jobs:
+  fourth-summon-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/pet-summon-schedule.js
+          node --check test/raid65-fourth-summon-once-20261114.test.mjs
+      - name: Prove fourth summon once without changing other drop rules
+        run: node --test test/raid65-fourth-summon-once-20261114.test.mjs
