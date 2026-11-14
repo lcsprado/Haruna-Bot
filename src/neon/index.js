@@ -1,3 +1,4 @@
+import {potionHpReceipt} from './potion-hp-receipt.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -7528,7 +7529,7 @@ return true
 const r=await usePotion(sender,itemId)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
+await reply(potionHpReceipt(r,heroAfterPotion))
 return true
 }
 if(flow.stage==='commands_main'){
@@ -8990,7 +8991,7 @@ return true
 const r=await usePotion(sender,itemId)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
+await reply(potionHpReceipt(r,heroAfterPotion))
 return true
 }
 if(flow.stage==='inventory_boxes_select'){
@@ -12513,7 +12514,7 @@ await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\n
 }else{
 const r=await usePotion(sender,item.item_id)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
+await reply(potionHpReceipt(r,heroAfterPotion))
 }
 } else if(['curarpet','curapet','petcura'].includes(cmd)){
 const aliases={
