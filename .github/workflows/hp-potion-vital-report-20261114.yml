@@ -1,0 +1,27 @@
+name: Validar HP normal e bônus temporário de pets
+on:
+  push:
+    branches:
+      - fix/hp-normal-vital-pvp-clarity-20261114
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  hp-consistency:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check syntax
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/pvp-report.js
+          node --check src/neon/potion-hp-receipt.js
+      - name: Test HP and potion calculations without writes
+        run: node --test test/hp-potion-vital-report-20261114.test.mjs
