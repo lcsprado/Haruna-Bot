@@ -3318,6 +3318,7 @@ petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.
 // HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
 const applyPvpVital=(fighter,synergy)=>{
   const baseHp=fighter.hp,baseMax=fighter.maxHp
+  fighter.vitalBaseHp=baseHp
   const temporary=applyVitalCombatHp(baseHp,baseMax,Number(fighter.petBonus?.hp||0),Number(synergy?.hp||0),{pvp:true})
   fighter.hp=temporary.hp
   fighter.maxHp=temporary.maxHp
@@ -3349,6 +3350,7 @@ healCooldown:Number(fighter.petBonus.healCooldown||0),
 speed:Number(fighter.petSpeed||0)
 }:null,
 teamSpeed:Number(fighter.teamSpeed||0),vitalHpRate:Number(fighter.vitalHpRate||0),
+vitalBaseHp:Number(fighter.vitalBaseHp??fighter.hp),vitalBaseMaxHp:Number(fighter.vitalBaseMaxHp??fighter.maxHp),
 vitalPulseRate:Number(fighter.vitalPulseRate||0)
 }
 }

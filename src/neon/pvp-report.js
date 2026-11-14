@@ -34,11 +34,17 @@ function openingLine(icon,p){
     ?'\n🌈 Collab: '+weaponLabel+' • '+armorLabel+
       (collab.set?'\n🌈 Conjunto sagrado: +'+percent(collab.setDamage)+' dano final • +'+percent(collab.crit).replace('%',' p.p.')+' CRIT':'')
     :''
-  const vital=Number(p.vitalHpRate||0)>0
-    ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
+  const normalMax=Math.max(1,Number(p.vitalBaseMaxHp||p.maxHp||1))
+  const normalCurrent=Math.max(0,Number(p.vitalBaseHp??p.hp)||0)
+  const bonusMax=Math.max(0,Number(p.maxHp||0)-normalMax)
+  const bonusCurrent=Math.max(0,Number(p.hp||0)-normalCurrent)
+  const vital=bonusMax>0
+    ?'\n🧬 HP normal: '+fmt(normalCurrent)+'/'+fmt(normalMax)+
+      ' • Bônus temporário no PvP: +'+fmt(bonusMax)+' HP máximo (+'+fmt(bonusCurrent)+' HP atual, '+percent(p.vitalHpRate)+')'+
+      '\n💚 Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
     :''
   const shield=p.shieldName?'\n🛡️ Escudo: *'+p.shieldName+'* • -'+percent(p.shieldCritResist).replace('%',' p.p.')+' chance CRIT adversária • -'+percent(p.shieldCritGuard)+' bônus de dano CRIT':''
-  return `${icon} *${name(p.name)}*${hero}${classMode}${gear}${equipment}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}${shield}`
+  return `${icon} *${name(p.name)}*${hero}${classMode}${gear}${equipment}\n❤️ HP no PvP: ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}${shield}`
 }
 export function formatPvpBattleReport(r){
   if(!r?.ok||!r?.winner||!r?.loser)throw new Error('Resultado de PvP inválido.')
