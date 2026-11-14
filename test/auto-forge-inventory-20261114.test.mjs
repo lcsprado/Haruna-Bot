@@ -68,10 +68,10 @@ test('escudos consomem apenas doadores Lv.1 e cobram taxa oficial',()=>{
   name:'Egide',category:'shield',quantity:3,tiers:[{level:7,quantity:1}],
   materialId:'',materials:0,rarity:'legendary',shieldFees:{1:112500,2:225000,
    3:337500,4:450000},collab:false})
- assert.equal(p.starsAfter,3)
- assert.deepEqual(p.donorLevels,[1,1])
+ assert.equal(p.starsAfter,2)
+ assert.deepEqual(p.donorLevels,[1])
  assert.equal(p.fragments,0)
- assert.equal(p.forgeFees,337500)
+ assert.equal(p.forgeFees,112500)
  assert.ok(p.total>p.upgrades+p.forgeFees)
  // O escudo Lv.7 nao e convertido em doador ou principal por engano.
  assert.equal(p.principalLevel,1)
