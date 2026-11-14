@@ -40,10 +40,23 @@ export function planInventoryAutoForge(input){
     ...tiers.flatMap(t=>Array(t.qty).fill(t.level)),
     ...Array(commonCount-tiers.reduce((n,t)=>n+t.qty,0)).fill(1)
   ].sort((a,b)=>b-a)
-  // Reservar o principal e as outras copias protegidas antes de escolher doadores.
-  // Sem identidade por copia no banco, reservar as mais evoluidas e conservador.
-  let principalLevel=forgedLevel,protectedExtra=Math.max(0,bound+(equipped?1:0)-(forged?1:0)-1)
-  if(!forged)principalLevel=commonLevels.shift()||1
+  // Cópias vinculadas não são identificadas por nível no banco:
+  // reservar conservadoramente as mais evoluídas, nunca escolhê-las como doadoras.
+  // Quando já existe peça estrelada, preservar TODAS as cópias comuns vinculadas;
+  // a própria peça estrelada (principal) fica protegida separadamente.
+  let principalLevel=forgedLevel
+  let protectedExtra=forged?bound:Math.max(0,bound+(equipped?1:0)-1)
+  if(!forged){
+    if(isShield){
+      // A forja manual exige DUAS cópias comuns Lv.1 na primeira estrela.
+      // Não sacrificar a cópia já aprimorada para completar este requisito.
+      const idx=commonLevels.lastIndexOf(1)
+      if(idx<0 || commonLevels.filter(l=>l===1).length<2)return null
+      principalLevel=commonLevels.splice(idx,1)[0]
+    }else{
+      principalLevel=commonLevels.shift()||1
+    }
+  }
   for(let k=0;k<protectedExtra&&commonLevels.length;k++)commonLevels.shift()
   const maxFree=Math.max(0,quantity-bound-(equipped?1:0))
   let donors=isCollab?[]:commonLevels.slice().sort((a,b)=>b-a).slice(0,maxFree)
