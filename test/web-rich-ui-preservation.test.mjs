@@ -58,7 +58,7 @@ test('login and game stay styled when a mobile WebView cannot load external CSS'
   for(const marker of ['.hidden{display:none!important}', '.login-overlay{', '.login-card{', '.app{', '@media(max-width:820px)']){
     assert.ok(match[1].includes(marker),'Lost login/layout fallback: '+marker);
   }
-  assert.ok(html.includes('href="/styles.css?v=20261113-rich-web-phone-v4"'));
+  assert.ok(html.includes('href="/styles.css?v=20261114-art-v6"'));
 });
 
 test('new !web link cannot restore a previous cached session without a password',()=>{
@@ -71,7 +71,7 @@ test('new !web link cannot restore a previous cached session without a password'
   }
   assert.ok(linkedBranch.indexOf("ui.token='';")<linkedBranch.indexOf('await openWebCode(linked)'),
     'Cached session must be removed BEFORE the code-status request')
-  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-rich-phone-20261113-v5'"),
+  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-rich-phone-20261114-v6'"),
     'Version must invalidate old cached PWA Javascript')
 })
 
