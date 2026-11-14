@@ -1,7 +1,8 @@
 import {db,ensureUser,grantExpInTransaction,petMaxHp,petMaxEnergy} from './db.js'
+import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity} from './daily-mission-rotation.js'
 
-const TYPES=['battle','dungeon','work','pet_train','boss_damage','legend_raid']
-const MAIN=TYPES.slice(0,5)
+const TYPES=[...DAILY_MAIN_TYPES,'legend_raid']
+const MAIN=[...DAILY_MAIN_TYPES]
 const DEFINITIONS=[
   {type:'battle',title:'⚔️ Guerreiro',target:5,cash:25000,xp:500,petXp:0},
   {type:'dungeon',title:'🏰 Explorador',target:2,cash:30000,xp:600,petXp:0},
@@ -89,10 +90,14 @@ async function ensureRows(c,jid){
  if(!ur.rows.length)throw new Error('Jogador não encontrado para missões diárias.')
  const level=Number(ur.rows[0].level||1),tier=levelTier(level)
  if(Number(ur.rows[0].mission_count||0)===6)return {today,level,tier}
- const special=level<10
-   ?{type:'legend_raid',title:'🌟 Caçador de Lendas (alternativa: Boss)',target:2500,cash:25000,xp:1500,petXp:500}
-   :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
- const insert=[...dailyRotatedDefinitions(today),special]
+ const special=today>=DAILY_V3_START
+   ?dailyV3SpecialMission(today,level)
+   :level<10
+     ?{type:'legend_raid',title:'🌟 Caçador de Lendas (alternativa: Boss)',target:2500,cash:25000,xp:1500,petXp:500}
+     :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
+ // A data de hoje não pode ser reescrita: se as seis linhas já existem,
+ // ensureRows retorna antes daqui. O novo quadro começa em 14/11.
+ const insert=[...(today>=DAILY_V3_START?dailyV3MainMissions(today):dailyRotatedDefinitions(today)),special]
  for(const m of insert){
    const cash=Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
    const xp=Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
@@ -118,11 +123,11 @@ export async function getDailyMissionsV2(jid){
    const rows=(await c.query(`SELECT mission_type,title,target,reward_cash,reward_xp,reward_pet_xp,
      progress,claimed,level_snapshot FROM daily_missions
      WHERE jid=$1 AND day_key=$2 AND mission_type=ANY($3::text[])
-     ORDER BY CASE mission_type WHEN 'battle' THEN 1 WHEN 'dungeon' THEN 2 WHEN 'work' THEN 3 WHEN 'pet_train' THEN 4 WHEN 'boss_damage' THEN 5 ELSE 6 END`,
+     ORDER BY CASE mission_type WHEN 'battle' THEN 1 WHEN 'dungeon' THEN 2 WHEN 'work' THEN 3 WHEN 'pet_train' THEN 4 WHEN 'boss_damage' THEN 5 WHEN 'raid_damage' THEN 6 WHEN 'game' THEN 7 WHEN 'shop' THEN 8 ELSE 9 END`,
      [jid,ctx.today,TYPES])).rows
    const streak=(await c.query('SELECT streak FROM daily_streaks WHERE jid=$1',[jid])).rows[0]?.streak||0
    const already=(await c.query("SELECT 1 FROM daily_reward_claims WHERE jid=$1 AND day_key=$2 AND reward_type='all_five'",[jid,ctx.today])).rowCount>0
-   const prize=[['caixa_rara',1],['caixa_rara',2],['caixa_epica',1],['caixa_epica',2],['caixa_epica',3]][levelTier(Number(rows.find(x=>x.mission_type==='battle')?.level_snapshot||ctx.level))]
+   const prize=[['caixa_rara',1],['caixa_rara',2],['caixa_epica',1],['caixa_epica',2],['caixa_epica',3]][levelTier(Number(rows.find(x=>x.mission_type!=='legend_raid')?.level_snapshot||ctx.level))]
    return {day:ctx.today,missions:rows,streak:Number(streak),bonusItem:prize[0],bonusQty:prize[1],bonusClaimed:already}
  })
 }
@@ -206,7 +211,7 @@ export async function claimDailyV2(jid){
 }
 
 export async function progressDailyMissionV2(jid,type,amount=1,sourceKey=null,options={}){
- if(!['battle','dungeon','work','pet_train','boss_damage','raid_damage'].includes(type))return null
+ if(!['battle','dungeon','work','pet_train','boss_damage','raid_damage','game','shop'].includes(type))return null
  amount=Math.floor(Number(amount))
  if(!Number.isSafeInteger(amount)||amount<=0)return null
  // Boss já executa ensureUser no primeiro golpe da sessão (inclusive retomadas).
@@ -219,9 +224,17 @@ export async function progressDailyMissionV2(jid,type,amount=1,sourceKey=null,op
      VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING jid`,[jid,ctx.today,key,type,amount])
    if(!recorded.rowCount)return {duplicate:true}
    const changes=[]
-   const alt=type==='boss_damage'?(await c.query("SELECT target FROM daily_missions WHERE jid=$1 AND day_key=$2 AND mission_type='legend_raid'",[jid,ctx.today])).rows[0]:null
-   const targets=type==='raid_damage'?['boss_damage',...(Number(alt?.target||50000)>=50000?['legend_raid']:[]) ]
-     :type==='boss_damage'?['boss_damage',...(Number(alt?.target||50000)===2500?['legend_raid']:[])]:[type]
+   const alt=['raid_damage','boss_damage'].includes(type)
+     ?(await c.query("SELECT title,target FROM daily_missions WHERE jid=$1 AND day_key=$2 AND mission_type='legend_raid'",[jid,ctx.today])).rows[0]:null
+   const specialActivity=alt?dailySpecialActivity(alt.title):'raid_damage'
+   // Antes da V3, o dano de Raid também avançava a tarefa de Boss; não
+   // modificar retrospectivamente os objetivos do dia anterior.
+   const targets=type==='raid_damage'
+     ?['raid_damage',...(ctx.today<DAILY_V3_START?['boss_damage']:[]),
+       ...(specialActivity==='raid_damage'?['legend_raid']:[])]
+     :type==='boss_damage'
+       ?['boss_damage',...(specialActivity==='boss_damage'?['legend_raid']:[])]
+       :[type]
    for(const target of targets){
      const updated=await c.query(`UPDATE daily_missions SET progress=LEAST(target,progress+$1)
        WHERE jid=$2 AND day_key=$3 AND mission_type=$4
@@ -258,7 +271,8 @@ export async function claimDailyMissionsV2(jid){
        VALUES($1,$2,'all_five') ON CONFLICT DO NOTHING RETURNING jid`,[jid,ctx.today])
      if(mark.rowCount){
        const frozen=(await c.query(`SELECT level_snapshot FROM daily_missions
-         WHERE jid=$1 AND day_key=$2 AND mission_type='battle'`,[jid,ctx.today])).rows[0]
+         WHERE jid=$1 AND day_key=$2 AND mission_type=ANY($3::text[])
+         ORDER BY mission_type LIMIT 1`,[jid,ctx.today,MAIN])).rows[0]
        const prize=[['caixa_rara',1],['caixa_rara',2],['caixa_epica',1],['caixa_epica',2],['caixa_epica',3]][levelTier(Number(frozen?.level_snapshot||ctx.level))]
        await creditBox(c,jid,prize[0],prize[1]);boxes+=prize[1];drops.push(prize[1]+'x '+(prize[0]==='caixa_rara'?'Caixa Rara':'Caixa Épica'))
      }
