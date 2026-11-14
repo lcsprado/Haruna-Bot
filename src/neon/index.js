@@ -1724,13 +1724,14 @@ return text
 }
 function dailyMissionsText(board,prefix='!'){
 const money=v=>Number(v||0).toLocaleString('pt-BR')
-let out='📋 *MISSÕES DIÁRIAS*\n\n'
+const rotating=String(board.day||'')>='2026-11-14'
+let out='📋 *MISSÕES DIÁRIAS*\n'+(rotating?'🔄 *Quadro rotativo do dia — 5 desafios entre 8 atividades*\n':'')+'\n'
 for(const m of board.missions||[]){
 const done=Number(m.progress)>=Number(m.target)
 const xp=Number(m.reward_xp||0),petXp=Number(m.reward_pet_xp||0)
 const extras=xp?' + '+money(xp)+' EXP':petXp?' + '+money(petXp)+' EXP de pet':''
 const special=m.mission_type==='legend_raid'
-if(special)out+='\n🌟 *MISSÃO ESPECIAL — CAÇADOR DE LENDAS*\n'
+if(special)out+='\n🌟 *MISSÃO ESPECIAL — '+(rotating?'DESAFIO DO DIA':'CAÇADOR DE LENDAS')+'*\n'
 out+=(done?'✅ ':'⬜ ')+m.title+' — *'+money(m.progress)+'/'+money(m.target)+'*\n'
 out+='🎁 R$ '+money(m.reward_cash)+extras+(special?' + 1 Caixa Épica':'')+(m.claimed?' _(resgatada)_':'')+'\n\n'
 }
