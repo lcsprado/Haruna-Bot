@@ -1,0 +1,38 @@
+name: Alpha Web - asset integrity and rich interface
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'test/alpha-web-art-integrity-20261114.test.mjs'
+      - 'test/web-rich-ui-preservation.test.mjs'
+      - '.github/workflows/alpha-web-art-integrity.yml'
+  push:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'web/**'
+      - 'test/alpha-web-art-integrity-20261114.test.mjs'
+      - '.github/workflows/alpha-web-art-integrity.yml'
+permissions:
+  contents: read
+jobs:
+  assets-and-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JavaScript
+        run: |
+          node --check web/app.js
+          node --check web/racing-ui.js
+          node --check web/clan-siege-ui.js
+          node --check web/sw.js
+      - name: Verify all original art and gameplay survive
+        run: |
+          node --test test/alpha-web-art-integrity-20261114.test.mjs
+          node --test test/web-rich-ui-preservation.test.mjs
