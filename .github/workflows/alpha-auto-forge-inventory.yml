@@ -37,4 +37,4 @@ jobs:
         run: node --test test/auto-forge-inventory-20261114.test.mjs
       - name: Regressao dos upgrades e forja5
         run: |
-          node --test test/shop-forge5-plan.test.mjs
+          node --test test/shop-forge5-20261110.test.mjs
