@@ -1,0 +1,40 @@
+name: Alpha Bot - autoforja segura por inventario
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/auto-forge-inventory-plan.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/auto-forge-inventory-20261114.test.mjs'
+      - '.github/workflows/alpha-auto-forge-inventory.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/auto-forge-inventory-plan.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/auto-forge-inventory-20261114.test.mjs'
+permissions:
+  contents: read
+jobs:
+  quote-transaction-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe e modulo de planejamento
+        run: |
+          node --check src/neon/auto-forge-inventory-plan.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+      - name: Teste puro de precos e protecao das copias
+        run: node --test test/auto-forge-inventory-20261114.test.mjs
+      - name: Regressao dos upgrades e forja5
+        run: |
+          node --test test/shop-forge5-plan.test.mjs
