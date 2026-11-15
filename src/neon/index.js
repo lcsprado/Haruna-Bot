@@ -31,7 +31,7 @@ import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listAutoForgeInventoryOptions, getAutoForgeInventoryQuote, executeAutoForgeInventory, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listAutoForgeInventoryOptions, getAutoForgeInventoryQuote, executeAutoForgeInventory, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, configureBattleStrategy, combatLeaderboard, claimLevelRewards,
 acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
 ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
 ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -12618,6 +12618,17 @@ ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
 )
+} else if(cmd==='estrategia'){
+const postura=String(args[0]||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+if(!['equilibrada','agressiva','defensiva','tatica'].includes(postura)){
+  return await reply('⚔️ *ESTRATÉGIA DE COMBATE*\\nUse: *!estrategia equilibrada*, *agressiva*, *defensiva* ou *tatica*.\\nA escolha fica salva apenas para seu personagem ativo.')
+}
+try{
+  const selected=await configureBattleStrategy(sender,postura)
+  await reply(`⚔️ *ESTRATÉGIA CONFIGURADA*\\n🎭 Combatente: *${selected.combatant_id}*\\n🎯 Postura: *${selected.posture}*\\nAs próximas batalhas automáticas vão usar essa postura quando o sistema for liberado.`)
+}catch(err){
+  await reply('❌ '+(err?.message||'Não foi possível alterar a estratégia.'))
+}
 } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
 const targetMention=mentionsOf(msg)[0]
 if(!targetMention){
