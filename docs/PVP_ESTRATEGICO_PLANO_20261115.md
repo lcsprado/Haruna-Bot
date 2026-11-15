@@ -45,3 +45,19 @@ Parâmetros iniciais: +15% máximo no multiplicador de ataque da camada estraté
 ## Escopo do protótipo
 
 `strategyModifiers()` calcula bônus puros. `makeDuelRound()/submitDuelChoice()/duelRoundPublic()/resolveDuelRound()` simulam escolhas de uma rodada, sem armazenamento ou integração WhatsApp. **Não é o comando !duelo pronto para uso.** Testes de invariantes e regressão do simulador existente: `node --test test/pvp-strategy-prototype-20261115.test.mjs`.
+
+
+## Evidência de validação isolada (15/11/2026)
+
+Execução GitHub Actions: https://github.com/lcsprado/Haruna-Bot/actions/runs/43753976326
+- 11 testes aprovados, 0 falhas; 7 confrontos representativos, 160 duelos por confronto (80 sementes × 2 ordens); total 1.120 duelos. Configuração: equipamento igual, Lv.100, maestria V ou despertar V.
+- Comparação primeiro combatente (sem postura → postura/ações demonstradas):
+  - Ban × Samurai 78,8% → 85,0% (variação +6,3 p.p., arredondamento)
+  - Diane × Berserker 68,8% → 72,5% (+3,7 p.p.)
+  - Meliodas × Paladino 63,8% → 63,8% (0 p.p.)
+  - Gowther × Necromante 62,5% → 61,3% (-1,2 p.p.)
+  - Escanor × King 37,5% → 40,0% (+2,5 p.p.)
+  - Guerreiro × Assassino 30,0% → 35,0% (+5 p.p.)
+  - Druida × Mago 30,0% → 40,0% (+10 p.p.)
+
+A comparação não atesta balanceamento universal: alguns confrontos já partem com disparidade alta, particularmente Ban × Samurai. A estratégia não corrige sozinha progressões desequilibradas; precisamos medir contrajogadas invertidas e cenários com pets/itens antes de integrar o motor real. O simulador novo reproduz de forma idêntica o resultado do simulador original em postura neutra nos casos testados. Nenhum jogador teve dados alterados.
