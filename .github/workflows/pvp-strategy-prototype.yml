@@ -9,11 +9,14 @@ on:
       - 'src/neon/index.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
+      - 'src/neon/pvp-duel-persistence.js'
+      - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
   pull_request:
@@ -23,11 +26,14 @@ on:
       - 'src/neon/index.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
+      - 'src/neon/pvp-duel-persistence.js'
+      - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
 jobs:
@@ -43,7 +49,36 @@ jobs:
       - run: node --check src/neon/pvp-strategy-prototype.js
       - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --check src/neon/pvp-duel-session-prototype.js
+      - run: node --check src/neon/pvp-duel-persistence.js
       - run: node --check src/neon/pvp-strategy-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
       - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
+  pvp-postgres:
+    name: PostgreSQL 16 disposable duel session verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_pvp_test
+          POSTGRES_USER: alpha_test
+          POSTGRES_PASSWORD: alpha_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_test -d alpha_pvp_test"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      ALPHA_PVP_TEST_DATABASE_URL: postgres://alpha_test:alpha_test@127.0.0.1:5432/alpha_pvp_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Isolated local installation; no npm lockfile or production dependency changed.
+      - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund pg@8.13.0
+      - run: node --test test/pvp-duel-postgres-integration-20261115.test.mjs
