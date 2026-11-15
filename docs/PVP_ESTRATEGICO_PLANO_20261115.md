@@ -88,3 +88,28 @@ Testes exploratórios de contrajogada (sementes diferentes): 9 confrontos × 180
 4. Paridade Web/WhatsApp e compatibilidade com o transporte privado (mensagens "aguardando mensagem").
 5. Revisar balanceamento e aplicar ajustes só na camada estratégica, com validação; nunca alterar inventário, níveis ou economia existentes apenas para favorecer a nova collab.
 6. Confirmar ausência de combates/raids ativos antes de eventual publicação e solicitar aprovação específica para integrar à `whatsapp-only` (branch de autodeploy).
+
+## Etapa PostgreSQL e retomada automática — validada em homologação isolada
+
+Evidência: https://github.com/lcsprado/Haruna-Bot/actions/runs/43758258501
+**54 testes aprovados, zero falhas:** 43 de regras/regressão/sintaxe e 11 com PostgreSQL 16 descartável. Nenhuma conexão com `alpha_prod_v2`; nenhum DDL foi executado no banco real.
+
+Arquivos adicionados:
+- `migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql`: sessões duráveis em JSONB com revisão, exclusividade do participante global (`jid` único), prazos e outbox com lease e tentativa de envio.
+- `src/neon/pvp-duel-persistence.js`: criação de convite, aceite/recusa, janelas 3/7/11, escolha oculta, resolução imediata quando ambos responderem, prazo de 30s para completar com ação normal, liberação de participantes após expiração, prazo absoluto de 20min e leitura pública sem escolhas pendentes.
+- `src/neon/pvp-duel-outbox-worker.js`: consumidor com leasing `FOR UPDATE SKIP LOCKED`, ACK por token, retentativa após falha. Aceite e rodada resolvida solicitam retomada por callback `resumeCombat`. O worker **não está ligado ao serviço**.
+- `resumePersistentDuelOnce()`: avanço transacional condicionado à revisão de origem. Em caso de reentrega ou workers paralelos, apenas o primeiro avanço altera o estado; outros retornam `already_advanced`. A futura função pura de combate deve calcular até a próxima janela de decisão ou fim da luta.
+- `test/pvp-duel-postgres-integration-20261115.test.mjs`: testes PostgreSQL reais de convite concorrente, segredo, timeouts, reexecução, migração das posturas, falha de envio e avanço único após reinício.
+
+**Semântica de confiabilidade:** entrega de eventos é *at least once*, não promessa de entrega exatamente uma vez no WhatsApp. Transporte futuro deve deduplicar por `idempotencyKey`. O avanço persistente do duelo é protegido por revisão; ainda não existe liquidação transacional de XP, dinheiro ou HP de um `!duelo` interativo.
+
+**Experiência no WhatsApp:** anúncio da janela no grupo, sem mostrar opções escolhidas; jogador envia sua opção ao bot em mensagem privada ou por sessão autenticada na Web. Não depender exclusivamente de mensagens de saída no privado (histórico de “aguardando mensagem” em alguns aparelhos). Se o jogador ficar sem acesso, sua ação daquela janela será `normal` após 30s. No grupo, mostrar apenas quantidade de respostas, nunca a opção de cada jogador antes da resolução.
+
+**Pendências de integração e lançamento:**
+1. Extrair o cálculo canônico de cada rodada PvP para um motor determinístico incremental, com snapshots de HP/atributos/pets/equipamentos e estado persistível, sem manter transação aberta durante 30s de espera.
+2. Integrar `resumePersistentDuelOnce()` ao motor e liquidar o duelo final exatamente uma vez, com regras de HP persistente e recompensa distintas do combate automático.
+3. Implementar comandos `!duelo` no grupo/privado sem sobrescrever prematuramente seu apelido legado de `!batalhar`; identificação segura por JID e deduplicação de mensagem.
+4. Verificar o encaminhamento de mensagens privadas, Web autenticada, reinícios, timeouts e invasores; testar em ambiente isolado ponta a ponta com dois clientes reais.
+5. Homologar `!estrategia` no `battle()` real com flag ON, inclusive CRIT, pets, escudos e HP; nenhuma configuração de flag em produção até aprovação específica.
+6. Não executar migrações, habilitar flags, mesclar na `whatsapp-only` ou anunciar comandos como disponíveis antes de certificação.
+
