@@ -1,5 +1,5 @@
 import {db,ensureUser} from './db.js'
-import {gtSponsorCouponInTx} from './gt-alpha-sponsors.js'
+import {gtSponsorCouponInTx,initGtSponsors} from './gt-alpha-sponsors.js'
 import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingModel,racingColor,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
 
 export const raceMoney=n=>'R$ '+Math.max(0,Math.floor(Number(n)||0)).toLocaleString('pt-BR')
@@ -158,6 +158,7 @@ export async function racePaint(jid,carId,colorId){
  })
 }
 export async function raceUpgrade(jid,partId){
+ await initGtSponsors()
  const part=racingPart(partId)
  if(!part)throw Error('Peça inválida. Use !oficina.')
  return tx(jid,async c=>{
@@ -179,6 +180,7 @@ export async function raceUpgrade(jid,partId){
  })
 }
 export async function raceRepair(jid){
+ await initGtSponsors()
  return tx(jid,async c=>{
   const s=await state(c,jid),car=activeCar(s)
   if(!car)throw Error('Equipe um carro primeiro.')
