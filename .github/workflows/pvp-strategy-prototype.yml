@@ -1,0 +1,26 @@
+name: PvP - Strategic prototype isolated validation
+on:
+  push:
+    branches:
+      - feat/pvp-strategy-prototype-20261115
+    paths:
+      - 'src/neon/pvp-strategy-prototype.js'
+      - 'test/pvp-strategy-prototype-20261115.test.mjs'
+      - '.github/workflows/pvp-strategy-prototype.yml'
+  pull_request:
+    paths:
+      - 'src/neon/pvp-strategy-prototype.js'
+      - 'test/pvp-strategy-prototype-20261115.test.mjs'
+      - '.github/workflows/pvp-strategy-prototype.yml'
+jobs:
+  strategy-prototype:
+    name: Strategy privacy, balance and legacy regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/neon/pvp-strategy-prototype.js
+      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs
