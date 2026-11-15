@@ -46,7 +46,7 @@ export function declineStrategicDuel(state,{playerId,nowMs}={}){
 export function beginDuelDecision(state,{round,nowMs,timeoutMs=30000}={}){
   asTime(nowMs);
   if(state?.phase!=='ready'&&state?.phase!=='combat')throw new Error('duel not ready');
-  if(!DECISION_ROUNDS.includes(round)||round<=state.lastDecisionRound)throw new Error('invalid or replayed decision round');
+  if(round!==DECISION_ROUNDS[state.revealed.length]||round<=state.lastDecisionRound)throw new Error('invalid or replayed decision round');
   if(state.revealed.length>=MAX_INTERVENTIONS)throw new Error('intervention limit reached');
   const decision=makeDuelRound({players:state.players,round,nowMs,timeoutMs});
   return freezeState({...state,phase:'decision',round,revision:state.revision+1,currentDecision:decision});
