@@ -5,16 +5,16 @@ on:
       - feat/pvp-strategy-prototype-20261115
     paths:
       - 'src/neon/pvp-strategy-prototype.js'
+      - 'src/neon/pvp-strategy-balance-harness.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
-      - 'src/neon/pvp-strategy-balance-harness.js'
-      - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
-      - 'src/neon/pvp-strategy-balance-harness.js'
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
   pull_request:
     paths:
       - 'src/neon/pvp-strategy-prototype.js'
+      - 'src/neon/pvp-strategy-balance-harness.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
+      - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
 jobs:
   strategy-prototype:
@@ -27,4 +27,5 @@ jobs:
         with:
           node-version: '22'
       - run: node --check src/neon/pvp-strategy-prototype.js
+      - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs
