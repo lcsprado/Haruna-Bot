@@ -1,20 +1,16 @@
 import {randomInt} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
 
-// Edição de Halloween de 31/10/2026. Inscrição aberta ao iniciar o serviço;
-// horário do sorteio persistido para sobreviver a reinícios e deploys.
+// Bingo Alpha de 15/11/2026, às 19h30 de Brasília, cartela grátis por pessoa.
 const KEY='bingo_alpha_20261115_1930_v1'
 const ANNOUNCE=Date.parse('2026-11-15T19:00:00-03:00')
 const EVENT_END=Date.parse('2026-11-15T23:00:00-03:00')
 const EVENT_START=Date.parse('2026-11-15T19:30:00-03:00')
 const BALL_INTERVAL_MS=25000
-const PRICE=0
-const TROPHY='insignia_bingo_alpha_halloween_20261031'
 const NUMBER_LIMIT=40
-const REWARD={row:0,twoRows:0,full:5000000}
+const REWARD={full:5000000}
 let busy=false
 let timer=null
-let registeredItem=false
 const num=x=>Number(x||0)
 const formatMoney=v=>'R$ '+num(v).toLocaleString('pt-BR')
 const shuffle=list=>{
@@ -155,19 +151,18 @@ async function processBall(s,c){
   const outcome=await checkPrizes(s,c)
   return {message:'🔢 BOLA '+String(ball.value).padStart(2,'0')+outcome,finished:Boolean(s.prizes.full)}
 }
-const welcome=(count,startAt)=>'🎃 *BINGO ALPHA — EDIÇÃO HALLOWEEN!*\n\n'+
-  '✅ Inscrições *ABERTAS AGORA*! Sorteio às *'+localClock(startAt)+'* (Brasília).\n'+
-  '🎟️ Cartela: *'+formatMoney(PRICE)+'* (carteira/banco)\n'+
-  '⚖️ Apenas *1 cartela por jogador*. Todos têm chances iguais.\n'+
-  '✅ Digite *!bingo* para comprar sua cartela.\n'+
-  '📋 Digite *!cartela* para conferir as marcações automáticas.\n'+
-  '🔢 Uma bola global a cada *25 segundos*.\n\n'+
-  '🥉 Primeira linha: *R$ 40.000*\n'+
-  '🥈 Primeiras duas linhas: *R$ 80.000*\n'+
-  '🥇 Primeira cartela cheia: *R$ 150.000* + 🏅 Insígnia do Bingo Halloween.\n'+
-  '⚡ Bolas especiais: Reconexão, Pacote Recuperado e Sorte Alpha.\n'+
-  '👥 Inscritos até agora: *'+count+'*\n'+
-  '_Sem força, pets, nível ou equipamento._'
+const welcome=(count,startAt)=>[
+  '🎰 *BINGO ALPHA — HOJE, 19H30!*',
+  '',
+  '🎟️ Inscrições *ABERTAS E GRATUITAS* até *'+localClock(startAt)+'* (Brasília).',
+  '✅ Digite *!bingo* para receber sua cartela. Apenas uma por jogador.',
+  '📋 Use *!cartela* para ver suas marcações automáticas.',
+  '🔢 Cartela 3×3, centro LIVRE, números de 1 a 40; uma bola a cada 25 segundos.',
+  '🏆 *PRÊMIO ÚNICO — R$ 5.000.000 PARA A PRIMEIRA CARTELA CHEIA!*',
+  '🚫 Sem cobrança, prêmio por linha ou prêmio secundário.',
+  '👥 Cartelas confirmadas: *'+count+'*.',
+  '⚖️ Sorteio global, números aleatórios; pets e níveis não influenciam.'
+].join('\n')
 async function tick(sock){
   if(busy)return
   busy=true
@@ -194,7 +189,7 @@ async function tick(sock){
       if(now>=startAt && s.phase==='registration'){
         if(!Object.keys(s.players||{}).length){
           s.phase='cancelled'
-          outgoing='🎰 *BINGO ALPHA CANCELADO*\nNenhuma cartela comprada até o início do sorteio. Não houve cobranças nem prêmios.'
+          outgoing='🎰 *BINGO ALPHA CANCELADO*\nNenhum jogador entrou antes das 19h30. Ninguém foi cobrado.'
         }else{
           s.phase='running'
           s.queue=buildQueue()
@@ -218,7 +213,7 @@ async function tick(sock){
             s.phase='completed'
             s.completedAt=Date.now()
             parts.push('🏁 *BINGO ENCERRADO!*\n'+
-              (s.prizes.full?'🏆 Campeão: *'+s.prizes.full.name+'* com a Insígnia do Bingo Alpha.':'Todas as bolas saíram.')+
+              (s.prizes.full?'🏆 Campeão: *'+s.prizes.full.name+'* — '+formatMoney(REWARD.full)+'.':'Todas as bolas saíram.')+
               '\n✅ Premiações registradas uma única vez.')
           }
         }
@@ -230,7 +225,7 @@ async function tick(sock){
         if(isFinal || important.length || showRound){
           const nums=(s.drawn||[]).slice(-5).map(x=>String(x).padStart(2,'0')).join(' • ')
           outgoing=[
-            '🎰 *BINGO ALPHA*',
+            '🎰 *BINGO ALPHA — R$ 5 MILHÕES*',
             '',
             '🔢 *Últimos números:* '+(nums||'Nenhum'),
             '📊 *Sorteados:* '+(s.drawn?.length||0)+'/40',
@@ -257,7 +252,7 @@ export async function handleBingoNov15Command({cmd,sender,name,chat,reply}){
   if(cmd!=='bingo' && cmd!=='cartela')return false
   const now=Date.now()
   if(now<ANNOUNCE || now>EVENT_END)return false
-  if(!chat?.endsWith('@g.us')){await reply('🎰 O Bingo do Reboot funciona nos grupos do Alpha Bot.');return true}
+  if(!chat?.endsWith('@g.us')){await reply('🎰 O Bingo funciona nos grupos do Alpha Bot.');return true}
   const license=await getGroupLicense(chat)
   if(!groupLicenseIsActive(license)){await reply('🔒 O grupo precisa de licença ativa para entrar no Bingo.');return true}
   await ensureTrophy()
@@ -265,7 +260,7 @@ export async function handleBingoNov15Command({cmd,sender,name,chat,reply}){
   await mutate(async(s,c)=>{
     const me=s.players?.[sender]
     if(cmd==='cartela'){
-      out=me?cardText(me,s):'🎟️ Você ainda não tem cartela. Use *!bingo* para comprar por '+formatMoney(PRICE)+'.'
+      out=me?cardText(me,s):'🎟️ Você ainda não tem cartela. Use *!bingo* para se inscrever gratuitamente até 19h30.'
       if(s.phase==='completed' && me)out+='\n🏁 Sorteio encerrado.'
       return
     }
@@ -274,19 +269,11 @@ export async function handleBingoNov15Command({cmd,sender,name,chat,reply}){
       out='🔒 Inscrições encerradas. O Bingo só aceita uma cartela por jogador antes do sorteio.'
       return
     }
-    const payment=await c.query(`UPDATE wallets
-      SET cash=cash-LEAST(cash,$1::bigint),
-          bank=bank-GREATEST(0,$1::bigint-cash),
-          updated_at=EXTRACT(EPOCH FROM NOW())::bigint
-      WHERE jid=$2 AND cash>=0 AND bank>=0 AND cash+bank>=$1
-      RETURNING jid`,[PRICE,sender])
-    if(payment.rowCount!==1){out='💰 Saldo insuficiente. É preciso ter '+formatMoney(PRICE)+' na carteira + banco para comprar a cartela.';return}
-    await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'bingo_reboot_card',$3)`,[sender,PRICE,KEY+':entry'])
+
     const player={name:String(name||'Jogador').slice(0,50),card:ticket(),wild:[],joinedAt:now}
     s.players[sender]=player
-    out='✅ *CARTELA COMPRADA!* '+formatMoney(PRICE)+' debitados.\n\n'+cardText(player,s)+
-      '\n\n⏰ Sorteio global às *'+localClock(s.startAt)+'*. Boa sorte!'
+    out='✅ *CARTELA GRÁTIS CONFIRMADA!* Nenhum dinheiro foi debitado.\n\n'+cardText(player,s)+
+      '\n\n🏆 Prêmio de R$ 5.000.000 à primeira cartela cheia. Sorteio às '+localClock(s.startAt)+'!'
   })
   await reply(out)
   return true
