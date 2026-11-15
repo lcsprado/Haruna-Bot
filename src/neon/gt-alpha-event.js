@@ -85,7 +85,7 @@ async function runDay(day){
  await mutate(dayKey(day),async(s,c)=>{
   if(['completed','cancelled'].includes(s.phase))return
   if(!s.phase){
-   if(Date.now()>start+10*60000){
+   if(Date.now()>start+(day==='2026-11-15'?15:10)*60000){
     s.phase='cancelled';s.day=day
     addNotice(s,'missed','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\nO bot não estava pronto no horário das 20h30. Nenhum resultado foi simulado retroativamente.')
     return
@@ -99,7 +99,7 @@ async function runDay(day){
     return
    }
    s.results=gtRunHeats(participants,Math.random,day)
-   s.stage=0;s.phase='running';s.nextAt=start+30000
+   s.stage=0;s.phase='running';s.nextAt=Math.max(start+30000,Date.now()+30000)
    addNotice(s,'start','🏎️ *GT ALPHA BOT — LARGADA!*\n\n👨‍✈️ '+participants.length+
     ' pilotos inscritos automaticamente com seus carros principais às *20h30*.\n'+
     '🛣️ '+s.results.heats.map(h=>h.name+' ('+GT_WEATHER_LABELS[h.weather]+')').join(' → ')+'.\n'+
@@ -196,7 +196,7 @@ async function tick(){
   if(now>=start-20*60000&&now<start)await prepNotice(day)
   if(now>=start){
    const s=await read(dayKey(day))
-   if(!s || (s.phase==='running'&&now>=Number(s.nextAt)))await runDay(day)
+   if(!s || !s.phase || (s.phase==='running'&&now>=Number(s.nextAt)))await runDay(day)
   }
   await flush(dayKey(day))
   if(gtDayIsSunday(day)&&now>=start){
