@@ -31,7 +31,7 @@ import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listAutoForgeInventoryOptions, getAutoForgeInventoryQuote, executeAutoForgeInventory, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listAutoForgeInventoryOptions, getAutoForgeInventoryQuote, executeAutoForgeInventory, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, configureAutoBattleStrategy, getAutoBattleStrategy, combatLeaderboard, claimLevelRewards,
 acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
 ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
 ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -12618,6 +12618,24 @@ ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
 )
+} else if(cmd==='estrategia'){
+const selected=String(args[0]||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+const options=['equilibrada','agressiva','defensiva','tatica','adaptativa']
+if(selected&&selected!=='status'&&!options.includes(selected)){
+  await reply('⚔️ *POSTURAS AUTOMÁTICAS*\n!estrategia equilibrada\n!estrategia agressiva\n!estrategia defensiva\n!estrategia tatica\n!estrategia adaptativa\n\nConfigure uma vez e use !batalhar normalmente. Nenhuma decisão durante a luta.')
+}else{
+  try{
+    if(!selected||selected==='status'){
+      const current=await getAutoBattleStrategy(sender)
+      await reply('⚔️ *ESTRATÉGIA AUTOMÁTICA*\n🎭 Combatente: *'+current.combatantId+'*\n🎯 Postura: *'+current.posture+'*\n\nTrocar: !estrategia agressiva, defensiva, tatica, equilibrada ou adaptativa.')
+    }else{
+      const current=await configureAutoBattleStrategy(sender,selected)
+      await reply('⚔️ *POSTURA SALVA*\n🎭 Combatente: *'+current.combatant_id+'*\n🎯 Postura: *'+current.posture+'*\n\nSeu !batalhar continua 100% automático.')
+    }
+  }catch(err){
+    await reply('❌ '+(err?.message||'Não foi possível configurar a estratégia.'))
+  }
+}
 } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
 const targetMention=mentionsOf(msg)[0]
 if(!targetMention){
