@@ -22,6 +22,8 @@ import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
+import {strategyModifiers} from './pvp-strategy-prototype.js'
+import {readBattleStrategies} from './pvp-strategy-preferences.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -3331,6 +3333,15 @@ const applyPvpVital=(fighter,synergy)=>{
 }
 applyPvpVital(A,aSynergy)
 applyPvpVital(B,bSynergy)
+// Estratégia experimental: leitura opcional e estritamente neutra quando a flag está OFF.
+// Migração das preferências deve ser homologada antes de habilitar esta flag.
+const pvpStrategyEnabled=process.env.ALPHA_PVP_STRATEGY_ENABLED==='1'
+const pvpPostures=await readBattleStrategies(client,[
+  {jid:A.jid,combatantId:A.heroId||A.classId},
+  {jid:B.jid,combatantId:B.heroId||B.classId}
+],{enabled:pvpStrategyEnabled})
+A.strategyPosture=pvpPostures[A.jid]
+B.strategyPosture=pvpPostures[B.jid]
 const snapshot=fighter=>{
 const critNoPet=Math.max(0,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.max(0,critNoPet+Number(fighter.petBonus?.crit||0))
@@ -3359,6 +3370,10 @@ const log=[]
 let first=A.spd>=B.spd?A:B
 let second=first===A?B:A
 const hit=(from,to)=>{
+const stanceAttack=strategyModifiers({fighterId:from.heroId||from.classId,
+  posture:from.strategyPosture,opponentPosture:to.strategyPosture})
+const stanceDefense=strategyModifiers({fighterId:to.heroId||to.classId,
+  posture:to.strategyPosture,opponentPosture:from.strategyPosture})
 from.attackIndex++
 const variance=0.85+Math.random()*0.30
 const critRoll=Math.random()
@@ -3391,27 +3406,30 @@ const noPetAttack=Number(from.petBonus?.damage||0)>0
 if(from.heroId)from.heroState=attack.state;
 else from.awakeningState=attack.awakeningState;
 from.lastProcAttack=attack.lastProcAttack;
+const strategicAttackDamage=Math.max(0,Math.round(attack.damage*stanceAttack.attackMultiplier));
+const strategicNoPetAttackDamage=Math.max(0,Math.round(noPetAttack.damage*stanceAttack.attackMultiplier));
 const defenseRoll=Math.random();
 const defenseStateBefore=to.awakeningState;
 const heroDefenseStateBefore=to.heroState;
-const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
+const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:strategicAttackDamage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
 const defense=to.heroId
-  ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:heroDefenseStateBefore,gear:to.heroGear})
+  ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:strategicAttackDamage,state:heroDefenseStateBefore,gear:to.heroGear})
   :classPvpDefense(defenseArgs);
 const classDamage=defense.damage;
 const fullyDodged=dodged||Boolean(defense.dodged);
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
-  (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
-    classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
+  (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:strategicNoPetAttackDamage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
+    classPvpDefense({...defenseArgs,damage:dodged?0:strategicNoPetAttackDamage}).damage);
 if(to.heroId)to.heroState=defense.state;
 else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
+const stanceDefenseFactor=(1-stanceDefense.damageReduction)*stanceDefense.receivedMultiplier
+const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)*stanceDefenseFactor))
+const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)*stanceDefenseFactor))
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
-const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
+const defenseBlocked=dodged?0:Math.max(0,Number(strategicAttackDamage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
 const hpAfterHit=to.hp
 let heartEvent=null
