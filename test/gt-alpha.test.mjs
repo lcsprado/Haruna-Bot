@@ -63,6 +63,7 @@ test('motor isolado e seguro contra troca de carro depois da largada',()=>{
  assert.match(src,/async function prepNotice/)
  assert.match(src,/start-20\*60000/)
  assert.match(src,/preparationNotice/)
+ assert.match(src,/Date\.now\(\)<start\+10000/)
  assert.match(src,/Date\.now\(\)>start\+10\*60000/)
  assert.ok(!src.includes('user_cars'))
  assert.ok(!src.includes('clt_uber'))
