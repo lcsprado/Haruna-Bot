@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS pvp_duel_outbox (
   payload JSONB NOT NULL CHECK(jsonb_typeof(payload)='object'),
   created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   delivered_at TIMESTAMPTZ,
+  lease_token TEXT,
+  lease_until TIMESTAMPTZ,
+  delivery_attempts INTEGER NOT NULL DEFAULT 0 CHECK(delivery_attempts>=0),
   UNIQUE (duel_id,revision,kind)
 );
 CREATE INDEX IF NOT EXISTS pvp_duel_outbox_pending_idx
