@@ -47,7 +47,7 @@ export async function gtSponsorChoose(jid,id){
  }
  return target
 }
-export async function gtSponsorProgressInTx(c,{day,heats,participants}){
+export async function gtSponsorProgressInTx(c,{day,heats,participants,startedAt}){
  const week=gtWeekStart(day)
  if(!heats?.length||!participants?.length)return []
  const jids=[...new Set(participants.map(p=>p.jid))]
@@ -55,6 +55,8 @@ export async function gtSponsorProgressInTx(c,{day,heats,participants}){
  const notices=[]
  const now=Math.floor(Date.now()/1000)
  for(const row of rows){
+  // Um contrato aceito após a largada só pontua a partir do dia seguinte.
+  if(Number(row.created_at)>Math.floor(Number(startedAt||0)/1000))continue
   if(row.last_day===day)continue
   const sponsor=contract(row.contract_id)
   if(!sponsor)continue
