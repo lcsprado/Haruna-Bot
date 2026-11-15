@@ -1,0 +1,27 @@
+name: Curar e perfil usam mesmo HP PvP
+on:
+  push:
+    branches:
+      - fix/heal-receipt-match-profile-pvp-20261115
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  hp-cure-consistency:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/potion-hp-receipt.js
+      - name: Testes cura 7987 / PvP 8207 e herois
+        run: |
+          node --test test/heal-pvp-hp-consistency-20261115.test.mjs
+          node --test test/hp-potion-vital-report-20261114.test.mjs
