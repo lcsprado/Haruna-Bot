@@ -44,11 +44,14 @@ export async function getAutoStrategyPreference(client,jid){
 export async function readAutoBattlePostures(client,fighters,{enabled=false}={}){
   const out=Object.fromEntries(fighters.map(f=>[f.jid,'equilibrada']));
   if(!enabled)return out; // Flag OFF never queries new preference table.
-  if(fighters.some(f=>!f.jid||!validId(f.combatantId)))throw new Error('Combatente inválido.');
+  if(fighters.some(f=>!f.jid))throw new Error('Jogador inválido.');
+  // A future collab not yet added to this catalogue remains neutral, never breaks PvP.
+  const known=fighters.filter(f=>validId(f.combatantId));
+  if(!known.length)return out;
   const r=await client.query(`SELECT jid,combatant_id,posture
     FROM pvp_auto_strategy_preferences WHERE jid=ANY($1::text[]) AND combatant_id=ANY($2::text[])`,
-    [fighters.map(f=>f.jid),fighters.map(f=>f.combatantId)]);
-  for(const f of fighters){
+    [known.map(f=>f.jid),known.map(f=>f.combatantId)]);
+  for(const f of known){
     const stored=r.rows.find(row=>row.jid===f.jid&&row.combatant_id===f.combatantId);
     if(stored&&validPosture(stored.posture))out[f.jid]=stored.posture;
   }
