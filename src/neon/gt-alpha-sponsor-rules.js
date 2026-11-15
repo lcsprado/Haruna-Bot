@@ -16,3 +16,10 @@ export function gtSponsorDiscount(id,cost){
  if(id==='pitstop')return Math.min(300000,Math.floor(value*.3))
  return 0
 }
+
+// Atalhos do menu WhatsApp, sem depender de ordenação de banco ou texto livre.
+export const GT_SPONSOR_NUMBER_IDS=Object.freeze({'1':'oficina','2':'pitstop','3':'turbo'})
+export function gtSponsorOption(input){
+ const value=String(input??'').trim().toLowerCase()
+ return GT_SPONSOR_NUMBER_IDS[value] || (GT_SPONSORS.some(s=>s.id===value)?value:null)
+}
