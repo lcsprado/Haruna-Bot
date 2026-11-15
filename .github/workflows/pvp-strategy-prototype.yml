@@ -7,20 +7,24 @@ on:
       - 'src/neon/pvp-strategy-prototype.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
+      - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
   pull_request:
     paths:
       - 'src/neon/pvp-strategy-prototype.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
+      - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
 jobs:
   strategy-prototype:
@@ -35,4 +39,5 @@ jobs:
       - run: node --check src/neon/pvp-strategy-prototype.js
       - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --check src/neon/pvp-duel-session-prototype.js
-      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs
+      - run: node --check src/neon/pvp-strategy-preferences.js
+      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs
