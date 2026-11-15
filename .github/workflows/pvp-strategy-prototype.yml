@@ -10,6 +10,8 @@ on:
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-duel-persistence.js'
+      - 'src/neon/pvp-duel-round-engine.js'
+      - 'src/neon/pvp-duel-combat-adapter.js'
       - 'src/neon/pvp-duel-outbox-worker.js'
       - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
@@ -17,6 +19,7 @@ on:
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-duel-round-engine-20261115.test.mjs'
       - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
@@ -28,6 +31,8 @@ on:
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-duel-persistence.js'
+      - 'src/neon/pvp-duel-round-engine.js'
+      - 'src/neon/pvp-duel-combat-adapter.js'
       - 'src/neon/pvp-duel-outbox-worker.js'
       - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
@@ -35,6 +40,7 @@ on:
       - 'test/pvp-strategy-matchup-audit-20261115.test.mjs'
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
+      - 'test/pvp-duel-round-engine-20261115.test.mjs'
       - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
@@ -52,11 +58,13 @@ jobs:
       - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --check src/neon/pvp-duel-session-prototype.js
       - run: node --check src/neon/pvp-duel-persistence.js
+      - run: node --check src/neon/pvp-duel-round-engine.js
+      - run: node --check src/neon/pvp-duel-combat-adapter.js
       - run: node --check src/neon/pvp-duel-outbox-worker.js
       - run: node --check src/neon/pvp-strategy-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
-      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
+      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs test/pvp-duel-round-engine-20261115.test.mjs
   pvp-postgres:
     name: PostgreSQL 16 disposable duel session verification
     runs-on: ubuntu-latest
