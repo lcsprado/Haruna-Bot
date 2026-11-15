@@ -20,6 +20,7 @@ on:
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
       - 'test/pvp-duel-round-engine-20261115.test.mjs'
+      - 'test/pvp-duel-release-guard-20261115.test.mjs'
       - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
@@ -41,6 +42,7 @@ on:
       - 'test/pvp-strategy-counterplay-audit-20261115.test.mjs'
       - 'test/pvp-duel-session-prototype-20261115.test.mjs'
       - 'test/pvp-duel-round-engine-20261115.test.mjs'
+      - 'test/pvp-duel-release-guard-20261115.test.mjs'
       - 'test/pvp-duel-postgres-integration-20261115.test.mjs'
       - 'test/pvp-strategy-preferences-20261115.test.mjs'
       - '.github/workflows/pvp-strategy-prototype.yml'
@@ -64,7 +66,7 @@ jobs:
       - run: node --check src/neon/pvp-strategy-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
-      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs test/pvp-duel-round-engine-20261115.test.mjs
+      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs test/pvp-duel-round-engine-20261115.test.mjs test/pvp-duel-release-guard-20261115.test.mjs
   pvp-postgres:
     name: PostgreSQL 16 disposable duel session verification
     runs-on: ubuntu-latest
