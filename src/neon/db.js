@@ -23,7 +23,7 @@ import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,class
 import {pvpCritChance} from './pvp-crit.js'
 import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
 import {strategyModifiers} from './pvp-strategy-prototype.js'
-import {readBattleStrategies} from './pvp-strategy-preferences.js'
+import {readBattleStrategies,saveStrategyPreference} from './pvp-strategy-preferences.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -3168,6 +3168,26 @@ weapon_level:Number(w.level||1),
 armor_level:Number(a.level||1),
 boot_level:Number(b.level||1),
 }
+}
+// Configura somente o herói/classe ativa e exige posse antes da gravação.
+// Não altera atributos, Despertar, maestria ou a economia.
+export async function configureBattleStrategy(jid,posture){
+if(process.env.ALPHA_PVP_STRATEGY_ENABLED!=='1') throw new Error('Estratégias ainda não estão liberadas.')
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query(`SELECT s.class_id,
+  CASE WHEN EXISTS(
+    SELECT 1 FROM pet_collection p
+    WHERE p.jid=s.jid AND p.species=m.hero_species
+  ) THEN m.hero_species ELSE NULL END AS hero_id
+  FROM stats s LEFT JOIN player_hero_mode m ON m.jid=s.jid
+  WHERE s.jid=$1 FOR UPDATE OF s`,[jid])
+const current=r.rows[0]
+if(!current)throw new Error('Personagem não localizado.')
+const combatantId=current.hero_id||current.class_id
+if(!combatantId)throw new Error('Selecione uma classe ou herói antes de configurar.')
+return saveStrategyPreference(client,{jid,combatantId,posture})
+})
 }
 export async function battle(attackerJid, defenderJid) {
 if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
