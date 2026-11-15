@@ -139,6 +139,7 @@ import {initMadrugada,scheduleMadrugada,handleMadrugadaCommand} from './madrugad
 import {initRacingAlpha} from './racing-alpha.js'
 import {handleRacingAlphaCommand} from './racing-commands.js'
 import {startGtAlphaScheduler,handleGtAlphaCommand} from './gt-alpha-event.js'
+import {gtSponsorChoose,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
@@ -4727,6 +4728,23 @@ if(['0','sair','cancelar','cancel'].includes(input)){
 clearQuickFlow(chat,sender)
 await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':String(flow.stage||'').startsWith('enchant_')?'✅ Encantamento cancelado. Nenhuma pedra consumida. Use *!encantar* para voltar.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
 return true
+}
+if(flow.stage==='gt_sponsor_choose'){
+ // Aceita apenas escolha do mesmo jogador/chat com menu pendente; 0 cancela antes.
+ if(!/^[1-3]$/.test(input)){
+   if(/^\d+$/.test(input))await reply('🤝 Escolha *1*, *2* ou *3* (ou *0* para cancelar).')
+   return true
+ }
+ let picked
+ try{picked=await gtSponsorChoose(sender,input)}
+ catch(err){
+   clearQuickFlow(chat,sender)
+   await reply('🤝 '+String(err?.message||'Não foi possível registrar o patrocínio.').slice(0,200))
+   return true
+ }
+ clearQuickFlow(chat,sender)
+ await reply(gtSponsorConfirmedText(picked))
+ return true
 }
 if(String(flow.stage||'').startsWith('voucher_')){
   return handleRaidPetVoucherFlow({flow,input,sender,reply,
@@ -10515,7 +10533,10 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-if(await handleGtAlphaCommand({cmd,args,sender,reply})) continue
+if(await handleGtAlphaCommand({cmd,args,sender,reply,
+ openSponsorFlow:()=>setQuickFlow(chat,sender,'gt_sponsor_choose',{},5*60*1000),
+ closeSponsorFlow:()=>{if(getQuickFlow(chat,sender)?.stage==='gt_sponsor_choose')clearQuickFlow(chat,sender)}
+})) continue
 if(await handleRacingAlphaCommand({cmd,args,sender,name:msg.pushName||'Piloto',chat,mentions:cmd==='desafiocorrida'&&mentionsOf(msg)[0]?[await resolvePlayerJid(sock,chat,mentionsOf(msg)[0],msg)]:[],reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){

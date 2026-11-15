@@ -6,6 +6,7 @@ on:
       - 'src/neon/index.js'
       - 'test/gt-alpha.test.mjs'
       - 'test/gt-alpha-weather-sponsor.test.mjs'
+      - 'test/gt-alpha-sponsor-numeric.test.mjs'
       - 'src/neon/racing-alpha.js'
       - 'src/neon/racing-commands.js'
       - '.github/workflows/gt-alpha-validation.yml'
@@ -15,6 +16,7 @@ on:
       - 'src/neon/gt-alpha-*.js'
       - 'test/gt-alpha.test.mjs'
       - 'test/gt-alpha-weather-sponsor.test.mjs'
+      - 'test/gt-alpha-sponsor-numeric.test.mjs'
       - 'src/neon/racing-alpha.js'
       - 'src/neon/racing-commands.js'
 permissions:
@@ -38,4 +40,4 @@ jobs:
           node --check src/neon/racing-commands.js
           node --check src/neon/index.js
       - name: Racing physics, payouts and safety
-        run: node --test test/gt-alpha.test.mjs test/gt-alpha-weather-sponsor.test.mjs test/racing-alpha.test.mjs
+        run: node --test test/gt-alpha.test.mjs test/gt-alpha-weather-sponsor.test.mjs test/gt-alpha-sponsor-numeric.test.mjs test/racing-alpha.test.mjs
