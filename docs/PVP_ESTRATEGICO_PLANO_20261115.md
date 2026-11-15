@@ -113,3 +113,25 @@ Arquivos adicionados:
 5. Homologar `!estrategia` no `battle()` real com flag ON, inclusive CRIT, pets, escudos e HP; nenhuma configuração de flag em produção até aprovação específica.
 6. Não executar migrações, habilitar flags, mesclar na `whatsapp-only` ou anunciar comandos como disponíveis antes de certificação.
 
+
+
+## Etapa motor de rodadas persistível (continuação 15/11)
+
+Evidência final CI: https://github.com/lcsprado/Haruna-Bot/actions/runs/43759717823 — **65 testes aprovados, 0 falhas** (53 de regras/sintaxe e 12 em PostgreSQL 16 descartável).
+
+Arquivos adicionados:
+- `src/neon/pvp-duel-round-engine.js`: executor determinístico com estado serializável JSONB (`rngState`), até 20 rodadas, HP/ATK/DEF/VEL, classe/Despertar, técnicas de heróis/maestria, crítico/escudo, pets, cura e pulso vital. Nunca acessa banco, entrega WhatsApp ou faz pagamentos. Congela snapshot dos dois combatentes (o chamador deve montá-lo com dados autoritativos).
+- `src/neon/pvp-duel-combat-adapter.js`: avanço automático até a próxima decisão (rodadas 3, 7 e 11) ou encerramento, sem transação aberta enquanto aguarda 30 segundos.
+- `createPersistentDuel(...combatSnapshot)`: aceita snapshot opcional para testes/homologação, vinculando identidades do snapshot aos JIDs do convite. A construção desse snapshot de atributos reais ainda não está ligada ao WhatsApp.
+- `test/pvp-duel-round-engine-20261115.test.mjs`: compara, byte a byte, execução contínua com partida interrompida/reiniciada em JSON, com técnicas/pets e diferentes sementes; assegura que ações são consumidas uma única vez e que a decisão ocorre ANTES da rodada.
+- `test/pvp-duel-postgres-integration-20261115.test.mjs`: ciclo completo em banco descartável: convite → aceite → rodadas automáticas → três intervenções secretas → final após 20 rodadas; concorrência na retomada e nenhum processamento duplo.
+- `test/pvp-duel-release-guard-20261115.test.mjs`: impede a ativação prematura do !duelo e escritas experimentais em HP/XP/carteira.
+
+Ressalvas técnicas:
+1. O motor experimental usa as mesmas funções de habilidades do PvP original e reproduz a execução contínua de seu PR com várias combinações. **Ainda não foi comprovada equivalência ponta a ponta contra a função `battle()` com snapshots reais de equipamentos/pets e dados de dois jogadores.** Não declarar paridade integral até essa certificação.
+2. O estado mantém sua própria sequência de números pseudoaleatórios a partir de seed definida pelo servidor, sem repetir os resultados após reiniciar. A seed não é devolvida em eventos públicos.
+3. O snapshot de combatentes deve ser coletado por função **somente leitura**, autenticada, conferindo herói possuído, equipamentos equipados, estrelas/níveis, encantamentos, pets aptos, sinergias e HP no instante do convite/aceite. **Não reutilizar `getCombatProfile()` sem avaliação**, pois a implementação existente pode ajustar `stats.hp` quando detecta HP excessivo.
+4. O resultado do duelo ainda não liquida dano permanente, vitórias, derrotas ou recompensas. Necessário implementar liquidação transacional idempotente distinta de `battle()` e testá-la antes de liberar o comando.
+5. As notificações WhatsApp (grupo e privado) e a autenticação Web ainda não foram implementadas. Mesmo com motor e banco passando, `!duelo` segue apelido legado de `!batalhar` e as flags continuam desativadas em produção.
+
+O PR continua DRAFT e não pode ser mesclado para `whatsapp-only` com autodeploy até liberação específica.
