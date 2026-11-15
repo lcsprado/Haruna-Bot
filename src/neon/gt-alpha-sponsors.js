@@ -105,3 +105,11 @@ export async function gtSponsorText(jid,{withStatus=false}={}){
   '\n🔒 Um patrocinador por semana. Sem recompensas repetidas.'
  return withStatus?{text,canChoose:false}:text
 }
+
+// Mensagem única, reutilizada pelo comando completo e pelo menu com 1/2/3.
+export function gtSponsorConfirmedText(picked){
+ return '🤝 *CONTRATO CONFIRMADO!*\n'+picked.name+
+  '\n🎯 Meta: '+picked.goal+' '+picked.measure+
+  '\n🎁 '+picked.reward+
+  '\n✅ O progresso será automático nas corridas futuras das 20h30.'
+}
