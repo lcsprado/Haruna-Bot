@@ -1,0 +1,27 @@
+name: Perfil e PvP - HP na mesma escala
+on:
+  push:
+    branches:
+      - fix/profile-pvp-hp-primary-match-20261115
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  profile-pvp-hp:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/profile-pvp-hp.js
+          node --check src/neon/playable-heroes.js
+          node --check src/neon/index.js
+          node --check src/neon/pvp-report.js
+      - name: Testar HP no perfil e no PvP sem acessar banco de dados
+        run: node --test test/profile-pvp-hp-20261115.test.mjs
