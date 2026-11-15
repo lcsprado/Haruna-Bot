@@ -138,6 +138,7 @@ import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from '
 import {initMadrugada,scheduleMadrugada,handleMadrugadaCommand} from './madrugada-amaldicoada.js'
 import {initRacingAlpha} from './racing-alpha.js'
 import {handleRacingAlphaCommand} from './racing-commands.js'
+import {startGtAlphaScheduler,handleGtAlphaCommand} from './gt-alpha-event.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
@@ -9839,6 +9840,7 @@ void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
 scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
+startGtAlphaScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
 pokemonQuizEngine=createPokemonQuizEngine({db,
@@ -10513,6 +10515,7 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleGtAlphaCommand({cmd,args,sender,reply})) continue
 if(await handleRacingAlphaCommand({cmd,args,sender,name:msg.pushName||'Piloto',chat,mentions:cmd==='desafiocorrida'&&mentionsOf(msg)[0]?[await resolvePlayerJid(sock,chat,mentionsOf(msg)[0],msg)]:[],reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
