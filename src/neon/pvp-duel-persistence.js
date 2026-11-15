@@ -172,3 +172,37 @@ export async function getPendingDuelEvents(pool,{limit=30}={}){
     FROM pvp_duel_outbox WHERE delivered_at IS NULL ORDER BY event_id LIMIT $1`,[limit]);
   return r.rows;
 }
+
+// Exactly-once DB state advancement for a resolved/accepted event.
+// 'advance' MUST be a synchronous, pure function. It receives a cloned state.
+// The future canonical combat adapter will process auto rounds up to the next
+// decision or terminal result, with no wallet/XP side effects in this callback.
+export async function resumePersistentDuelOnce(pool,{id,sourceRevision,advance}={}){
+  if(!sessionId(id)||!Number.isInteger(sourceRevision)||sourceRevision<0)throw new Error('invalid resume identity');
+  if(typeof advance!=='function')throw new Error('pure combat advance callback required');
+  return transaction(pool,async client=>{
+    const {state,hardExpiry}=await lockedSession(client,id);
+    const nowMs=await dbTime(client);
+    if(state.revision>sourceRevision){
+      return {applied:false,reason:'already_advanced',state:publicState(state)};
+    }
+    if(state.revision<sourceRevision)throw new Error('future duel revision');
+    if(!['ready','combat'].includes(state.phase))throw new Error('duel not ready to advance');
+    if(nowMs>=new Date(hardExpiry).getTime())throw new Error('duel expired');
+    const result=advance(structuredClone(state),{nowMs});
+    if(!result||typeof result.then==='function')throw new Error('combat reducer must be synchronous');
+    if(result.id!==state.id||
+       JSON.stringify(result.players)!==JSON.stringify(state.players)||
+       result.revision!==state.revision+1||
+       !['decision','finished'].includes(result.phase)){
+      throw new Error('invalid combat transition');
+    }
+    if(result.phase==='decision'&&(
+       !result.currentDecision||result.currentDecision.deadlineAt>new Date(hardExpiry).getTime()
+    ))throw new Error('invalid next decision deadline');
+    const kind=result.phase==='decision'?'decision_opened':'finished';
+    await saveState(client,result,hardExpiry);
+    await appendEvent(client,result,kind);
+    return {applied:true,reason:null,state:publicState(result)};
+  });
+}
