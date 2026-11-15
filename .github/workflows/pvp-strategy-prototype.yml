@@ -5,6 +5,8 @@ on:
       - feat/pvp-strategy-prototype-20261115
     paths:
       - 'src/neon/pvp-strategy-prototype.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-strategy-preferences.js'
@@ -17,6 +19,8 @@ on:
   pull_request:
     paths:
       - 'src/neon/pvp-strategy-prototype.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-strategy-preferences.js'
@@ -40,4 +44,6 @@ jobs:
       - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --check src/neon/pvp-duel-session-prototype.js
       - run: node --check src/neon/pvp-strategy-preferences.js
-      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs
+      - run: node --check src/neon/db.js
+      - run: node --check src/neon/index.js
+      - run: node --test test/pvp-strategy-prototype-20261115.test.mjs test/pvp-strategy-matchup-audit-20261115.test.mjs test/pvp-strategy-counterplay-audit-20261115.test.mjs test/pvp-duel-session-prototype-20261115.test.mjs test/pvp-strategy-preferences-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
