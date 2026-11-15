@@ -56,6 +56,25 @@ function heatText(heat,n,s){
    ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts').join('\n')+
   '\n\n'+rankText(parcial(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
 }
+async function prepNotice(day){
+ const key=dayKey(day)
+ const s=await read(key)
+ if(s?.preparationNotice)return
+ await mutate(key,state=>{
+  if(state.preparationNotice)return
+  state.preparationNotice=Date.now()
+  addNotice(state,'preparation',
+   '🏎️ *GT ALPHA BOT — HOJE ÀS 20H30!*\n\n'+
+   '🏁 Três corridas automáticas: Reta Alpha, Circuito Urbano e Serra Fantasma.\n'+
+   '🚘 *SOMENTE O CARRO EQUIPADO* às 20h30 participará, mesmo que você tenha quatro veículos.\n'+
+   '🔧 Prepare agora: *!garagemcorrida* • *!oficina* • *!equiparcorrida ID* • *!repararcarro*.\n'+
+   '⚙️ Quanto mais preparado o carro, maior a vantagem.\n'+
+   '📊 Pontuação: 1º 10 | 2º 7 | 3º 5 | 4º 3 | demais 1.\n'+
+   '🏆 Prêmios semanais: 1º R$ 15M, 2º R$ 8M, 3º R$ 5M, 4º R$ 1M.\n'+
+   '✅ Não precisa se inscrever. Tudo é automático.\n'+
+   '📋 Use *!gttabela* e *!gttabela semana*.')
+ })
+}
 async function runDay(day){
  const start=gtDayStartMs(day)
  if(Date.now()<start)return
@@ -164,9 +183,10 @@ async function tick(){
   if(day<FIRST_DAY)return
   const now=Date.now(),start=gtDayStartMs(day)
   // Polling intenso só perto do evento; fora disso, uma checagem a cada 30 minutos.
-  const inWindow=now>=start-2*60000&&now<=start+40*60000
+  const inWindow=now>=start-20*60000&&now<=start+40*60000
   if(!inWindow&&now-lastIdleSweep<30*60000)return
   if(!inWindow)lastIdleSweep=now
+  if(now>=start-20*60000&&now<start)await prepNotice(day)
   if(now>=start){
    const s=await read(dayKey(day))
    if(!s || (s.phase==='running'&&now>=Number(s.nextAt)))await runDay(day)
