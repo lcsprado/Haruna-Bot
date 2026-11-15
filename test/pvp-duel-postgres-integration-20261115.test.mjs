@@ -4,10 +4,11 @@ import {readFileSync} from 'node:fs';
 import pg from 'pg';
 import {
   createPersistentDuel,mutatePersistentDuel,sweepPersistentDuelDeadlines,
-  getPublicPersistentDuel,getPendingDuelEvents
+  getPublicPersistentDuel,getPendingDuelEvents,resumePersistentDuelOnce
 } from '../src/neon/pvp-duel-persistence.js';
 import {claimDuelEvents,confirmDuelEvent,releaseDuelEvent,runDuelWorkerCycle} from '../src/neon/pvp-duel-outbox-worker.js';
 import {saveStrategyPreference,readBattleStrategies} from '../src/neon/pvp-strategy-preferences.js';
+import {beginDuelDecision} from '../src/neon/pvp-duel-session-prototype.js';
 
 // Hard guard: tests run ONLY on the disposable local Postgres service.
 const uri=process.env.ALPHA_PVP_TEST_DATABASE_URL||'';
@@ -177,7 +178,8 @@ if(!safe){
       resumeCombat:async e=>resolved.push(e)
     });
     assert.equal(first.failed.length,0);
-    assert.equal(resolved.length,0);
+    assert.equal(resolved.filter(e=>e.kind==='round_resolved').length,0);
+    assert.equal(resolved.filter(e=>e.kind==='accepted').length,1);
     assert.ok(publicEvents.every(e=>!JSON.stringify(e.state).includes('tecnica')));
     await mutatePersistentDuel(pool,{id:x.id,command:'choose',playerId:x.opponent,args:{choice:'proteger'}});
     const next=await runDuelWorkerCycle(pool,{
@@ -185,9 +187,10 @@ if(!safe){
       resumeCombat:async e=>resolved.push(e)
     });
     assert.equal(next.failed.length,0);
-    assert.equal(resolved.length,1);
-    assert.equal(resolved[0].state.revealed[0].choices[x.challenger],'tecnica');
-    assert.equal(resolved[0].state.revealed[0].choices[x.opponent],'proteger');
+    const finalRound=resolved.filter(e=>e.kind==='round_resolved');
+    assert.equal(finalRound.length,1);
+    assert.equal(finalRound[0].state.revealed[0].choices[x.challenger],'tecnica');
+    assert.equal(finalRound[0].state.revealed[0].choices[x.opponent],'proteger');
     assert.equal((await runDuelWorkerCycle(pool,{
       publish:async()=>{},resumeCombat:async()=>{throw new Error('unexpected replay')}
     })).completed.length,0);
@@ -221,5 +224,30 @@ if(!safe){
       query(){throw new Error('flag OFF should not query database')}
     },[{jid:'pref-a',combatantId:'pecado_ban'}],{enabled:false});
     assert.deepEqual(noDb,{'pref-a':'equilibrada'});
+  });
+
+  test('a retried accepted event cannot advance the persisted duel twice',async()=>{
+    const x=duel('advance-once','advance-a','advance-b');
+    await createPersistentDuel(pool,x);
+    const accepted=await mutatePersistentDuel(pool,{id:x.id,command:'accept',playerId:x.opponent});
+    const advance=(state,{nowMs})=>beginDuelDecision(state,{round:3,nowMs,timeoutMs:30000});
+    const [a,b]=await Promise.all([
+      resumePersistentDuelOnce(pool,{id:x.id,sourceRevision:accepted.revision,advance}),
+      resumePersistentDuelOnce(pool,{id:x.id,sourceRevision:accepted.revision,advance})
+    ]);
+    assert.equal([a,b].filter(r=>r.applied).length,1);
+    assert.equal([a,b].filter(r=>!r.applied).length,1);
+    const current=await getPublicPersistentDuel(pool,x.id);
+    assert.equal(current.phase,'decision');
+    assert.equal(current.revision,accepted.revision+1);
+    const events=await pool.query("SELECT COUNT(*)::int AS n FROM pvp_duel_outbox WHERE duel_id=$1 AND kind='decision_opened'",[x.id]);
+    assert.equal(events.rows[0].n,1);
+    const replay=await resumePersistentDuelOnce(pool,{id:x.id,sourceRevision:accepted.revision,advance});
+    assert.equal(replay.applied,false);
+    await assert.rejects(()=>resumePersistentDuelOnce(pool,{
+      id:x.id,sourceRevision:current.revision,
+      advance:state=>({...state,revision:state.revision+1,phase:'combat'})
+    }),/duel not ready|invalid combat transition/);
+    assert.deepEqual((await getPublicPersistentDuel(pool,x.id)).revision,current.revision);
   });
 }
