@@ -22,6 +22,8 @@ import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
+import {autoCombatModifiers} from './pvp-auto-strategy.js'
+import {readAutoBattlePostures,setAutoStrategyPreference,getAutoStrategyPreference} from './pvp-auto-preferences.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -3167,6 +3169,18 @@ armor_level:Number(a.level||1),
 boot_level:Number(b.level||1),
 }
 }
+// Configuração simples: uma postura por personagem, sem decisões durante o combate.
+export async function configureAutoBattleStrategy(jid,posture){
+if(process.env.ALPHA_PVP_AUTO_STRATEGY_ENABLED!=='1')
+  throw new Error('Estratégias automáticas ainda não estão liberadas.')
+await ensureUser(jid)
+return transaction(async client=>setAutoStrategyPreference(client,{jid,posture}))
+}
+export async function getAutoBattleStrategy(jid){
+if(process.env.ALPHA_PVP_AUTO_STRATEGY_ENABLED!=='1')
+  throw new Error('Estratégias automáticas ainda não estão liberadas.')
+return getAutoStrategyPreference(db,jid)
+}
 export async function battle(attackerJid, defenderJid) {
 if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
 await ensureUser(defenderJid)
@@ -3331,6 +3345,14 @@ const applyPvpVital=(fighter,synergy)=>{
 }
 applyPvpVital(A,aSynergy)
 applyPvpVital(B,bSynergy)
+// Flag OFF = zero consulta às posturas e nenhuma alteração no cálculo legado.
+const autoStrategyEnabled=process.env.ALPHA_PVP_AUTO_STRATEGY_ENABLED==='1'
+const autoPostures=await readAutoBattlePostures(client,[
+ {jid:A.jid,combatantId:A.heroId||A.classId},
+ {jid:B.jid,combatantId:B.heroId||B.classId}
+],{enabled:autoStrategyEnabled})
+A.autoPosture=autoPostures[A.jid]
+B.autoPosture=autoPostures[B.jid]
 const snapshot=fighter=>{
 const critNoPet=Math.max(0,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.max(0,critNoPet+Number(fighter.petBonus?.crit||0))
@@ -3391,27 +3413,41 @@ const noPetAttack=Number(from.petBonus?.damage||0)>0
 if(from.heroId)from.heroState=attack.state;
 else from.awakeningState=attack.awakeningState;
 from.lastProcAttack=attack.lastProcAttack;
+const autoFrom=autoStrategyEnabled?autoCombatModifiers({
+ combatantId:from.heroId||from.classId,posture:from.autoPosture,
+ opponentPosture:to.autoPosture,opponentCombatantId:to.heroId||to.classId,
+ ownHpRatio:from.hp/from.maxHp,enemyHpRatio:to.hp/to.maxHp,
+ attackTechnique:Boolean(attack.technique)
+}):null
+const autoTo=autoStrategyEnabled?autoCombatModifiers({
+ combatantId:to.heroId||to.classId,posture:to.autoPosture,
+ opponentPosture:from.autoPosture,opponentCombatantId:from.heroId||from.classId,
+ ownHpRatio:to.hp/to.maxHp,enemyHpRatio:from.hp/from.maxHp
+}):null
+const autoAttackDamage=autoFrom?Math.max(0,Math.round(attack.damage*autoFrom.attackMultiplier)):attack.damage
+const autoNoPetDamage=autoFrom?Math.max(0,Math.round(noPetAttack.damage*autoFrom.attackMultiplier)):noPetAttack.damage
 const defenseRoll=Math.random();
 const defenseStateBefore=to.awakeningState;
 const heroDefenseStateBefore=to.heroState;
-const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
+const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:autoAttackDamage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
 const defense=to.heroId
-  ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:heroDefenseStateBefore,gear:to.heroGear})
+  ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:autoAttackDamage,state:heroDefenseStateBefore,gear:to.heroGear})
   :classPvpDefense(defenseArgs);
 const classDamage=defense.damage;
 const fullyDodged=dodged||Boolean(defense.dodged);
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
-  (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
-    classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
+  (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:autoNoPetDamage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
+    classPvpDefense({...defenseArgs,damage:dodged?0:autoNoPetDamage}).damage);
 if(to.heroId)to.heroState=defense.state;
 else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
+const autoDefenseFactor=autoTo?(1-autoTo.damageReduction)*autoTo.receivedMultiplier:1
+const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)*autoDefenseFactor))
+const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)*autoDefenseFactor))
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
-const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
+const defenseBlocked=dodged?0:Math.max(0,Number(autoAttackDamage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
 const hpAfterHit=to.hp
 let heartEvent=null
