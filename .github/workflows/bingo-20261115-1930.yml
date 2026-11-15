@@ -1,0 +1,25 @@
+name: Bingo Alpha 15-11-2026 às 19h30
+on:
+  push:
+    branches:
+      - feat/bingo-20261115-1930-five-million
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  bingo-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check src/neon/bingo-20261115.js
+          node --check src/neon/index.js
+      - name: Test scheduled bingo independently of production
+        run: node --test test/bingo-nov15-1930.test.mjs
