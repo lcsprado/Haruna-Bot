@@ -6,6 +6,7 @@ import {
   createPersistentDuel,mutatePersistentDuel,sweepPersistentDuelDeadlines,
   getPublicPersistentDuel,getPendingDuelEvents
 } from '../src/neon/pvp-duel-persistence.js';
+import {claimDuelEvents,confirmDuelEvent,releaseDuelEvent,runDuelWorkerCycle} from '../src/neon/pvp-duel-outbox-worker.js';
 
 // Hard guard: tests run ONLY on the disposable local Postgres service.
 const uri=process.env.ALPHA_PVP_TEST_DATABASE_URL||'';
@@ -121,4 +122,74 @@ if(!safe){
     const res=await pool.query('SELECT COUNT(*)::int AS n FROM pvp_duel_participants WHERE jid=ANY($1::text[])',[['hard-a','hard-b']]);
     assert.equal(res.rows[0].n,0);
   });
+  test('two workers never claim the same event; lease token prevents stale acknowledgements',async()=>{
+    await pool.query("UPDATE pvp_duel_outbox SET delivered_at=clock_timestamp() WHERE delivered_at IS NULL");
+    const x=duel('lease','lease-a','lease-b');
+    await createPersistentDuel(pool,x);
+    const [w1,w2]=await Promise.all([
+      claimDuelEvents(pool,{limit:20,leaseMs:10000}),
+      claimDuelEvents(pool,{limit:20,leaseMs:10000})
+    ]);
+    const combined=[...w1,...w2];
+    assert.equal(combined.length,1);
+    const item=combined[0];
+    assert.equal(item.duel_id,x.id);
+    assert.equal(item.kind,'invited');
+    assert.equal(await confirmDuelEvent(pool,{eventId:item.event_id,leaseToken:'wrong'}),false);
+    assert.deepEqual(await claimDuelEvents(pool,{limit:5}),[]);
+    await pool.query("UPDATE pvp_duel_outbox SET lease_until=clock_timestamp()-interval '1 second' WHERE event_id=$1",[item.event_id]);
+    const retry=await claimDuelEvents(pool,{limit:5});
+    assert.equal(retry.length,1);
+    assert.equal(retry[0].event_id,item.event_id);
+    assert.notEqual(retry[0].lease_token,item.lease_token);
+    assert.equal(await confirmDuelEvent(pool,{eventId:item.event_id,leaseToken:item.lease_token}),false);
+    assert.equal(await confirmDuelEvent(pool,{eventId:item.event_id,leaseToken:retry[0].lease_token}),true);
+    assert.deepEqual(await claimDuelEvents(pool,{limit:5}),[]);
+  });
+  test('failed notification is retried and acknowledged only after handler success',async()=>{
+    await pool.query("UPDATE pvp_duel_outbox SET delivered_at=clock_timestamp() WHERE delivered_at IS NULL");
+    const x=duel('notify','notify-a','notify-b');
+    await createPersistentDuel(pool,x);
+    const fail=await runDuelWorkerCycle(pool,{publish:async()=>{throw new Error('simulated WhatsApp outage')},resumeCombat:async()=>{}});
+    assert.equal(fail.failed.length,1);
+    assert.match(fail.failed[0].error,/simulated WhatsApp outage/);
+    assert.equal(fail.completed.length,0);
+    const recv=[];
+    const pass=await runDuelWorkerCycle(pool,{publish:async event=>recv.push(event),resumeCombat:async()=>{}});
+    assert.equal(pass.failed.length,0);
+    assert.equal(pass.completed.length,1);
+    assert.equal(recv[0].kind,'invited');
+    assert.match(recv[0].idempotencyKey,/^pvp-duel:/);
+    const third=await runDuelWorkerCycle(pool,{publish:async()=>{throw new Error('duplicate')},resumeCombat:async()=>{}});
+    assert.equal(third.completed.length,0);
+  });
+  test('resolved decision triggers resumeCombat with revealed action, never premature disclosure',async()=>{
+    await pool.query("UPDATE pvp_duel_outbox SET delivered_at=clock_timestamp() WHERE delivered_at IS NULL");
+    const x=duel('resume','resume-a','resume-b');
+    await createPersistentDuel(pool,x);
+    await mutatePersistentDuel(pool,{id:x.id,command:'accept',playerId:x.opponent});
+    await mutatePersistentDuel(pool,{id:x.id,command:'open',args:{round:3}});
+    await mutatePersistentDuel(pool,{id:x.id,command:'choose',playerId:x.challenger,args:{choice:'tecnica'}});
+    const publicEvents=[],resolved=[];
+    const first=await runDuelWorkerCycle(pool,{
+      publish:async e=>publicEvents.push(e),
+      resumeCombat:async e=>resolved.push(e)
+    });
+    assert.equal(first.failed.length,0);
+    assert.equal(resolved.length,0);
+    assert.ok(publicEvents.every(e=>!JSON.stringify(e.state).includes('tecnica')));
+    await mutatePersistentDuel(pool,{id:x.id,command:'choose',playerId:x.opponent,args:{choice:'proteger'}});
+    const next=await runDuelWorkerCycle(pool,{
+      publish:async e=>publicEvents.push(e),
+      resumeCombat:async e=>resolved.push(e)
+    });
+    assert.equal(next.failed.length,0);
+    assert.equal(resolved.length,1);
+    assert.equal(resolved[0].state.revealed[0].choices[x.challenger],'tecnica');
+    assert.equal(resolved[0].state.revealed[0].choices[x.opponent],'proteger');
+    assert.equal((await runDuelWorkerCycle(pool,{
+      publish:async()=>{},resumeCombat:async()=>{throw new Error('unexpected replay')}
+    })).completed.length,0);
+  });
+
 }
