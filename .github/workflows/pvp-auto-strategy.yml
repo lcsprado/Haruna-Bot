@@ -1,0 +1,66 @@
+name: Alpha Bot - PvP Automatic Strategy (isolated, no deploy)
+on:
+  push:
+    branches:
+      - feat/pvp-auto-strategy-20261115
+    paths:
+      - 'src/neon/pvp-auto-strategy.js'
+      - 'src/neon/pvp-auto-preferences.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'migrations/20261115_pvp_auto_strategy_NOT_APPLY.sql'
+      - 'test/pvp-auto-strategy-20261115.test.mjs'
+      - 'test/pvp-auto-postgres-20261115.test.mjs'
+      - '.github/workflows/pvp-auto-strategy.yml'
+  pull_request:
+    paths:
+      - 'src/neon/pvp-auto-strategy.js'
+      - 'src/neon/pvp-auto-preferences.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'migrations/20261115_pvp_auto_strategy_NOT_APPLY.sql'
+      - 'test/pvp-auto-strategy-20261115.test.mjs'
+      - 'test/pvp-auto-postgres-20261115.test.mjs'
+      - '.github/workflows/pvp-auto-strategy.yml'
+jobs:
+  auto-pvp:
+    name: Pure strategy and old PvP regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/neon/pvp-auto-strategy.js
+      - run: node --check src/neon/pvp-auto-preferences.js
+      - run: node --check src/neon/db.js
+      - run: node --check src/neon/index.js
+      - run: node --test test/pvp-auto-strategy-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
+  postgres:
+    name: Automatic PvP preferences - disposable PostgreSQL 16
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_pvp_auto_test
+          POSTGRES_USER: alpha_test
+          POSTGRES_PASSWORD: alpha_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_test -d alpha_pvp_auto_test"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      ALPHA_PVP_AUTO_TEST_DATABASE_URL: postgres://alpha_test:alpha_test@127.0.0.1:5432/alpha_pvp_auto_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund pg@8.13.0
+      - run: node --test test/pvp-auto-postgres-20261115.test.mjs
