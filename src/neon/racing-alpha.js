@@ -1,4 +1,5 @@
 import {db,ensureUser} from './db.js'
+import {gtSponsorCouponInTx,initGtSponsors} from './gt-alpha-sponsors.js'
 import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingModel,racingColor,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
 
 export const raceMoney=n=>'R$ '+Math.max(0,Math.floor(Number(n)||0)).toLocaleString('pt-BR')
@@ -157,6 +158,7 @@ export async function racePaint(jid,carId,colorId){
  })
 }
 export async function raceUpgrade(jid,partId){
+ await initGtSponsors()
  const part=racingPart(partId)
  if(!part)throw Error('Peça inválida. Use !oficina.')
  return tx(jid,async c=>{
@@ -165,30 +167,35 @@ export async function raceUpgrade(jid,partId){
   if(s.cars.some(x=>x.pending_part))throw Error('Oficina ocupada. Aguarde a instalação anterior.')
   const next=RACING_UPGRADES[Number(car.upgrades?.[part.id]||0)]
   if(!next)throw Error('Peça já no Nv.7 máximo.')
+  const coupon=await gtSponsorCouponInTx(c,jid,'upgrade',next.price)
+  const cost=next.price-coupon.discount
   const w=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  if(Number(w?.cash||0)<next.price)throw Error('Saldo insuficiente. Custa '+raceMoney(next.price)+'.')
-  await c.query('UPDATE wallets SET cash=cash-$2 WHERE jid=$1',[jid,next.price])
+  if(Number(w?.cash||0)<cost)throw Error('Saldo insuficiente. Custa '+raceMoney(cost)+'.')
+  await c.query('UPDATE wallets SET cash=cash-$2 WHERE jid=$1',[jid,cost])
   const endsAt=nowSeconds()+next.seconds
   await c.query('UPDATE racing_cars_alpha SET pending_part=$2,pending_level=$3,pending_until=$4 WHERE id=$1',[car.id,part.id,next.level,endsAt])
-  await c.query('UPDATE racing_profiles_alpha SET spent=spent+$2 WHERE jid=$1',[jid,next.price])
-  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'racing_upgrade',$3)",[jid,next.price,modelName(car)+' • '+part.id+' Nv.'+next.level])
-  return {model:modelName(car),part,next,endsAt}
+  await c.query('UPDATE racing_profiles_alpha SET spent=spent+$2 WHERE jid=$1',[jid,cost])
+  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'racing_upgrade',$3)",[jid,cost,modelName(car)+' • '+part.id+' Nv.'+next.level+(coupon.discount?' • Sponsor -'+raceMoney(coupon.discount):'')])
+  return {model:modelName(car),part,next,endsAt,cost,discount:coupon.discount}
  })
 }
 export async function raceRepair(jid){
+ await initGtSponsors()
  return tx(jid,async c=>{
   const s=await state(c,jid),car=activeCar(s)
   if(!car)throw Error('Equipe um carro primeiro.')
   if(car.pending_part)throw Error('Aguarde a instalação para reparar.')
   const cost=racingRepairCost(car.model_id,car.upgrades,car.condition)
   if(!cost)throw Error('Condição já está em 100/100.')
+  const coupon=await gtSponsorCouponInTx(c,jid,'repair',cost)
+  const price=cost-coupon.discount
   const w=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  if(Number(w?.cash||0)<cost)throw Error('Saldo insuficiente. Reparo '+raceMoney(cost)+'.')
-  await c.query('UPDATE wallets SET cash=cash-$2 WHERE jid=$1',[jid,cost])
+  if(Number(w?.cash||0)<price)throw Error('Saldo insuficiente. Reparo '+raceMoney(price)+'.')
+  await c.query('UPDATE wallets SET cash=cash-$2 WHERE jid=$1',[jid,price])
   await c.query('UPDATE racing_cars_alpha SET condition=100 WHERE id=$1',[car.id])
-  await c.query('UPDATE racing_profiles_alpha SET spent=spent+$2 WHERE jid=$1',[jid,cost])
-  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'racing_repair',$3)",[jid,cost,modelName(car)])
-  return {car:modelName(car),cost}
+  await c.query('UPDATE racing_profiles_alpha SET spent=spent+$2 WHERE jid=$1',[jid,price])
+  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'racing_repair',$3)",[jid,price,modelName(car)+(coupon.discount?' • Sponsor -'+raceMoney(coupon.discount):'')])
+  return {car:modelName(car),cost:price,discount:coupon.discount}
  })
 }
 export async function raceSolo(jid,args){

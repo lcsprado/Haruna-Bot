@@ -3,6 +3,34 @@
 import {racingPower,racingTrack,racingModel,RACING_STRATEGIES} from './racing-rules.js'
 
 export const GT_TRACK_IDS=Object.freeze(['reta','cidade','serra'])
+export const GT_SPECIAL_TRACKS=Object.freeze([
+ {id:'neblina',name:'🌫️ Retão da Neblina',baseId:'reta',weather:'neblina'},
+ {id:'neon',name:'🌧️ Circuito Neon Molhado',baseId:'cidade',weather:'chuva'},
+ {id:'terra',name:'🏜️ Serra de Terra',baseId:'serra',weather:'poeira'}
+])
+export const GT_WEATHER_LABELS=Object.freeze({seco:'☀️ Pista seca',neblina:'🌫️ Neblina',chuva:'🌧️ Chuva',poeira:'🏜️ Poeira'})
+// Programação do GT é pública e determinística, igual para todos. Nunca recalcula com RNG.
+export function gtTrackProgram(day){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day||'')))throw Error('Data do GT inválida')
+ const date=Date.parse(day+'T12:00:00Z')
+ if(!Number.isFinite(date))throw Error('Data do GT inválida')
+ const turn=Math.floor(date/86400000)
+ const selected=(turn%3+3)%3
+ return GT_TRACK_IDS.map((baseId,i)=>{
+  const base=racingTrack(baseId)
+  return i===selected?{...GT_SPECIAL_TRACKS[i]}:{id:baseId,name:base.name,baseId,weather:'seco'}
+ })
+}
+export function gtClimateMultiplier(car,weather='seco'){
+ const p=car?.upgrades||{}
+ const part=id=>Math.max(0,Math.min(7,Number(p[id])||0))/7
+ switch(weather){
+  case 'chuva':return .92+.06*part('pneus')+.04*part('freios')+.02*part('suspensao')
+  case 'neblina':return .94+.05*part('freios')+.03*part('suspensao')
+  case 'poeira':return .92+.07*part('pneus')+.05*part('suspensao')
+  default:return 1
+ }
+}
 export const GT_PLACE_POINTS=Object.freeze([10,7,5,3])
 export const GT_WEEKLY_PRIZES=Object.freeze([15000000,8000000,5000000,1000000])
 export const GT_MIN_DRIVERS=2
@@ -45,13 +73,13 @@ const rounded=n=>Math.round(Number(n)*100)/100
 export function gtLeaderboard(entries){
  return [...entries].sort((a,b)=>b.points-a.points||b.wins-a.wins||b.performance-a.performance||String(a.jid).localeCompare(String(b.jid)))
 }
-function optimalStrategy(car,trackId){
- return RACING_STRATEGIES.map(strategy=>({id:strategy.id,power:racingPower(car,trackId,strategy.id)}))
+function optimalStrategy(car,trackId,weather='seco'){
+ return RACING_STRATEGIES.map(strategy=>({id:strategy.id,power:racingPower(car,trackId,strategy.id)*gtClimateMultiplier(car,weather)}))
   .sort((a,b)=>b.power-a.power||a.id.localeCompare(b.id))[0]
 }
 // participantes: exatamente o carro principal, já filtrado na consulta à garagem.
 // A diferença de potência é preservada; apenas ±3% de variação da prova.
-export function gtRunHeats(participants,random=Math.random){
+export function gtRunHeats(participants,random=Math.random,day=null){
  const unique=new Set()
  for(const p of participants){
   if(!p.jid || unique.has(p.jid))throw Error('Participante duplicado/sem identificação')
@@ -62,10 +90,12 @@ export function gtRunHeats(participants,random=Math.random){
   jid:p.jid,name:gtCleanName(p.name),model:racingModel(p.modelId).name,
   carId:p.carId,points:0,wins:0,performance:0
  }]))
- const heats=GT_TRACK_IDS.map(trackId=>{
-  const track=racingTrack(trackId)
+ const program=day?gtTrackProgram(day):GT_TRACK_IDS.map(baseId=>({
+  id:baseId,name:racingTrack(baseId).name,baseId,weather:'seco'
+ }))
+ const heats=program.map(track=>{
   const finish=participants.map(p=>{
-   const best=optimalStrategy(p,trackId)
+   const best=optimalStrategy(p,track.baseId,track.weather)
    const luck=.97+Math.max(0,Math.min(1,Number(random())||0))*.06
    return {jid:p.jid,name:gtCleanName(p.name),model:racingModel(p.modelId).name,
     carId:p.carId,strategy:best.id,score:rounded(best.power*luck)}
@@ -77,7 +107,7 @@ export function gtRunHeats(participants,random=Math.random){
    b.performance=rounded(b.performance+r.score)
    return {...r,place:position+1,points:pts}
   })
-  return {id:trackId,name:track.name,positions}
+  return {id:track.id,baseId:track.baseId,weather:track.weather,name:track.name,positions}
  })
  return {heats,standings:gtLeaderboard([...board.values()])}
 }

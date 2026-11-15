@@ -87,7 +87,10 @@ test('persistent transactional safety, independent of Uber',()=>{
  assert.match(src,/pending_until<=\$2 RETURNING id/)
  assert.match(src,/if\(s\.cars\.some\(x=>x\.pending_part\)\)/)
  assert.match(src,/UPDATE wallets SET cash=cash-\$2 WHERE jid=\$1/)
- assert.match(src,/if\(Number\(w\?\.cash\|\|0\)<next\.price\)/)
+ // Desconto de patrocinador muda o custo efetivo, mas mantém a checagem de saldo.
+ assert.match(src,/const cost=next\.price-coupon\.discount/)
+ assert.match(src,/if\(Number\(w\?\.cash\|\|0\)<cost\)/)
+ assert.match(src,/const price=cost-coupon\.discount/)
  assert.match(src,/checkRace\(ac,a\.profile\);checkRace\(bc,b\.profile\)/)
  assert.match(src,/ON CONFLICT DO NOTHING/)
  assert.ok(!src.includes('user_cars'))
