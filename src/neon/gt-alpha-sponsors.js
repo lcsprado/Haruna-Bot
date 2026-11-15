@@ -2,7 +2,7 @@
 // Sem XP infinito, sem bônus de dano/velocidade e sem compras automáticas.
 import {db,ensureUser} from './db.js'
 import {gtBrazilDay,gtWeekStart,gtWeekEnd,gtCleanName,gtFormatCash} from './gt-alpha-rules.js'
-import {GT_SPONSORS,gtSponsorIncrement,gtSponsorDiscount} from './gt-alpha-sponsor-rules.js'
+import {GT_SPONSORS,gtSponsorIncrement,gtSponsorDiscount,gtSponsorOption} from './gt-alpha-sponsor-rules.js'
 
 const contract=id=>GT_SPONSORS.find(x=>x.id===String(id||'').toLowerCase())
 const dayPlus=(day,delta)=>{
@@ -18,8 +18,8 @@ export function initGtSponsors(){
  return initPromise
 }
 export async function gtSponsorChoose(jid,id){
- const target=contract(id)
- if(!target)throw Error('Patrocinador inválido. Escolha: oficina, pitstop ou turbo.')
+ const target=contract(gtSponsorOption(id))
+ if(!target)throw Error('Patrocinador inválido. Escolha 1, 2 ou 3, ou use oficina, pitstop ou turbo.')
  await ensureUser(jid)
  await initGtSponsors()
  const week=gtWeekStart(gtBrazilDay())
@@ -81,21 +81,27 @@ export async function gtSponsorCouponInTx(c,jid,kind,price){
  if(result.rowCount!==1)throw Error('Cupom de patrocinador já utilizado')
  return {discount,label:contract(row.contract_id)?.name}
 }
-export async function gtSponsorText(jid){
+export async function gtSponsorText(jid,{withStatus=false}={}){
  await ensureUser(jid)
  await initGtSponsors()
  const day=gtBrazilDay(),week=gtWeekStart(day)
  const r=(await db.query('SELECT * FROM gt_sponsor_contracts_alpha WHERE jid=$1 AND week_start=$2',[jid,week])).rows[0]
  const header='🤝 *GT ALPHA BOT — PATROCINADORES*\n📅 Temporada: '+week+' a '+gtWeekEnd(week)+'\n'
- if(!r)return header+'\nEscolha *um contrato por temporada*:\n\n'+GT_SPONSORS.map(s=>
-  '• *!gtpatrocinio '+s.id+'*\n'+s.name+' — '+s.goal+' '+s.measure+'\n🎁 '+s.reward).join('\n\n')+
-  '\n\n⚠️ Após escolher, não é possível trocar. As corridas continuam automáticas.'
+ if(!r){
+  const text=header+'\nEscolha *um contrato por temporada*:\n\n'+GT_SPONSORS.map((s,i)=>
+   '*'+(i+1)+'️⃣ '+s.name+'* — '+s.goal+' '+s.measure+'\n🎁 '+s.reward).join('\n\n')+
+   '\n\n📲 *Responda só 1, 2 ou 3* nos próximos 5 minutos.'+
+   '\nOu envie *!gtpatrocinio 1*, *2* ou *3* a qualquer momento.'+
+   '\n⚠️ Após escolher, não é possível trocar. As corridas continuam automáticas.'
+  return withStatus?{text,canChoose:true}:text
+ }
  const sponsor=contract(r.contract_id)
  const done=Number(r.completed_at)>0,used=Number(r.reward_used_at)>0
- return header+'\n'+sponsor.name+
+ const text=header+'\n'+sponsor.name+
   '\n📊 Progresso: *'+Math.min(sponsor.goal,r.progress)+'/'+sponsor.goal+'* '+sponsor.measure+
   '\n🎁 '+sponsor.reward+'\n'+
   (done?(used?'✅ Prêmio já utilizado/creditado.':'🎟️ Cupom liberado! Use '+(sponsor.kind==='repair'?'!repararcarro':'!melhorarcarro PEÇA')+' para receber o desconto.'):
    '⏳ Progresso automático nas corridas das 20h30.')+
   '\n🔒 Um patrocinador por semana. Sem recompensas repetidas.'
+ return withStatus?{text,canChoose:false}:text
 }
