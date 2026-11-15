@@ -77,7 +77,8 @@ async function prepNotice(day){
 }
 async function runDay(day){
  const start=gtDayStartMs(day)
- if(Date.now()<start)return
+ // A oficina pode terminar segundos após 20h30; capturar o carro às 20:30:10.
+ if(Date.now()<start+10000)return
  await mutate(dayKey(day),async(s,c)=>{
   if(['completed','cancelled'].includes(s.phase))return
   if(!s.phase){
