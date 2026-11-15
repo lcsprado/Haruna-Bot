@@ -2,29 +2,13 @@
 // Sem XP infinito, sem bônus de dano/velocidade e sem compras automáticas.
 import {db,ensureUser} from './db.js'
 import {gtBrazilDay,gtWeekStart,gtWeekEnd,gtCleanName,gtFormatCash} from './gt-alpha-rules.js'
+import {GT_SPONSORS,gtSponsorIncrement,gtSponsorDiscount} from './gt-alpha-sponsor-rules.js'
 
-export const GT_SPONSORS=Object.freeze([
- {id:'oficina',name:'🧰 AutoCenter Alpha',goal:3,measure:'etapas',reward:'1 reparo com até R$ 200.000 de desconto',kind:'repair',cap:200000},
- {id:'pitstop',name:'🔧 Pit Stop Oficial',goal:3,measure:'pódios em provas',reward:'30% de desconto na próxima melhoria, limitado a R$ 300.000',kind:'upgrade',cap:300000},
- {id:'turbo',name:'🏁 TurboMax',goal:2,measure:'vitórias em provas',reward:'R$ 500.000 uma única vez',kind:'cash',cap:500000}
-])
 const contract=id=>GT_SPONSORS.find(x=>x.id===String(id||'').toLowerCase())
 const dayPlus=(day,delta)=>{
  const d=new Date(String(day)+'T12:00:00Z')
  d.setUTCDate(d.getUTCDate()+delta)
  return d.toISOString().slice(0,10)
-}
-export function gtSponsorIncrement(id,heats,jid){
- if(id==='oficina')return 1
- if(id==='pitstop')return heats.filter(h=>h.positions.some(p=>p.jid===jid&&p.place<=3)).length
- if(id==='turbo')return heats.filter(h=>h.positions[0]?.jid===jid).length
- return 0
-}
-export function gtSponsorDiscount(id,cost){
- const value=Math.max(0,Math.floor(Number(cost)||0))
- if(id==='oficina')return Math.min(200000,value)
- if(id==='pitstop')return Math.min(300000,Math.floor(value*.3))
- return 0
 }
 let initPromise=null
 export function initGtSponsors(){
