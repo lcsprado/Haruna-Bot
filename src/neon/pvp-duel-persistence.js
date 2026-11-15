@@ -93,7 +93,12 @@ function applyCommand(state,command,playerId,args,nowMs){
       return [beginDuelDecision(state,{round:args.round,nowMs,timeoutMs:30000}),'decision_opened'];
     case 'choose':{
       const next=chooseDuelAction(state,{playerId,choice:args.choice,nowMs});
-      return [next,next===state?null:'choice_recorded'];
+      if(next===state)return [state,null];
+      // Ambos responderam: resolver AGORA, sem esperar os 30 segundos.
+      if(Object.keys(next.currentDecision.hiddenChoices).length===2){
+        return [completeDuelDecision(next,{nowMs}),'round_resolved'];
+      }
+      return [next,'choice_recorded'];
     }
     case 'resolve':
       if(state.phase==='combat'&&state.lastDecisionRound===args.round)return [state,null];
