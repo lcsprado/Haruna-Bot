@@ -10,6 +10,7 @@ on:
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-duel-persistence.js'
+      - 'src/neon/pvp-duel-outbox-worker.js'
       - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
@@ -27,6 +28,7 @@ on:
       - 'src/neon/pvp-strategy-balance-harness.js'
       - 'src/neon/pvp-duel-session-prototype.js'
       - 'src/neon/pvp-duel-persistence.js'
+      - 'src/neon/pvp-duel-outbox-worker.js'
       - 'migrations/20261115_pvp_duel_sessions_NOT_APPLY.sql'
       - 'src/neon/pvp-strategy-preferences.js'
       - 'test/pvp-strategy-prototype-20261115.test.mjs'
@@ -50,6 +52,7 @@ jobs:
       - run: node --check src/neon/pvp-strategy-balance-harness.js
       - run: node --check src/neon/pvp-duel-session-prototype.js
       - run: node --check src/neon/pvp-duel-persistence.js
+      - run: node --check src/neon/pvp-duel-outbox-worker.js
       - run: node --check src/neon/pvp-strategy-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
