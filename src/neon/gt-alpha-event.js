@@ -4,11 +4,12 @@ import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from '.
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
- gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard
+ gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS
 } from './gt-alpha-rules.js'
+import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText} from './gt-alpha-sponsors.js'
 
 const FIRST_DAY='2026-11-15',DAY_PREFIX='gt_alpha_day:',WEEK_PREFIX='gt_alpha_week:'
-let socket=null,connected=()=>true,timer=null,busy=false,lastIdleSweep=0
+let socket=null,connected=()=>true,timer=null,busy=false,lastIdleSweep=0,starting=false
 const dayKey=day=>DAY_PREFIX+day
 const weekKey=week=>WEEK_PREFIX+week
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -51,7 +52,8 @@ function parcial(s){
  return gtLeaderboard([...table.values()])
 }
 function heatText(heat,n,s){
- return '🏁 *GT ALPHA BOT — '+n+'ª PROVA*\n'+heat.name+'\n\n'+
+ return '🏁 *GT ALPHA BOT — '+n+'ª PROVA*\n'+heat.name+
+  '\n🌦️ Condições: '+(GT_WEATHER_LABELS[heat.weather]||'☀️ Pista seca')+'\n\n'+
   heat.positions.map(p=>(p.place===1?'🥇':p.place===2?'🥈':p.place===3?'🥉':p.place+'.')+
    ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts').join('\n')+
   '\n\n'+rankText(parcial(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
@@ -65,7 +67,8 @@ async function prepNotice(day){
   state.preparationNotice=Date.now()
   addNotice(state,'preparation',
    '🏎️ *GT ALPHA BOT — HOJE ÀS 20H30!*\n\n'+
-   '🏁 Três corridas automáticas: Reta Alpha, Circuito Urbano e Serra Fantasma.\n'+
+   '🏁 Três corridas automáticas, com pistas e condições do dia:\n'+
+   gtTrackProgram(day).map((track,i)=>'• '+(i+1)+'ª '+track.name+' — '+GT_WEATHER_LABELS[track.weather]).join('\n')+'\n'+
    '🚘 *SOMENTE O CARRO EQUIPADO* às 20h30 participará, mesmo que você tenha quatro veículos.\n'+
    '🔧 Prepare agora: *!garagemcorrida* • *!oficina* • *!equiparcorrida ID* • *!repararcarro*.\n'+
    '⚙️ Quanto mais preparado o carro, maior a vantagem.\n'+
@@ -95,11 +98,11 @@ async function runDay(day){
     addNotice(s,'cancel','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\n\nMenos de dois carros equipados e aptos às 20h30. Nenhum ponto distribuído.')
     return
    }
-   s.results=gtRunHeats(participants)
+   s.results=gtRunHeats(participants,Math.random,day)
    s.stage=0;s.phase='running';s.nextAt=start+30000
    addNotice(s,'start','🏎️ *GT ALPHA BOT — LARGADA!*\n\n👨‍✈️ '+participants.length+
     ' pilotos inscritos automaticamente com seus carros principais às *20h30*.\n'+
-    '🛣️ Reta Alpha → Circuito Urbano → Serra Fantasma.\n'+
+    '🛣️ '+s.results.heats.map(h=>h.name+' ('+GT_WEATHER_LABELS[h.weather]+')').join(' → ')+'.\n'+
     '⚙️ Melhorias e condições registradas na largada.\n'+
     '🤖 Corridas automáticas. Consulte *!gttabela*.')
   }
@@ -115,9 +118,11 @@ async function runDay(day){
     const r=await c.query('UPDATE racing_cars_alpha SET condition=GREATEST(0,condition-$1),races=races+3,wins=wins+$2 WHERE id=$3 AND jid=$4',[GT_DAILY_WEAR*3,won,p.carId,p.jid])
     if(r.rowCount!==1)throw Error('Carro não encontrado na finalização do GT')
    }
+   const sponsors=await gtSponsorProgressInTx(c,{day,heats:s.results.heats,participants:s.participants,startedAt:s.startedAt})
    s.phase='completed';s.completedAt=Date.now()
    addNotice(s,'final',rankText(s.results.standings,'🏆 *GT ALPHA BOT — CLASSIFICAÇÃO DO DIA*')+
-    '\n\n📌 Pontuação somada ao ranking semanal.\n🔧 Desgaste nos carros: -'+(GT_DAILY_WEAR*3)+' de condição.')
+    '\n\n📌 Pontuação somada ao ranking semanal.\n🔧 Desgaste nos carros: -'+(GT_DAILY_WEAR*3)+' de condição.'+
+    (sponsors.length?'\n\n🤝 *Patrocínios concluídos:*\n'+sponsors.map(p=>'• '+p.name+' — '+p.text).join('\n'):''))
   }
  })
 }
@@ -214,8 +219,13 @@ async function tick(){
 }
 export function startGtAlphaScheduler(sock,{isConnected=()=>true}={}){
  socket=sock;connected=isConnected
- if(timer)return
- timer=setInterval(()=>void tick(),5000);timer.unref?.();void tick()
+ if(timer||starting)return
+ starting=true
+ void initGtSponsors().then(()=>{
+  if(timer)return
+  timer=setInterval(()=>void tick(),5000);timer.unref?.();void tick()
+ }).catch(err=>console.error('[GT] falha ao preparar patrocínios; scheduler não ativado',err?.message||err))
+ .finally(()=>{starting=false})
 }
 export async function getGtAlphaTable(scope='dia',now=Date.now()){
  const day=gtBrazilDay(now)
@@ -243,10 +253,25 @@ export async function getGtAlphaCar(jid){
    Number(r.condition)<RACING_MIN_CONDITION?'🔒 Reparo necessário.':'✅ Apto, se mantiver equipado até 20h30.')
 }
 export async function handleGtAlphaCommand({cmd,args=[],sender,reply}){
- if(!['gttabela','gtcarro','gt'].includes(cmd))return false
+ if(!['gttabela','gtcarro','gt','gtclima','gtpistas','gtpatrocinio'].includes(cmd))return false
  try{
   if(cmd==='gtcarro'){await reply(await getGtAlphaCar(sender));return true}
-  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Somente o carro principal equipado.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🏆 Semanal: 1º R$15M, 2º R$8M, 3º R$5M, 4º R$1M.');return true}
+  if(cmd==='gtpatrocinio'){
+   if(args[0]){
+    const picked=await gtSponsorChoose(sender,args[0])
+    await reply('🤝 *CONTRATO CONFIRMADO!*\n'+picked.name+'\n🎯 Meta: '+picked.goal+' '+picked.measure+
+     '\n🎁 '+picked.reward+'\n✅ O progresso será automático nas corridas futuras das 20h30.')
+   }else await reply(await gtSponsorText(sender))
+   return true
+  }
+  if(cmd==='gtclima'||cmd==='gtpistas'){
+   const day=gtBrazilDay()
+   await reply('🌦️ *GT ALPHA — PISTAS DE HOJE*\n📅 '+day+' • largada 20h30\n\n'+
+    gtTrackProgram(day).map((t,i)=>(i+1)+'ª '+t.name+'\n'+GT_WEATHER_LABELS[t.weather]).join('\n\n')+
+    '\n\n🔧 Pneus, freios e suspensão melhorados aumentam desempenho em condições difíceis.')
+   return true
+  }
+  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Somente o carro principal equipado.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🌦️ *!gtclima* • 🤝 *!gtpatrocinio*\n🏆 Semanal: 1º R$15M, 2º R$8M, 3º R$5M, 4º R$1M.');return true}
   await reply(await getGtAlphaTable(String(args[0]||'').toLowerCase()==='semana'?'semana':'dia'))
  }catch(e){console.error('[GT] comando',e?.message||e);await reply('⚠️ GT Alpha indisponível. Tente novamente.')}
  return true
