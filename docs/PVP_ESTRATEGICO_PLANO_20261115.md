@@ -61,3 +61,30 @@ Execução GitHub Actions: https://github.com/lcsprado/Haruna-Bot/actions/runs/4
   - Druida × Mago 30,0% → 40,0% (+10 p.p.)
 
 A comparação não atesta balanceamento universal: alguns confrontos já partem com disparidade alta, particularmente Ban × Samurai. A estratégia não corrige sozinha progressões desequilibradas; precisamos medir contrajogadas invertidas e cenários com pets/itens antes de integrar o motor real. O simulador novo reproduz de forma idêntica o resultado do simulador original em postura neutra nos casos testados. Nenhum jogador teve dados alterados.
+
+
+## Implementação incremental (continuação 15/11)
+
+Arquivos novos:
+- `src/neon/pvp-duel-session-prototype.js`: convite, aceite, recusas, três janelas sequenciais (3/7/11), escolhas secretas, idempotência para reenvios, fallback de 30s, histórico revelado só após resolução. **Sem armazenamento persistente, sem scheduler, sem comando ativo.**
+- `src/neon/pvp-strategy-preferences.js`: gravação e leitura de postura por `jid + combatant_id`, com validação de posse e valores permitidos.
+- `migrations/20261115_pvp_strategy_preferences_NOT_APPLY.sql`: DDL preparado, **não executado**.
+- `test/pvp-strategy-counterplay-audit-20261115.test.mjs`: quatro planos de estratégia invertida em nove pares, com ordenação espelhada.
+
+Integração opcional preparada:
+- `src/neon/db.js`: `battle()` lê preferências por personagem quando `ALPHA_PVP_STRATEGY_ENABLED=1`, aplica multiplicador de dano e proteção uma única vez no cálculo após as habilidades já existentes; em flag OFF, postura neutra e **zero consultas** à nova tabela. `configureBattleStrategy()` só grava com flag ON, dentro de transação, para o combatente ativo e comprovadamente pertencente ao jogador.
+- `src/neon/index.js`: `!estrategia <equilibrada|agressiva|defensiva|tatica>`, disponível após a liberação da flag e aplicação da DDL. O comando **não é publicado** nesta PR.
+- `!duelo` é atualmente um apelido legado de `!batalhar`. **Não redirecionar** para o modo interativo antes de implementar e homologar o transporte de decisões, timeout, transação, recuperação de sessões e prevenção de duelo paralelo.
+
+Evidência CI mais recente (branch):
+https://github.com/lcsprado/Haruna-Bot/actions/runs/43755537920 — **43 testes aprovados, 0 falhas**, incluindo sintaxe de `db.js` e `index.js`, testes do fluxo, posturas, posse e regressões de PvP e HP. Estas verificações **não são** um teste ponta a ponta com WhatsApp, PostgreSQL real e Web.
+
+Testes exploratórios de contrajogada (sementes diferentes): 9 confrontos × 180 sementes × 2 ordens × (base + 4 estratégias) = 16.200 execuções. As conclusões variam por amostra; nenhuma taxa deve ser anunciada como garantia. Exemplos de vantagem estrutural que ainda precisam de investigação: King × Arqueiro (89,4% de vitória do King na amostra neutra) e Merlin × Mago (75% de Merlin). Não reduzir atributos permanentes para maquiar a análise.
+
+### Liberação bloqueada até
+1. Teste PostgreSQL descartável da migração, concorrência de alterações e preferência de outro jogador; rollback seguro.
+2. Teste real de efeito de postura no `battle()` com flag ON, cobrindo HP, pet, gear, escudo, crítico e relatório, mais comparação byte-a-byte de saída em flag OFF.
+3. Sessões `!duelo` no banco com travas de unicidade de participante, revisionamento/compare-and-swap, timeout por worker recuperável, sigilo das opções e deduplicação de mensagens WhatsApp.
+4. Paridade Web/WhatsApp e compatibilidade com o transporte privado (mensagens "aguardando mensagem").
+5. Revisar balanceamento e aplicar ajustes só na camada estratégica, com validação; nunca alterar inventário, níveis ou economia existentes apenas para favorecer a nova collab.
+6. Confirmar ausência de combates/raids ativos antes de eventual publicação e solicitar aprovação específica para integrar à `whatsapp-only` (branch de autodeploy).
