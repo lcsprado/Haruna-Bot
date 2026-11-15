@@ -6,7 +6,7 @@ import {
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
  gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS
 } from './gt-alpha-rules.js'
-import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText} from './gt-alpha-sponsors.js'
+import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 
 const FIRST_DAY='2026-11-15',DAY_PREFIX='gt_alpha_day:',WEEK_PREFIX='gt_alpha_week:'
 let socket=null,connected=()=>true,timer=null,busy=false,lastIdleSweep=0,starting=false
@@ -252,16 +252,22 @@ export async function getGtAlphaCar(jid){
   (r.pending_part&&Number(r.pending_until)>nowSec()?'🔒 Na oficina.':
    Number(r.condition)<RACING_MIN_CONDITION?'🔒 Reparo necessário.':'✅ Apto, se mantiver equipado até 20h30.')
 }
-export async function handleGtAlphaCommand({cmd,args=[],sender,reply}){
+export async function handleGtAlphaCommand({cmd,args=[],sender,reply,openSponsorFlow,closeSponsorFlow}){
  if(!['gttabela','gtcarro','gt','gtclima','gtpistas','gtpatrocinio'].includes(cmd))return false
  try{
   if(cmd==='gtcarro'){await reply(await getGtAlphaCar(sender));return true}
   if(cmd==='gtpatrocinio'){
    if(args[0]){
     const picked=await gtSponsorChoose(sender,args[0])
-    await reply('🤝 *CONTRATO CONFIRMADO!*\n'+picked.name+'\n🎯 Meta: '+picked.goal+' '+picked.measure+
-     '\n🎁 '+picked.reward+'\n✅ O progresso será automático nas corridas futuras das 20h30.')
-   }else await reply(await gtSponsorText(sender))
+    closeSponsorFlow?.()
+    await reply(gtSponsorConfirmedText(picked))
+   }else{
+    const menu=await gtSponsorText(sender,{withStatus:true})
+    // Um menu aberto é individual por jogador e por conversa, com expiração em 5 min.
+    if(menu.canChoose)openSponsorFlow?.()
+    else closeSponsorFlow?.()
+    await reply(menu.text)
+   }
    return true
   }
   if(cmd==='gtclima'||cmd==='gtpistas'){
