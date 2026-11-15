@@ -279,7 +279,7 @@ if(!safe){
       assert.equal(advanced[0].state.phase,'decision');
       assert.equal(advanced[0].state.round,round);
       const payload=JSON.stringify(advanced[0].state);
-      assert.doesNotMatch(payload,/\"(?:rngState|combat|petBonus)\"\\s*:/);
+      assert.doesNotMatch(payload,/"(?:rngState|combat|petBonus)"\s*:/);
       await mutatePersistentDuel(pool,{id:x.id,command:'choose',
         playerId:x.challenger,args:{choice:'tecnica'}});
       const response=await mutatePersistentDuel(pool,{id:x.id,command:'choose',
