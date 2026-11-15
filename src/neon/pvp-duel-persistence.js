@@ -6,6 +6,7 @@ import {
   beginDuelDecision,chooseDuelAction,completeDuelDecision,
   finishStrategicDuel,publicStrategicDuel
 } from './pvp-duel-session-prototype.js';
+import {newDuelCombatSnapshot} from './pvp-duel-round-engine.js';
 
 const ACTIVE=new Set(['invited','ready','decision','combat']);
 const MAX_SESSION_MS=20*60*1000;
@@ -59,7 +60,7 @@ async function lockedSession(client,id){
   return {state,hardExpiry:row.hard_expires_at};
 }
 
-export async function createPersistentDuel(pool,{id,challenger,opponent}={}){
+export async function createPersistentDuel(pool,{id,challenger,opponent,combatSnapshot=null}={}){
   if(!sessionId(id)||!participant(challenger)||!participant(opponent)||challenger===opponent)throw new Error('invalid duel identity');
   return transaction(pool,async client=>{
     const nowMs=await dbTime(client);
@@ -70,6 +71,14 @@ export async function createPersistentDuel(pool,{id,challenger,opponent}={}){
       return publicState(state); // idempotent delivery of identical challenge
     }
     const state=inviteStrategicDuel({id,challenger,opponent,nowMs});
+    // O snapshot é produzido pelo servidor, não pelo comando recebido do WhatsApp.
+    // Sem snapshot, sessão experimental pode ser testada, mas não pode avançar o combate.
+    if(combatSnapshot){
+      const combat=newDuelCombatSnapshot(combatSnapshot);
+      if(combat.fighters[0].jid!==challenger||combat.fighters[1].jid!==opponent)
+        throw new Error('duel snapshot identity mismatch');
+      state.combat=combat;
+    }
     const hardExpiry=iso(nowMs+MAX_SESSION_MS);
     await client.query(`INSERT INTO pvp_duel_sessions
       (id,player_a,player_b,phase,revision,state,next_deadline_at,hard_expires_at)
