@@ -100,6 +100,7 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
+import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
@@ -9877,6 +9878,8 @@ void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] 
 // A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
 // mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
 startBingoRebootScheduler(sock)
+// Edição independente do Bingo de 15/11, às 19h30 de Brasília.
+startBingoNov15Scheduler(sock)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
@@ -10497,6 +10500,7 @@ if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   continue
 }
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
