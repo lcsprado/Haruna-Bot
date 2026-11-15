@@ -8,7 +8,7 @@ import {
 } from './gt-alpha-rules.js'
 
 const FIRST_DAY='2026-11-15',DAY_PREFIX='gt_alpha_day:',WEEK_PREFIX='gt_alpha_week:'
-let socket=null,connected=()=>true,timer=null,busy=false
+let socket=null,connected=()=>true,timer=null,busy=false,lastIdleSweep=0
 const dayKey=day=>DAY_PREFIX+day
 const weekKey=week=>WEEK_PREFIX+week
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -62,6 +62,11 @@ async function runDay(day){
  await mutate(dayKey(day),async(s,c)=>{
   if(['completed','cancelled'].includes(s.phase))return
   if(!s.phase){
+   if(Date.now()>start+10*60000){
+    s.phase='cancelled';s.day=day
+    addNotice(s,'missed','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\nO bot não estava pronto no horário das 20h30. Nenhum resultado foi simulado retroativamente.')
+    return
+   }
    const participants=await eligible(c)
    s.day=day;s.startedAt=Date.now()
    s.participants=participants.map(p=>({jid:p.jid,name:p.name,carId:p.carId,modelId:p.modelId}))
@@ -157,15 +162,31 @@ async function tick(){
  try{
   const day=gtBrazilDay()
   if(day<FIRST_DAY)return
-  if(Date.now()>=gtDayStartMs(day))await runDay(day)
-  await flush(dayKey(day))
-  if(gtDayIsSunday(day)&&Date.now()>=gtDayStartMs(day)){
-   await settleWeek(day);await flush(weekKey(gtWeekStart(day)))
+  const now=Date.now(),start=gtDayStartMs(day)
+  // Polling intenso só perto do evento; fora disso, uma checagem a cada 30 minutos.
+  const inWindow=now>=start-2*60000&&now<=start+40*60000
+  if(!inWindow&&now-lastIdleSweep<30*60000)return
+  if(!inWindow)lastIdleSweep=now
+  if(now>=start){
+   const s=await read(dayKey(day))
+   if(!s || (s.phase==='running'&&now>=Number(s.nextAt)))await runDay(day)
   }
-  // Recupera aviso ou liquidação dominical quando o bot reiniciar na segunda.
+  await flush(dayKey(day))
+  if(gtDayIsSunday(day)&&now>=start){
+   const key=weekKey(gtWeekStart(day))
+   const s=await read(key)
+   if(s?.phase!=='completed')await settleWeek(day)
+   await flush(key)
+  }
+  // Após reiniciar na segunda, recuperar liquidação dominical pendente.
   const prev=new Date(day+'T12:00:00Z');prev.setUTCDate(prev.getUTCDate()-1)
   const yesterday=prev.toISOString().slice(0,10)
-  if(gtDayIsSunday(yesterday)){await settleWeek(yesterday);await flush(weekKey(gtWeekStart(yesterday)))}
+  if(gtDayIsSunday(yesterday)){
+   const key=weekKey(gtWeekStart(yesterday))
+   const s=await read(key)
+   if(s?.phase!=='completed')await settleWeek(yesterday)
+   await flush(key)
+  }
  }catch(e){console.error('[GT] erro no evento',e?.stack||e)}
  finally{busy=false}
 }

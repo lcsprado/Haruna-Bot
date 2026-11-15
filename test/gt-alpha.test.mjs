@@ -59,6 +59,8 @@ test('motor isolado e seguro contra troca de carro depois da largada',()=>{
  assert.match(src,/ON CONFLICT\(key\) DO UPDATE/)
  assert.match(src,/WhatsApp sem confirmação de mensagem/)
  assert.match(src,/if\(busy\)return/)
+ assert.match(src,/lastIdleSweep/)
+ assert.match(src,/Date\.now\(\)>start\+10\*60000/)
  assert.ok(!src.includes('user_cars'))
  assert.ok(!src.includes('clt_uber'))
 })
