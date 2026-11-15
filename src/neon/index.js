@@ -1582,6 +1582,18 @@ const filled=Math.max(0,Math.min(10,Math.floor((current/needed)*10)))
 return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed,
   remaining:Math.max(0,needed-current),percentage:(current/needed*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}
 }
+// A mesma fonte de bônus de vitalidade usada pelo !perfil: pet principal
+// apto + sinergia da equipe. Nada é persistido ou curado a mais aqui.
+async function potionReceiptForPlayer(jid,potion,heroSheet=null){
+  const [pet,team]=await Promise.all([getPet(jid),getPetTeam(jid)])
+  const synergy=petTeamSynergy(team||[])||{}
+  const pvpPet=pet&&Number(pet.hp)>0&&Number(pet.energy)>0
+    ?petPvpSpecialty(pet.species,pet.level):null
+  return potionHpReceipt(potion,heroSheet,{
+    petHpRate:Number(pvpPet?.hp||0),
+    teamHpRate:Number(synergy.hp||0)
+  })
+}
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
 const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext,isFirst500Champion]=await Promise.all([
 getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
@@ -7531,7 +7543,7 @@ return true
 const r=await usePotion(sender,itemId)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(potionHpReceipt(r,heroAfterPotion))
+await reply(await potionReceiptForPlayer(sender,r,heroAfterPotion))
 return true
 }
 if(flow.stage==='commands_main'){
@@ -8993,7 +9005,7 @@ return true
 const r=await usePotion(sender,itemId)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(potionHpReceipt(r,heroAfterPotion))
+await reply(await potionReceiptForPlayer(sender,r,heroAfterPotion))
 return true
 }
 if(flow.stage==='inventory_boxes_select'){
@@ -12516,7 +12528,7 @@ await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\n
 }else{
 const r=await usePotion(sender,item.item_id)
 const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
-await reply(potionHpReceipt(r,heroAfterPotion))
+await reply(await potionReceiptForPlayer(sender,r,heroAfterPotion))
 }
 } else if(['curarpet','curapet','petcura'].includes(cmd)){
 const aliases={
@@ -13734,7 +13746,7 @@ return await reply(text)
 }
 const r=await usePotion(sender,potion.item_id)
 const healedHero=await getPlayableHeroCombatSheet(sender)
-await reply(potionHpReceipt(r,healedHero)+'\n📦 1 poção consumida do inventário.')
+await reply((await potionReceiptForPlayer(sender,r,healedHero))+'\n📦 1 poção consumida do inventário.')
 } else if(['daritem'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const itemArg=args.find(a=>SHOP_IDS.includes(a.toLowerCase()))
