@@ -7,10 +7,9 @@ export const GT_PLACE_POINTS=Object.freeze([10,7,5,3])
 export const GT_WEEKLY_PRIZES=Object.freeze([15000000,8000000,5000000,1000000])
 export const GT_MIN_DRIVERS=2
 export const GT_DAILY_WEAR=9
-export const GT_TIME='20:00'
+export const GT_TIME='20:30'
 export const GT_GROUP='120363429534634131@g.us'
 
-const z=n=>String(n).padStart(2,'0')
 const dateUtcString=date=>date.toISOString().slice(0,10)
 export function gtBrazilDay(now=Date.now()){
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{
@@ -30,7 +29,7 @@ export function gtWeekEnd(weekStart){
  dt.setUTCDate(dt.getUTCDate()+6)
  return dateUtcString(dt)
 }
-export function gtDayStartMs(day){return Date.parse(String(day)+'T20:00:00-03:00')}
+export function gtDayStartMs(day){return Date.parse(String(day)+'T20:30:00-03:00')}
 export function gtDayIsSunday(day){return new Date(String(day)+'T12:00:00Z').getUTCDay()===0}
 export function gtPoints(position){return GT_PLACE_POINTS[position]??1}
 export function gtCleanName(name){
