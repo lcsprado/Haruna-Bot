@@ -50,7 +50,7 @@ export function autoCombatModifiers({
     else if(current==='tatica')defense+=.02;
   }
   // Flexibility has a tradeoff: adaptive bonuses and penalties use 70% intensity.
-  const scale=selected==='adaptativa'?.7:1;
+  const scale=selected==='adaptativa' ? 0.7 : 1;
   return Object.freeze({
     posture:current,
     attackMultiplier:1+clamp(attack*scale,-.06,.08),
