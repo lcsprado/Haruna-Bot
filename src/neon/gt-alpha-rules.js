@@ -17,7 +17,11 @@ export function gtBrazilDay(now=Date.now()){
  }).formatToParts(new Date(now)).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
  return parts.year+'-'+parts.month+'-'+parts.day
 }
+export const GT_FIRST_SEASON_START='2026-11-15'
+export const GT_FIRST_SEASON_END='2026-11-22'
 export function gtWeekStart(day){
+ // Estreia no domingo 15/11; a primeira temporada acumula até domingo 22/11.
+ if(day>=GT_FIRST_SEASON_START&&day<=GT_FIRST_SEASON_END)return GT_FIRST_SEASON_START
  const dt=new Date(String(day)+'T12:00:00Z')
  if(Number.isNaN(dt.getTime()))throw Error('Dia inválido')
  const daysSinceMonday=(dt.getUTCDay()+6)%7
@@ -25,6 +29,7 @@ export function gtWeekStart(day){
  return dateUtcString(dt)
 }
 export function gtWeekEnd(weekStart){
+ if(weekStart===GT_FIRST_SEASON_START)return GT_FIRST_SEASON_END
  const dt=new Date(String(weekStart)+'T12:00:00Z')
  dt.setUTCDate(dt.getUTCDate()+6)
  return dateUtcString(dt)

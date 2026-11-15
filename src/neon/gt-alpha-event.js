@@ -3,7 +3,7 @@ import {db} from './db.js'
 import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from './racing-rules.js'
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
- gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,
+ gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
  gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard
 } from './gt-alpha-rules.js'
 
@@ -135,7 +135,8 @@ function sumWeek(days){
  return gtLeaderboard([...m.values()])
 }
 async function settleWeek(sunday){
- if(!gtDayIsSunday(sunday))return
+ // A estreia em 15/11 só inaugura o ranking; primeiro fechamento em 22/11.
+ if(!gtDayIsSunday(sunday)||sunday<GT_FIRST_SEASON_END)return
  const last=await read(dayKey(sunday))
  if(!last||!['completed','cancelled'].includes(last.phase))return
  const week=gtWeekStart(sunday)
