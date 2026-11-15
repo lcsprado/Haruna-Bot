@@ -7,6 +7,7 @@ import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,sevenSinsProgressWeekActive} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 import {formatHeroDailyXpReport} from './hero-daily-xp-report.js'
+import {profileHpLines} from './profile-pvp-hp.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 async function transaction(fn){
@@ -105,7 +106,7 @@ const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
 });
 // !perfil e !status mostram o combatente COMPLETO: evolução, equipamentos
 // e encantamentos, exatamente como no combate real (sem detalhar a fórmula).
-export function formatPlayableHeroCombatSheet(sheet){
+export function formatPlayableHeroCombatSheet(sheet,{pvpHp=null}={}){
   if(!sheet)return '';
   const raid=sheet.collabRaid||{};
   const pvp=sheet.collabPvP||{};
@@ -130,7 +131,7 @@ export function formatPlayableHeroCombatSheet(sheet){
     '🎭 '+sheet.role+' • '+sheet.range,
     '🌟 Nível: *'+sheet.heroLevel+'/100*',
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
-    '❤️ HP: *'+heroNumbers(sheet.hp)+'/'+heroNumbers(sheet.maxHp)+'*'+origin('maxHp','hp'),
+    profileHpLines({normalHp:sheet.hp,normalMaxHp:sheet.maxHp,pvpHp:pvpHp?.hp??sheet.hp,pvpMaxHp:pvpHp?.maxHp??sheet.maxHp,origin:origin('maxHp','hp')}),
     '⚔️ ATK: *'+heroNumbers(sheet.atk)+'*'+origin('atk','atk')+(Number(sheet.attackPctBonus||0)>0?' • selo +'+pct(sheet.attackPctBonus):''),
     '🛡️ DEF: *'+heroNumbers(sheet.def)+'*'+origin('def','def'),
     '👢 VEL: *'+heroNumbers(sheet.spd)+'*'+origin('spd','spd'),
