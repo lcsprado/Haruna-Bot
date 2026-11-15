@@ -113,6 +113,7 @@ export function formatPvpBattleReport(r){
   if(r.ending&&attacker&&defender){
     lines.push(`❤️ HP ao fim das trocas: ${name(attacker.name)} ${fmt(r.ending.attackerHp)} • ${name(defender.name)} ${fmt(r.ending.defenderHp)}`)
   }
+  lines.push('ℹ️ Depois do duelo, o perdedor recupera 25% da vida normal. O HP zerado no golpe final é anterior à recuperação exibida no !perfil.')
   if(r.decidedByLimit){
     const aRate=attacker?Math.max(0,Number(r.ending?.attackerHp||0))/Math.max(1,Number(attacker.maxHp||1)):0
     const bRate=defender?Math.max(0,Number(r.ending?.defenderHp||0))/Math.max(1,Number(defender.maxHp||1)):0
