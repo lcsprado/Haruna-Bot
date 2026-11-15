@@ -26,20 +26,8 @@ const pick=a=>a[randomInt(a.length)]
 const basicState=()=>({phase:'registration',players:{},drawn:[],prizes:{},bonusPayDone:false,stage:0,startAt:EVENT_START})
 const localClock=ms=>new Date(Number(ms)).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
 
-async function ensureTrophy(){
-  if(registeredItem)return
-  await db.query(`INSERT INTO items
-    (id,name,description,category,price,rarity,sellable,stackable)
-    VALUES($1,$2,$3,'special',0,'event',FALSE,FALSE)
-    ON CONFLICT(id) DO UPDATE SET
-      name=EXCLUDED.name,description=EXCLUDED.description,
-      category=EXCLUDED.category,price=0,rarity='event',
-      sellable=FALSE,stackable=FALSE`,[
-    TROPHY,'Insígnia do Bingo Halloween',
-    'Troféu visual exclusivo do Bingo Alpha de Halloween de 31/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
-  ])
-  registeredItem=true
-}
+// A edição de 15/11 não cria nem distribui troféus.
+async function ensureTrophy(){}
 async function mutate(fn){
   const c=await db.connect()
   try{
@@ -135,13 +123,7 @@ async function announce(sock,text,targets){
   }
 }
 function buildQueue(){
-  // Cada bola especial aparece uma única vez; todos concorrem ao mesmo sorteio global.
-  const nums=shuffle(Array.from({length:NUMBER_LIMIT},(_,i)=>i+1))
-  const queue=nums.map(value=>({kind:'number',value}))
-  queue.splice(10,0,{kind:'special',value:'reconnect'})
-  queue.splice(23,0,{kind:'special',value:'package'})
-  queue.splice(34,0,{kind:'special',value:'lucky'})
-  return queue
+  return shuffle(Array.from({length:NUMBER_LIMIT},(_,i)=>i+1)).map(value=>({kind:'number',value}))
 }
 async function credit(c,jid,amount,type,note){
   const result=await c.query(
@@ -154,75 +136,24 @@ async function credit(c,jid,amount,type,note){
     [jid,amount,type,KEY+':'+note]
   )
 }
-async function giveTrophy(c,jid){
-  await c.query(`INSERT INTO inventories(jid,item_id,quantity)
-    VALUES($1,$2,1)
-    ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,TROPHY])
-  await c.query(`INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
-    VALUES($1,$2,$3,1)
-    ON CONFLICT(jid,item_id,source_key) DO NOTHING`,[jid,TROPHY,KEY+':champion'])
-}
+// Sem troféu ou recompensa paralela nessa edição.
 async function checkPrizes(s,c){
-  const entries=Object.entries(s.players||{})
-  const milestones=[
-    {id:'row',target:1,money:REWARD.row,label:'🥉 Primeira linha'},
-    {id:'twoRows',target:2,money:REWARD.twoRows,label:'🥈 Duas linhas'},
-    {id:'full',target:3,money:REWARD.full,label:'🥇 Cartela completa'}
-  ]
-  let out=''
-  for(const m of milestones){
-    if(s.prizes[m.id])continue
-    const qualified=entries.filter(([,p])=>{
-      const marked=cover(p.card,p,s)
-      return m.id==='full'?marked.every(Boolean):rowCount(marked)>=m.target
-    })
-    if(!qualified.length)continue
-    // Empates no mesmo sorteio são resolvidos aleatoriamente, não por JID.
-    const [jid,player]=pick(qualified)
-    await credit(c,jid,m.money,'bingo_reboot_reward',m.id)
-    if(m.id==='full')await giveTrophy(c,jid)
-    s.prizes[m.id]={jid,name:player.name,amount:m.money,at:Date.now()}
-    out+='\n'+m.label+': *'+player.name+'* — '+formatMoney(m.money)
-    if(m.id==='full')out+=' + 🏅 *Insígnia do Bingo Halloween*'
-  }
-  return out
+  if(s.prizes.full)return ''
+  const qualified=Object.entries(s.players||{}).filter(([,p])=>cover(p.card,p,s).every(Boolean))
+  if(!qualified.length)return ''
+  // Empate no mesmo número sorteado: seleção aleatória, sem priorizar contas.
+  const [jid,player]=pick(qualified)
+  await credit(c,jid,REWARD.full,'bingo_full_20261115','full_card')
+  s.prizes.full={jid,name:player.name,amount:REWARD.full,at:Date.now()}
+  return '\n🏆 *CARTELA CHEIA!* '+player.name+' venceu e recebeu '+formatMoney(REWARD.full)+'!'
 }
 async function processBall(s,c){
-  const ball=s.queue[s.cursor]
+  const ball=s.queue?.[s.cursor]
   if(!ball)return {message:'',finished:true}
   s.cursor++
-  let line=''
-  if(ball.kind==='number'){
-    s.drawn.push(ball.value)
-    line='🔢 *BOLA '+String(ball.value).padStart(2,'0')+'* • '+s.drawn.length+'/40'
-  }else if(ball.value==='reconnect'){
-    line='⚡ *RECONEXÃO!* Número extra agora!'
-    // Sempre tira a próxima bola numérica, preservando as outras bolas especiais.
-    const ix=s.queue.findIndex((b,i)=>i>=s.cursor && b.kind==='number')
-    if(ix>=0){
-      const [bonus]=s.queue.splice(ix,1)
-      s.queue.splice(s.cursor,0,bonus)
-      const drawn=s.queue[s.cursor++]
-      s.drawn.push(drawn.value)
-      line+='\n🔢 Bola extra: *'+String(drawn.value).padStart(2,'0')+'*'
-    }
-  }else if(ball.value==='package'){
-    line='🎁 *PACOTE RECUPERADO!* '+formatMoney(5000)+' para cada cartela ativa.'
-    if(!s.bonusPayDone){
-      for(const [jid] of Object.entries(s.players||{}))await credit(c,jid,5000,'bingo_reboot_bonus','package')
-      s.bonusPayDone=true
-    }
-  }else if(ball.value==='lucky'){
-    line='🍀 *SORTE ALPHA!* Cada cartela recebe uma marcação extra.'
-    for(const p of Object.values(s.players||{})){
-      p.wild=p.wild||[]
-      const marked=cover(p.card,p,s)
-      const available=marked.flatMap((done,i)=>!done?[i]:[])
-      if(available.length)p.wild.push(pick(available))
-    }
-  }
-  line+=(await checkPrizes(s,c))
-  return {message:line,finished:Boolean(s.prizes.full)}
+  s.drawn.push(ball.value)
+  const outcome=await checkPrizes(s,c)
+  return {message:'🔢 BOLA '+String(ball.value).padStart(2,'0')+outcome,finished:Boolean(s.prizes.full)}
 }
 const welcome=(count,startAt)=>'🎃 *BINGO ALPHA — EDIÇÃO HALLOWEEN!*\n\n'+
   '✅ Inscrições *ABERTAS AGORA*! Sorteio às *'+localClock(startAt)+'* (Brasília).\n'+
