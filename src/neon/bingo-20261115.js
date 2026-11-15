@@ -93,29 +93,40 @@ async function eligibleGroups(){
   const licenses=await listGroupLicenses(500)
   return [...new Set(licenses.filter(groupLicenseIsActive).map(l=>l.chat_jid).filter(x=>String(x).endsWith('@g.us')))]
 }
-async function announce(sock,text,targets){
-  // O grupo AlphaBot é o principal, e deve receber o aviso antes dos demais.
+function queueNotice(s,id,text){
+  s.noticeQueue=s.noticeQueue||[]
+  if(!s.noticeQueue.some(n=>n.id===id)){
+    s.noticeQueue.push({id,text,delivered:{},at:Date.now()})
+  }
+}
+async function deliverPending(sock){
+  const s=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+  if(!s?.noticeQueue?.length || !s.groups?.length)return
   const primary='120363429534634131@g.us'
-  const ordered=[...new Set(targets)].sort((a,b)=>Number(b===primary)-Number(a===primary))
-  for(const jid of ordered){
-    let timeout
-    try{
-      const result=await Promise.race([
-        sock.sendMessage(jid,{text}),
-        new Promise((_,reject)=>{
-          timeout=setTimeout(()=>reject(new Error('timeout de 12 segundos no envio')),12000)
-          timeout.unref?.()
+  const ordered=[...new Set(s.groups)].sort((a,b)=>Number(b===primary)-Number(a===primary))
+  let count=0
+  for(const notice of s.noticeQueue){
+    for(const jid of ordered){
+      if(notice.delivered?.[jid])continue
+      let timeout
+      try{
+        const msg=await Promise.race([sock.sendMessage(jid,{text:notice.text}),
+          new Promise((_,reject)=>{
+            timeout=setTimeout(()=>reject(Error('timeout no envio')),8000)
+            timeout.unref?.()
+          })
+        ])
+        if(!msg?.key?.id)throw Error('WhatsApp não retornou ID de mensagem')
+        await mutate(async state=>{
+          const n=state.noticeQueue?.find(x=>x.id===notice.id)
+          if(n){n.delivered=n.delivered||{};n.delivered[jid]=Date.now()}
         })
-      ])
-      console.log('[BINGO] aviso aceito pelo transporte',JSON.stringify({
-        group:jid,messageId:result?.key?.id||null,hasMessageId:Boolean(result?.key?.id)
-      }))
-    }catch(e){
-      console.error('[BINGO] anúncio falhou no grupo',jid,e?.message||e)
-    }finally{
-      if(timeout)clearTimeout(timeout)
+        console.log('[BINGO 15/11] aviso aceito',notice.id,jid,msg.key.id)
+      }catch(err){
+        console.warn('[BINGO 15/11] aviso pendente',notice.id,jid,err?.message||err)
+      }finally{if(timeout)clearTimeout(timeout)}
+      if(++count>=4)return
     }
-    await new Promise(r=>setTimeout(r,300))
   }
 }
 function buildQueue(){
@@ -175,7 +186,10 @@ async function tick(sock){
     // Evita consultar licenças repetidamente quando o jogo está rodando.
     const curr=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
     if(curr?.phase==='completed'||curr?.phase==='cancelled'){
-      if(timer){clearInterval(timer);timer=null}
+      await deliverPending(sock)
+      const latest=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+      const pending=latest?.noticeQueue?.some(n=>latest.groups?.some(jid=>!n.delivered?.[jid]))
+      if(!pending && timer){clearInterval(timer);timer=null}
       return
     }
     if(!curr?.announced || !curr?.groups?.length)targets=await eligibleGroups()
@@ -185,11 +199,13 @@ async function tick(sock){
       if(!s.announced && s.groups?.length){
         s.announced=now
         outgoing=welcome(Object.keys(s.players||{}).length,startAt)
+        queueNotice(s,'registration',outgoing)
       }
       if(now>=startAt && s.phase==='registration'){
         if(!Object.keys(s.players||{}).length){
           s.phase='cancelled'
           outgoing='🎰 *BINGO ALPHA CANCELADO*\nNenhum jogador entrou antes das 19h30. Ninguém foi cobrado.'
+          queueNotice(s,'cancel',outgoing)
         }else{
           s.phase='running'
           s.queue=buildQueue()
@@ -198,7 +214,8 @@ async function tick(sock){
           s.prizes={}
           s.nextAt=now+BALL_INTERVAL_MS
           outgoing='🎰 *BINGO ALPHA COMEÇOU!*\n🎟️ '+Object.keys(s.players).length+
-            ' cartela(s) no sorteio global.\n🔢 Primeira bola em 25 segundos.\n📋 Digite *!cartela* para acompanhar.'
+            ' cartela(s) no sorteio global.\n🔢 Primeira bola em 25 segundos.\n🏆 Prêmio: R$ 5.000.000 pela cartela cheia.\n📋 Digite *!cartela* para acompanhar.'
+          queueNotice(s,'start',outgoing)
         }
       }else if(s.phase==='running' && now>=num(s.nextAt)){
         const parts=[]
@@ -233,11 +250,12 @@ async function tick(sock){
             '',
             isFinal?'🏁 Sorteio concluído.':'🎟️ Consulte sua cartela: *!cartela*'
           ].join('\n')
+          queueNotice(s,isFinal?'final':'draw:'+s.drawn.length,outgoing)
         }
       }
       targets=s.groups||targets
     })
-    if(outgoing && targets?.length){console.log('[BINGO] broadcast',JSON.stringify({groups:targets.length,characters:outgoing.length}));await announce(sock,outgoing,targets)}
+    await deliverPending(sock)
   }catch(e){console.error('[BINGO] tick',e?.stack||e)}
   finally{busy=false}
 }
