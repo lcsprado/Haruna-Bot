@@ -55,7 +55,8 @@ export async function runDuelWorkerCycle(pool,{publish,resumeCombat,limit=20}={}
     try{
       // All event payloads are public-safe; early choices were never serialized here.
       // round_resolved is a durable trigger for the future incremental combat engine.
-      const sender=event.kind==='round_resolved'?resumeCombat:publish;
+      // O aceite inicia as rodadas automáticas; a resolução retoma após a pausa.
+      const sender=['accepted','round_resolved'].includes(event.kind)?resumeCombat:publish;
       await sender({
         eventId:String(event.event_id),
         duelId:event.duel_id,
