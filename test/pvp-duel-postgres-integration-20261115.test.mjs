@@ -7,6 +7,7 @@ import {
   getPublicPersistentDuel,getPendingDuelEvents
 } from '../src/neon/pvp-duel-persistence.js';
 import {claimDuelEvents,confirmDuelEvent,releaseDuelEvent,runDuelWorkerCycle} from '../src/neon/pvp-duel-outbox-worker.js';
+import {saveStrategyPreference,readBattleStrategies} from '../src/neon/pvp-strategy-preferences.js';
 
 // Hard guard: tests run ONLY on the disposable local Postgres service.
 const uri=process.env.ALPHA_PVP_TEST_DATABASE_URL||'';
@@ -192,4 +193,33 @@ if(!safe){
     })).completed.length,0);
   });
 
+
+  test('posture migration works in disposable PostgreSQL and never mixes players or characters',async()=>{
+    const prefs=readFileSync(new URL('../migrations/20261115_pvp_strategy_preferences_NOT_APPLY.sql',import.meta.url),'utf8');
+    await pool.query(prefs);
+    await pool.query('CREATE TABLE IF NOT EXISTS stats (jid TEXT PRIMARY KEY,class_id TEXT)');
+    await pool.query('CREATE TABLE IF NOT EXISTS player_class_levels (jid TEXT,class_id TEXT)');
+    await pool.query('CREATE TABLE IF NOT EXISTS pet_collection (jid TEXT,species TEXT)');
+    await pool.query("INSERT INTO stats(jid,class_id) VALUES('pref-a','samurai'),('pref-b','paladin') ON CONFLICT(jid) DO NOTHING");
+    await pool.query("INSERT INTO pet_collection(jid,species) VALUES('pref-a','pecado_ban'),('pref-a','pecado_diane')");
+    const set=await saveStrategyPreference(pool,{jid:'pref-a',combatantId:'pecado_ban',posture:'tatica'});
+    assert.equal(set.posture,'tatica');
+    await saveStrategyPreference(pool,{jid:'pref-a',combatantId:'pecado_diane',posture:'defensiva'});
+    await saveStrategyPreference(pool,{jid:'pref-a',combatantId:'samurai',posture:'agressiva'});
+    await saveStrategyPreference(pool,{jid:'pref-b',combatantId:'paladin',posture:'defensiva'});
+    const result=await readBattleStrategies(pool,[
+      {jid:'pref-a',combatantId:'pecado_ban'},
+      {jid:'pref-b',combatantId:'paladin'}
+    ],{enabled:true});
+    assert.deepEqual(result,{'pref-a':'tatica','pref-b':'defensiva'});
+    const a=await readBattleStrategies(pool,[{jid:'pref-a',combatantId:'samurai'}],{enabled:true});
+    assert.deepEqual(a,{'pref-a':'agressiva'});
+    await assert.rejects(()=>saveStrategyPreference(pool,{
+      jid:'pref-b',combatantId:'pecado_ban',posture:'tatica'
+    }),/nao pertence/);
+    const noDb=await readBattleStrategies({
+      query(){throw new Error('flag OFF should not query database')}
+    },[{jid:'pref-a',combatantId:'pecado_ban'}],{enabled:false});
+    assert.deepEqual(noDb,{'pref-a':'equilibrada'});
+  });
 }
