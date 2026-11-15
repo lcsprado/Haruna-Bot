@@ -9,6 +9,8 @@ import {
 import {claimDuelEvents,confirmDuelEvent,releaseDuelEvent,runDuelWorkerCycle} from '../src/neon/pvp-duel-outbox-worker.js';
 import {saveStrategyPreference,readBattleStrategies} from '../src/neon/pvp-strategy-preferences.js';
 import {beginDuelDecision} from '../src/neon/pvp-duel-session-prototype.js';
+import {advanceStoredDuelCombat} from '../src/neon/pvp-duel-combat-adapter.js';
+import {buildFairFighter} from '../src/neon/pvp-balance-simulator.js';
 
 // Hard guard: tests run ONLY on the disposable local Postgres service.
 const uri=process.env.ALPHA_PVP_TEST_DATABASE_URL||'';
@@ -249,5 +251,60 @@ if(!safe){
       advance:state=>({...state,revision:state.revision+1,phase:'combat'})
     }),/duel not ready|invalid combat transition/);
     assert.deepEqual((await getPublicPersistentDuel(pool,x.id)).revision,current.revision);
+  });
+
+  test('PostgreSQL persists 20 combat rounds and all three secret windows exactly once',async()=>{
+    const f=(id,jid)=>{
+      const x=buildFairFighter(id,{gear:true,awakening:5,mastery:5});
+      return {jid,heroId:x.hero?id:null,classId:x.hero?null:id,
+        classApplied:!x.hero,awakeningStage:x.awakening,heroMasteryStage:x.mastery||1,
+        heroGear:x.heroGear||{},hp:150000,maxHp:150000,atk:x.atk,def:x.def,
+        spd:x.spd,crit:x.crit,strategyPosture:'tatica',
+        petBonus:{damage:.04,defense:.03,crit:.02,healPct:.02,healCooldown:5},
+        shieldCritResist:.12,shieldCritGuard:.15};
+    };
+    const x=duel('combat-full','fighter-ban','fighter-samurai');
+    await createPersistentDuel(pool,{...x,combatSnapshot:{
+      fighterA:f('pecado_ban',x.challenger),fighterB:f('samurai',x.opponent),seed:20579
+    }});
+    const accepted=await mutatePersistentDuel(pool,{id:x.id,command:'accept',playerId:x.opponent});
+    let revision=accepted.revision;
+    for(const round of [3,7,11]){
+      const [a,b]=await Promise.all([
+        resumePersistentDuelOnce(pool,{id:x.id,sourceRevision:revision,advance:advanceStoredDuelCombat}),
+        resumePersistentDuelOnce(pool,{id:x.id,sourceRevision:revision,advance:advanceStoredDuelCombat})
+      ]);
+      const advanced=[a,b].filter(v=>v.applied);
+      assert.equal(advanced.length,1);
+      assert.equal(advanced[0].state.phase,'decision');
+      assert.equal(advanced[0].state.round,round);
+      const payload=JSON.stringify(advanced[0].state);
+      assert.doesNotMatch(payload,/rngState|combat|petBonus/);
+      await mutatePersistentDuel(pool,{id:x.id,command:'choose',
+        playerId:x.challenger,args:{choice:'tecnica'}});
+      const response=await mutatePersistentDuel(pool,{id:x.id,command:'choose',
+        playerId:x.opponent,args:{choice:'proteger'}});
+      assert.equal(response.phase,'combat');
+      revision=response.revision;
+    }
+    const completed=await resumePersistentDuelOnce(pool,{id:x.id,
+      sourceRevision:revision,advance:advanceStoredDuelCombat});
+    assert.equal(completed.applied,true);
+    assert.equal(completed.state.phase,'finished');
+    assert.ok([x.challenger,x.opponent].includes(completed.state.result.winnerId));
+    const replay=await resumePersistentDuelOnce(pool,{id:x.id,
+      sourceRevision:revision,advance:advanceStoredDuelCombat});
+    assert.equal(replay.applied,false);
+    const stored=(await pool.query('SELECT state FROM pvp_duel_sessions WHERE id=$1',[x.id])).rows[0].state;
+    assert.equal(stored.combat.outcome.rounds,20);
+    assert.ok(stored.combat.log.length>=40);
+    assert.deepEqual(stored.combat.fighters.map(f=>f.attackIndex),[20,20]);
+    const participants=(await pool.query('SELECT COUNT(*)::int AS n FROM pvp_duel_participants WHERE duel_id=$1',[x.id])).rows[0].n;
+    assert.equal(participants,0);
+    const notices=(await pool.query('SELECT kind,payload FROM pvp_duel_outbox WHERE duel_id=$1 ORDER BY revision',[x.id])).rows;
+    assert.equal(notices.filter(x=>x.kind==='decision_opened').length,3);
+    assert.equal(notices.filter(x=>x.kind==='round_resolved').length,3);
+    assert.equal(notices.filter(x=>x.kind==='finished').length,1);
+    assert.ok(notices.every(x=>!JSON.stringify(x.payload).includes('rngState')));
   });
 }
