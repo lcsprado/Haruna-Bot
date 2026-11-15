@@ -1,4 +1,5 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
+import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -1657,6 +1658,7 @@ const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
 const baseCombatMaxHp=Math.max(1,Number((heroSheet?.maxHp??p.effective_max_hp)||1))
 const vitalPve=applyVitalCombatHp(baseCombatMaxHp,baseCombatMaxHp,Number(combatPets.active.hp||0),Number(synergy.hp||0))
 const vitalPvp=applyVitalCombatHp(baseCombatMaxHp,baseCombatMaxHp,Number(pvpPet?.hp||0),Number(synergy.hp||0),{pvp:true})
+const hpForPvpProfile=profilePvpHp({hp:Number(heroSheet?.hp??p.effective_hp??0),maxHp:baseCombatMaxHp,petHpRate:Number(pvpPet?.hp||0),teamHpRate:Number(synergy.hp||0)})
 // Mesma regra de critico do duelo; heroi ativo desativa a passiva da classe.
 const pvpCritWithPet=pvpCritChance({equipmentCrit:p.equipment_crit,
  classId:p.class_id,classApplied:p.class_applied,awakeningStage,
@@ -1686,11 +1688,11 @@ const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${isFirst500Champion?' • '+FIRST_500_TITLE:''}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
-${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
+${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true,pvpHp:hpForPvpProfile}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}
 ✨ EXP: *${xp.current}/${xp.needed}* • faltam *${xp.remaining} XP* (${xp.percentage}%)
 [${xp.bar}]
-${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
+${heroSheet?'':`${profileHpLines({normalHp:Number(p.effective_hp||0),normalMaxHp:Number(p.effective_max_hp||0),pvpHp:hpForPvpProfile.hp,pvpMaxHp:hpForPvpProfile.maxHp})}\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
