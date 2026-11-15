@@ -12621,11 +12621,11 @@ ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):
 } else if(cmd==='estrategia'){
 const postura=String(args[0]||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 if(!['equilibrada','agressiva','defensiva','tatica'].includes(postura)){
-  return await reply('⚔️ *ESTRATÉGIA DE COMBATE*\\nUse: *!estrategia equilibrada*, *agressiva*, *defensiva* ou *tatica*.\\nA escolha fica salva apenas para seu personagem ativo.')
+  return await reply('⚔️ *ESTRATÉGIA DE COMBATE*\nUse: *!estrategia equilibrada*, *agressiva*, *defensiva* ou *tatica*.\nA escolha fica salva apenas para seu personagem ativo.')
 }
 try{
   const selected=await configureBattleStrategy(sender,postura)
-  await reply(`⚔️ *ESTRATÉGIA CONFIGURADA*\\n🎭 Combatente: *${selected.combatant_id}*\\n🎯 Postura: *${selected.posture}*\\nAs próximas batalhas automáticas vão usar essa postura quando o sistema for liberado.`)
+  await reply(`⚔️ *ESTRATÉGIA CONFIGURADA*\n🎭 Combatente: *${selected.combatant_id}*\n🎯 Postura: *${selected.posture}*\nEssa postura será utilizada nas próximas batalhas automáticas.`)
 }catch(err){
   await reply('❌ '+(err?.message||'Não foi possível alterar a estratégia.'))
 }
