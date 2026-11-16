@@ -94,7 +94,7 @@ test('transação registra andar e EXP juntos ou não registra nada',async()=>{
 test('drop lendário pronto e caixas: persistência, forja, deduplicação',async()=>{
  const gear=POCO_ABISMO_GEAR[0]
  const exclusive=await pocoRunPlayerTransaction(pool,stateParams,(c)=>
-  pocoClaimBossDropInTx(c,user,5,'2026-11-16',()=>0))
+  pocoClaimBossDropInTx(c,user,10,'2026-11-16',()=>0))
  assert.equal(exclusive.kind,'exclusive')
  assert.equal(exclusive.itemId,gear.id)
  const forge=await row('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[user,gear.id])
@@ -102,10 +102,10 @@ test('drop lendário pronto e caixas: persistência, forja, deduplicação',asyn
  const bound=await row('SELECT quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',[user,gear.id])
  assert.equal(bound.quantity,1)
  const duplicate=await pocoRunPlayerTransaction(pool,stateParams,(c)=>
-  pocoClaimBossDropInTx(c,user,5,'2026-11-16',()=>.9))
+  pocoClaimBossDropInTx(c,user,10,'2026-11-16',()=>.9))
  assert.equal(duplicate.alreadyClaimed,true)
  const chest=await pocoRunPlayerTransaction(pool,stateParams,(c)=>
-  pocoClaimBossDropInTx(c,user,10,'2026-11-16',()=>.006))
+  pocoClaimBossDropInTx(c,user,15,'2026-11-16',()=>.006))
  assert.equal(chest.itemId,POCO_BOX_LEGEND_ID)
  const opened=await pocoRunPlayerTransaction(pool,stateParams,(c)=>
   pocoOpenBoxInTx(c,user,'legendary','msg-caixa-1',()=>.01))
