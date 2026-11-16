@@ -215,3 +215,37 @@ test('full roster 136-pair automatic posture balance audit, both sides and every
  // Build-specific swing over 35pp warrants stopping the release.
  assert.ok(adverse.every(x=>x.maxSwingPp<=35),'individual pairing changed by over 35pp');
 });
+
+
+test('six flagged live matchups get 1000 mirrored seeds before balance conclusion',()=>{
+ const flagged=[
+  ['pecado_escanor','pecado_merlin'],
+  ['pecado_merlin','berserker'],
+  ['druid','samurai'],
+  ['pecado_meliodas','pecado_gowther'],
+  ['pecado_escanor','pecado_king'],
+  ['pecado_escanor','pecado_gowther']
+ ];
+ const stances=['equilibrada','agressiva','defensiva','tatica','adaptativa'];
+ const output=[];
+ for(const [a,b] of flagged){
+  const wins=Object.fromEntries(stances.map(p=>[p,0]));
+  for(let seed=1;seed<=1000;seed++){
+   const n=202611160+seed*19;
+   for(const p of stances){
+    const direct=run(a,b,n,{postureA:p,postureB:'equilibrada'});
+    const reverse=run(b,a,n,{postureA:'equilibrada',postureB:p});
+    wins[p]+=Number(pvpWinnerByHealth(direct.A,direct.B,.5).jid==='A');
+    wins[p]+=Number(pvpWinnerByHealth(reverse.A,reverse.B,.5).jid==='B');
+   }
+  }
+  const percentages=Object.fromEntries(stances.map(p=>[p,Math.round(wins[p]/20)/10]));
+  const largestSwing=+((Math.max(...Object.values(percentages))-
+    Math.min(...Object.values(percentages))).toFixed(1));
+  output.push({match:a+' vs '+b,percentages,largestSwing});
+ }
+ console.log('PVP_AUTO_FOCUSED_RECHECK '+JSON.stringify({
+  pairs:flagged.length,battles:flagged.length*1000*2*stances.length,output
+ }));
+ assert.equal(output.length,6);
+});
