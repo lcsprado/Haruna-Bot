@@ -9,7 +9,7 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
-import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage} from './poco-abismo-delivery.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
 import {pocoInitRewardLedger,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
 import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
@@ -26,15 +26,17 @@ const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
 const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
 async function sendActionPrompt(jid,name,reply,result){
- // O estado foi gravado antes do envio. Não começar a contagem por tempo de
- // processamento, nem consumir janela quando Baileys não confirmar o envio.
- await reply(result.message)
- if(result.promptToken){
-  await mutate(jid,name,(_c,s,at)=>{
+ // Falha no transporte preserva o prompt pendente; confirmar apenas
+ // depois de envio aceito e transação de ACK concluída.
+ return pocoDispatchActionPrompt({
+  reply,message:result.message,token:result.promptToken,
+  confirm:(token,sentAt)=>{
+   return mutate(jid,name,(_c,s,at)=>{
    if(!s.active||at>=POCO_SEASON.endAt)return false
-   return pocoConfirmPrompt(s.active,result.promptToken,at)
+   return pocoConfirmPrompt(s.active,token,at)
   })
- }
+  }
+ })
 }
 
 let timer=null,busy=false
