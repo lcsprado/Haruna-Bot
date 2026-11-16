@@ -36,11 +36,11 @@ test('NPCs removidos não retornam na navegação nem em compras Web',()=>{
 test('uma única interface oficial: versão de assets sincronizada e NPC aposentado',()=>{
   const metadata=JSON.parse(readFileSync(new URL('../web/version.json',import.meta.url),'utf8'));
   const version=metadata.assetVersion;
-  assert.equal(version,'alpha-web-canonical-20261116-no-npcs-v1');
+  assert.equal(version,'alpha-web-canonical-20261116-fortress-v2');
   assert.ok(ui.includes("const WEB_ASSET_ID='"+version+"'"),'App e metadados precisam ser a mesma versão');
-  assert.ok(html.includes('src="/app.js?v=20261116-no-npcs-v1"'),'HTML deve invalidar JS antigo');
-  assert.ok(html.includes('href="/styles.css?v=20261116-no-npcs-v1"'),'HTML deve invalidar CSS antigo');
-  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-20261116-no-npcs-v1'"),'PWA deve invalidar cache antigo');
+  assert.ok(html.includes('src="/app.js?v=20261116-fortress-v2"'),'HTML deve invalidar JS antigo');
+  assert.ok(html.includes('href="/styles.css?v=20261116-fortress-v2"'),'HTML deve invalidar CSS antigo');
+  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-20261116-fortress-v2'"),'PWA deve invalidar cache antigo');
   const nav=ui.slice(ui.indexOf('const navItems = ['),ui.indexOf('];',ui.indexOf('const navItems = [')));
   assert.ok(nav.includes("['clan','🛡️','Clã']"),'Clã precisa continuar disponível');
   assert.ok(nav.includes("['racing','🏎️','Garagem Alpha']"),'Garagem precisa continuar disponível');
@@ -86,7 +86,7 @@ test('login and game stay styled when a mobile WebView cannot load external CSS'
   for(const marker of ['.hidden{display:none!important}', '.login-overlay{', '.login-card{', '.app{', '@media(max-width:820px)']){
     assert.ok(match[1].includes(marker),'Lost login/layout fallback: '+marker);
   }
-  assert.ok(html.includes('href="/styles.css?v=20261116-no-npcs-v1"'));
+  assert.ok(html.includes('href="/styles.css?v=20261116-fortress-v2"'));
 });
 
 test('new !web link cannot restore a previous cached session without a password',()=>{
@@ -99,7 +99,7 @@ test('new !web link cannot restore a previous cached session without a password'
   }
   assert.ok(linkedBranch.indexOf("ui.token='';")<linkedBranch.indexOf('await openWebCode(linked)'),
     'Cached session must be removed BEFORE the code-status request')
-  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1'"),
+  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-web-canonical-20261116-fortress-v2'"),
     'Version must invalidate old cached PWA Javascript')
 })
 
