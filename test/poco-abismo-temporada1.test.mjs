@@ -8,6 +8,8 @@ import {
 
 test('janela semanal: segunda até sexta 21h Brasília, sem reabrir após corte',()=>{
   assert.equal(POCO_SEASON.floorLimit,30)
+  assert.deepEqual(POCO_SEASON.bossFloors,[5,10,15,20,25,30])
+  assert.deepEqual(POCO_SEASON.dropBossFloors,[10,15,20,25,30])
   assert.equal(POCO_SEASON.responseMs,120000)
   assert.equal(pocoSeasonActive(POCO_SEASON.startAt-1),false)
   assert.equal(pocoSeasonActive(POCO_SEASON.startAt),true)
