@@ -9871,6 +9871,25 @@ reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
+// Vincula automaticamente o grupo de nome EXATO "Alpha Bot" ao JID real.
+// Nao supoe qual grupo e o certo a partir de IDs antigos ou nomes digitados.
+void (async()=>{
+if(await getSupportBlockedGroupJid())return
+const licenses=await listGroupLicenses(100)
+const matches=[]
+for(const license of licenses){
+const id=String(license?.chat_jid||'')
+if(!id.endsWith('@g.us'))continue
+const meta=await sock.groupMetadata(id).catch(()=>null)
+if(isAlphaBotGroupSubject(meta?.subject))matches.push(id)
+}
+if(matches.length===1){
+await registerSupportBlockedGroupJid(matches[0])
+console.info('[suporte] grupo Alpha Bot identificado; restricao por JID pronta')
+}else{
+console.info('[suporte] nao foi possivel vincular grupo automaticamente; candidatos:',matches.length)
+}
+})().catch(err=>console.warn('[suporte] verificacao de grupo no login falhou',err?.message||err))
 void refreshOwnerEventTimers().catch(err=>console.error('[Eventos Owner] inicialização',err?.message||err))
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 // A Raid dos Sete Pecados substitui o antigo Boss temporário de fragmentos.
