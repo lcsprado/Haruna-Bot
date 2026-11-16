@@ -102,6 +102,7 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
+import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
 import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
@@ -10532,6 +10533,16 @@ await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Emprést
 timingMarks.loans=Date.now()
 if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   await openRaidPetVoucherMenu(chat,sender,reply,args[0]??null)
+  continue
+}
+// Piloto somente no grupo cujo título atual é confirmado pela API de grupos do Baileys.
+// Com POCO_BETA_GROUP_PREVIEW=true os demais grupos não recebem o comando Poço.
+// O controlador de pagamento real fica desabilitado enquanto houver piloto.
+if(process.env.POCO_BETA_GROUP_PREVIEW==='true'&&['poco','pocorank'].includes(cmd)){
+  const betaMeta=isGroup?await sock.groupMetadata(chat).catch(()=>null):null
+  const betaAllowed=pocoBetaGroupAllowed({chat,subject:betaMeta?.subject})
+  if(!betaAllowed)continue
+  if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||''),betaAllowed}))continue
   continue
 }
 if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
