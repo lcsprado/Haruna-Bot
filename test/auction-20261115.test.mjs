@@ -20,7 +20,7 @@ test('evento 15/11, grupo correto, 3 lotes em ordem, lance minimo e duracao',()=
  assert.match(source,/if\(state\.lot===PACKAGES\.length-1\)/)
  assert.match(source,/beginLot\(state,now\)/)
  assert.match(source,/now>=Number\(state\.ends/)
- assert.match(source,/if\(remain<=0\|\|remain>30000/)
+ assert.match(source,/untilClose<=0\|\|untilClose>30000/)
  assert.match(source,/used\+30000/)
  assert.doesNotMatch(source,/n>=120000/)
  assert.match(source,/sem limite de prorrogações/)
