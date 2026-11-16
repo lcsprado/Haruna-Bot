@@ -32,6 +32,23 @@ test('NPCs removidos não retornam na navegação nem em compras Web',()=>{
     assert.ok(ui.includes(key),'Não mexer na interface do Cerco: '+key);
 });
 
+
+test('uma única interface oficial: versão de assets sincronizada e NPC aposentado',()=>{
+  const metadata=JSON.parse(readFileSync(new URL('../web/version.json',import.meta.url),'utf8'));
+  const version=metadata.assetVersion;
+  assert.equal(version,'alpha-web-canonical-20261116-no-npcs-v1');
+  assert.ok(ui.includes("const WEB_ASSET_ID='"+version+"'"),'App e metadados precisam ser a mesma versão');
+  assert.ok(html.includes('src="/app.js?v=20261116-no-npcs-v1"'),'HTML deve invalidar JS antigo');
+  assert.ok(html.includes('href="/styles.css?v=20261116-no-npcs-v1"'),'HTML deve invalidar CSS antigo');
+  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-20261116-no-npcs-v1'"),'PWA deve invalidar cache antigo');
+  const nav=ui.slice(ui.indexOf('const navItems = ['),ui.indexOf('];',ui.indexOf('const navItems = [')));
+  assert.ok(nav.includes("['clan','🛡️','Clã']"),'Clã precisa continuar disponível');
+  assert.ok(nav.includes("['racing','🏎️','Garagem Alpha']"),'Garagem precisa continuar disponível');
+  assert.doesNotMatch(nav,/npcs|NPC|Comerciantes/,'Funcionalidade aposentada não pode voltar pela navegação');
+  assert.doesNotMatch(ui,/function renderNpcs\(/);
+  assert.doesNotMatch(ui,/async function loadNpcShops\(/);
+});
+
 test('restoring richer interface does not bypass phone/password authentication',()=>{
   for(const id of ['passwordLoginForm','loginPhone','verifiedPhoneHint','registerForm','recoverForm','linkForm'])
     assert.ok(html.includes('id="'+id+'"'),'Login form missing: '+id);
