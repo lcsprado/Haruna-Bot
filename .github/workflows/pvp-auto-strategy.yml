@@ -10,6 +10,7 @@ on:
       - 'src/neon/index.js'
       - 'migrations/20261115_pvp_auto_strategy_NOT_APPLY.sql'
       - 'test/pvp-auto-strategy-20261115.test.mjs'
+      - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
   pull_request:
@@ -20,6 +21,7 @@ on:
       - 'src/neon/index.js'
       - 'migrations/20261115_pvp_auto_strategy_NOT_APPLY.sql'
       - 'test/pvp-auto-strategy-20261115.test.mjs'
+      - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
 jobs:
@@ -36,7 +38,7 @@ jobs:
       - run: node --check src/neon/pvp-auto-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
-      - run: node --test test/pvp-auto-strategy-20261115.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
+      - run: node --test test/pvp-auto-strategy-20261115.test.mjs test/pvp-auto-live-engine-audit-20261116.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
   postgres:
     name: Automatic PvP preferences - disposable PostgreSQL 16
     runs-on: ubuntu-latest
