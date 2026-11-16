@@ -18,10 +18,12 @@ const DURATION=5*60*1000
 const EVENT_GROUPS=new Set(['120363429534634131@g.us'])
 const OPENING=10000000,STEP=1000000,LOT_OPENINGS=[10000000,25000000,10000000]
 const extendAuctionDeadline=(ends,extra,now)=>{
- const remain=Number(ends)-now,n=Number(extra)||0
- if(remain<=0||remain>30000||n>=120000)return {ends,extra:n,extended:false}
- const add=Math.min(30000,120000-n)
- return {ends:Number(ends)+add,extra:n+add,extended:true}
+  const untilClose=Number(ends)-Number(now)
+  const used=Math.max(0,Number(extra)||0)
+  if(!Number.isFinite(untilClose)||untilClose<=0||untilClose>30000)return {ends:Number(ends),extra:used,extended:false}
+  // Sem teto acumulado: a CADA lance aceito nos últimos 30s, acrescenta 30s.
+  // A aceitação de lance e a extensão ocorrem sob o mesmo advisory lock.
+  return {ends:Number(ends)+30000,extra:used+30000,extended:true}
 }
 const fmt=n=>'R$ '+Number(n).toLocaleString('pt-BR')
 const clean=n=>String(n||'Jogador').replace(/[\r\n*]/g,' ').slice(0,45)
@@ -87,7 +89,7 @@ function status(state){
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'*'+
     '\n🏆 Maior lance: '+(state.high?fmt(state.high.value)+' — '+clean(state.high.name):'Nenhum')+
     '\n⏳ Encerra às *'+clock(state.ends)+'* (Brasília)'+
-    '\n⚡ Lance nos últimos 30s: +30s de prorrogação (máx. 2min extras)'+
+    '\n⚡ Todo lance aceito nos últimos 30s prorroga +30s, sem limite de prorrogações.'+
     '\n📩 *!lance '+minimum+'* ou *!lance +1000000* • *!leilao*'
 }
 async function prize(c,jid,packageItems){
@@ -159,17 +161,19 @@ async function tick(sock){
       return
     }
     if(now<START)return
-    if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
+    if(now>END+24*60*60*1000){if(timer){clearInterval(timer);timer=null};return}
     // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
     await init()
     console.info('[LEILAO ALPHA] tick init pronto')
     await flushAuctionBidNotices(db,sock,KEY,{limit:8})
     await warnAuctionDeliveryFailures(db,sock,KEY)
     console.info('[LEILAO ALPHA] tick outbox processada')
-    if(now>END)return
     const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+    // O encerramento horário anunciado limita a ABERTURA, não uma sessão reaberta.
+    // Isso permite restaurar o último lote sem encerrar novamente por END fixo.
+    if(now>END && current?.phase!=='running' && current?.phase!=='completed')return
     if(current?.phase==='completed'){
-      if(now>Number(current.finished||END)+5*60*1000){if(timer){clearInterval(timer);timer=null}}
+      if(now>END+60*60*1000){if(timer){clearInterval(timer);timer=null}}
       return
     }
     if(current?.phase==='running' && now<Number(current.ends||0))return
@@ -192,7 +196,7 @@ async function tick(sock){
         outgoing='🔨 *LEILÃO ALPHA ABERTO AGORA!*\n\n'+
  '🎁 3 lotes; prêmio do lote seguinte só será revelado depois do atual.\n'+
  '📈 Incremento: R$ 1 milhão.\n'+
- '⏱️ 5 minutos por lote; +30s em lances nos últimos 30s.\n'+
+ '⏱️ 5 minutos por lote; a cada lance nos últimos 30s, +30s sem teto.\n'+
  '✅ O lance fica reservado e é devolvido ao ser superado.\n\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
         outgoing=await finishLot(state,c)
@@ -220,7 +224,7 @@ async function tick(sock){
 export function startAuctionAlphaScheduler(sock){
   console.info('[LEILAO ALPHA] scheduler chamado',JSON.stringify({now:Date.now(),start:START,end:END,socket:!!sock?.sendMessage}))
   auctionSocket=sock
-  if(AUCTION_PAUSED_FOR_AUDIT||timer||Date.now()>END)return
+  if(AUCTION_PAUSED_FOR_AUDIT||timer||Date.now()>END+24*60*60*1000)return
   timer=setInterval(()=>{void tick(auctionSocket)},5000)
   timer.unref?.()
   void tick(auctionSocket)
@@ -302,7 +306,8 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
           '\n🔒 Reservado até você vencer ou ser superado.'+
           '\n🎁 Prêmio: '+publicPrize(lot.prize)+
           '\n📈 Próximo lance: '+fmt(offered+lot.step)+
-          '\n⏳ Encerra: '+clock(state.ends),
+          '\n⏳ Encerra: '+clock(state.ends)+
+          (overtime.extended?'\n⏱️ PRORROGADO +30s! Lances continuam abertos.':''),
         version:Number(state.bidNoticeVersion=(Number(state.bidNoticeVersion||0)+1)),
         otherGroups:web?[...new Set(state.groups)]:otherAuctionGroups(state.groups,chat),
         notice:crossGroupBidNotice({
