@@ -8,8 +8,10 @@ const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
 const db=read('../src/neon/db.js')
 const app=read('../src/neon/index.js')
 
-test('seis escudos reconhecidos, quatro evoluções por modelo e preço definido',()=>{
-  assert.equal(ANTI_CRIT_SHIELDS.length,6)
+test('seis escudos históricos e o sétimo do Poço reconhecidos, sem mudar custos antigos',()=>{
+  assert.equal(ANTI_CRIT_SHIELDS.length,7)
+  assert.equal(ANTI_CRIT_SHIELDS.filter(x=>x.id!=='poco_escudo_eternidade_20261116').length,6)
+  assert.equal(ANTI_CRIT_SHIELDS.find(x=>x.id==='poco_escudo_eternidade_20261116')?.price,0)
   assert.equal(shieldForgeCost('escudo_madeira',1),2000)
   assert.equal(shieldForgeCost('escudo_madeira',4),8000)
   assert.equal(shieldForgeCost('escudo_runico',1),22500)
