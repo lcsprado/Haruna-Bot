@@ -28,7 +28,7 @@ jobs:
           node --check src/neon/poco-abismo-live.js
           node --check src/neon/index.js
       - name: Rodar regras isoladas (sem banco nem prêmios)
-        run: node --test test/poco-abismo-temporada1.test.mjs test/poco-abismo-gear.test.mjs test/poco-abismo-rewards.test.mjs test/poco-abismo-delivery.test.mjs test/poco-abismo-beta-group.test.mjs test/poco-abismo-whatsapp-wiring.test.mjs test/poco-abismo-settlement.test.mjs
+        run: node --test test/poco-abismo-temporada1.test.mjs test/poco-abismo-gear.test.mjs test/poco-abismo-rewards.test.mjs test/poco-abismo-delivery.test.mjs test/poco-abismo-beta-group.test.mjs test/poco-abismo-whatsapp-wiring.test.mjs test/poco-abismo-numeros-diretos.test.mjs test/poco-abismo-settlement.test.mjs
 
   preservar-versao-oficial:
     runs-on: ubuntu-latest
