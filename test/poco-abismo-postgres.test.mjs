@@ -14,14 +14,14 @@ import {
 import {POCO_SEASON,pocoStart,pocoScore} from '../src/neon/poco-abismo-rules.js'
 import {POCO_ABISMO_GEAR} from '../src/neon/poco-abismo-gear.js'
 
-const URL=process.env.POCO_TEST_POSTGRES_URL
-if(!URL)throw new Error('Use exclusivamente POCO_TEST_POSTGRES_URL apontando para PostgreSQL descartável')
-const parsed=new URL(URL)
+const connectionString=process.env.POCO_TEST_POSTGRES_URL
+if(!connectionString)throw new Error('Use exclusivamente POCO_TEST_POSTGRES_URL apontando para PostgreSQL descartável')
+const parsed=new URL(connectionString)
 if(!['127.0.0.1','localhost','::1'].includes(parsed.hostname))
  throw new Error('Teste PostgreSQL bloqueado fora de localhost (nunca usar produção)')
 if(parsed.pathname!=='/poco_ci')
  throw new Error('Nome obrigatório do DB temporário: poco_ci')
-const pool=new pg.Pool({connectionString:URL,max:3})
+const pool=new pg.Pool({connectionString,max:3})
 const user='poco@ci',key=POCO_LIVE_PLAYER_PREFIX+user
 const grantExp=async(c,jid,gain)=>{
  const result=await c.query('UPDATE users SET exp=exp+$1 WHERE jid=$2 RETURNING exp',[gain,jid])
