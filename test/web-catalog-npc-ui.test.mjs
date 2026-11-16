@@ -24,7 +24,9 @@ test('NPC Web compartilha a fonte de verdade de compras e reputação',()=>{
   assert.match(api,/\/api\/v1\/me\/npcs/)
   assert.match(npc,/requiredKarma:/)
   assert.match(npc,/fragmentsRemaining:/)
-  assert.match(app,/data-npc-buy/)
+  assert.doesNotMatch(app,/data-npc-buy/)
+  assert.doesNotMatch(app,/npcs:renderNpcs/)
+  assert.doesNotMatch(app,/api\('\/api\/v1\/me\/npcs'\)/)
   assert.match(app,/Compras restantes:/)
 })
 
