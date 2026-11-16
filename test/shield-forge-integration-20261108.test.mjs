@@ -8,9 +8,9 @@ const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
 const db=read('../src/neon/db.js')
 const app=read('../src/neon/index.js')
 
-test('seis escudos históricos e o sétimo do Poço reconhecidos, sem mudar custos antigos',()=>{
-  assert.equal(ANTI_CRIT_SHIELDS.length,7)
-  assert.equal(ANTI_CRIT_SHIELDS.filter(x=>x.id!=='poco_escudo_eternidade_20261116').length,6)
+test('nove escudos oficiais e o do Poço reconhecidos, com quatro evoluções por modelo',()=>{
+  assert.equal(ANTI_CRIT_SHIELDS.length,10)
+  assert.equal(ANTI_CRIT_SHIELDS.filter(x=>x.id!=='poco_escudo_eternidade_20261116').length,9)
   assert.equal(ANTI_CRIT_SHIELDS.find(x=>x.id==='poco_escudo_eternidade_20261116')?.price,0)
   assert.equal(shieldForgeCost('escudo_madeira',1),2000)
   assert.equal(shieldForgeCost('escudo_madeira',4),8000)
@@ -18,6 +18,9 @@ test('seis escudos históricos e o sétimo do Poço reconhecidos, sem mudar cust
   assert.equal(shieldForgeCost('escudo_runico',4),90000)
   assert.equal(shieldForgeCost('egide_celestial',1),50000)
   assert.equal(shieldForgeCost('bastiao_eclipse',1),125000)
+  assert.equal(shieldForgeCost('escudo_monarca_caido_20261116',1),80000)
+  assert.equal(shieldForgeCost('muralha_abismo_imperial_20261116',1),80000)
+  assert.equal(shieldForgeCost('baluarte_trovao_eterno_20261116',1),80000)
   assert.equal(shieldForgeCost('escudo_runico',5),null)
   assert.equal(shieldForgeCost('qualquer',1),null)
 })

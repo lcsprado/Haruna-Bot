@@ -4240,10 +4240,10 @@ if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
 rarity=config.minRarity
 }
 rarityCounts[rarity]++
-// As caixas Lendária e Épica usam os mesmos 17 equipamentos equiprováveis
-// quando a raridade sorteada é lendária. A chance da raridade não muda.
+// Caixa Lendária: 20 equipamentos equiprováveis (inclui 3 escudos exclusivos).
+// Caixa Épica: preserva os 17 equipamentos antigos quando sorteia raridade lendária.
 const itemId=rarity==='legendary'&&(boxId==='caixa_lendaria'||boxId==='caixa_epica')
-  ?pickLegendaryBoxGear(LOOT_POOLS.legendary)
+  ?pickLegendaryBoxGear(LOOT_POOLS.legendary,Math.random,{includeShields:boxId==='caixa_lendaria'})
   :pick(LOOT_POOLS[rarity])
 rewards.set(itemId,(rewards.get(itemId)||0)+1)
 }
