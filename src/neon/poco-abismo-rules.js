@@ -7,11 +7,11 @@ export const POCO_SEASON=Object.freeze({
   prizes:[25_000_000,15_000_000,10_000_000],
 });
 export const POCO_GEAR=Object.freeze([
-  {id:'poco_lamina_abismo_20261116',name:'Lâmina do Abismo',category:'weapon'},
-  {id:'poco_armadura_eclipse_20261116',name:'Armadura do Eclipse',category:'armor'},
-  {id:'poco_elmo_soberano_20261116',name:'Elmo do Soberano Abissal',category:'helmet'},
-  {id:'poco_escudo_eternidade_20261116',name:'Escudo da Eternidade',category:'shield'},
-  {id:'poco_botas_vazio_20261116',name:'Botas do Vazio',category:'boots'}
+  {id:'poco_lamina_abismo_20261116',name:'Cortajuramentos',category:'weapon'},
+  {id:'poco_armadura_eclipse_20261116',name:'Couraça das Cem Cicatrizes',category:'armor'},
+  {id:'poco_elmo_soberano_20261116',name:'Elmo do Vigia Sem Olhos',category:'helmet'},
+  {id:'poco_escudo_eternidade_20261116',name:'Escudo das Correntes Partidas',category:'shield'},
+  {id:'poco_botas_vazio_20261116',name:'Botas do Retorno Impossível',category:'boots'}
 ]);
 export const POCO_DROP_WEIGHTS=Object.freeze([
   {kind:'exclusive',weight:60}, // 0,60%; cada uma das cinco peças = 0,12%.
