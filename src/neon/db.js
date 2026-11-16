@@ -4758,7 +4758,25 @@ let out='SUP-'
 for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
 return out
 }
+// O ID real do grupo Alpha Bot é registrado depois de validar o nome pelo WhatsApp.
+// Uma vez registrado, restrições são aplicadas exclusivamente pelo chat_jid.
+const SUPPORT_BLOCKED_GROUP_SETTING='support_blocked_alpha_group_jid'
+export async function getSupportBlockedGroupJid(){
+const {rows}=await db.query("SELECT value->>'jid' AS jid FROM trevo_settings WHERE key=$1",[SUPPORT_BLOCKED_GROUP_SETTING])
+return String(rows[0]?.jid||'')
+}
+export async function registerSupportBlockedGroupJid(chatJid){
+if(!/^\d+@g\.us$/.test(String(chatJid||''))) throw new Error('ID do grupo inválido.')
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES($1,$2::jsonb,${nowSql})
+ON CONFLICT(key) DO NOTHING
+`,[SUPPORT_BLOCKED_GROUP_SETTING,JSON.stringify({jid:chatJid})])
+return getSupportBlockedGroupJid()
+}
 export async function createSupportTicket(requesterJid, chatJid, category, message) {
+if(chatJid?.endsWith('@g.us') && (await getSupportBlockedGroupJid())===chatJid)
+throw new Error('suporte disponível apenas para pagantes')
 category=String(category||'outro').trim().slice(0,40)
 message=String(message||'').trim()
 if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')

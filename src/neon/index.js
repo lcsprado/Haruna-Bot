@@ -29,6 +29,7 @@ import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
+import {isAlphaBotGroupSubject,isSupportBlockedGroupJid,SUPPORT_ONLY_PAGANTES_MESSAGE} from './support-group-id.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -42,7 +43,7 @@ getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, st
 getPaymentLink, setPaymentLink,
 createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
 approveSubscriptionOrder, cancelSubscriptionOrder,
-createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket,
+createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket, getSupportBlockedGroupJid, registerSupportBlockedGroupJid,
 saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
 saveSnipeMessage, markSnipeDeleted, getLastDeletedSnipe, cleanupSnipeMessages,
 openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
@@ -4328,6 +4329,24 @@ if(!chatJid?.endsWith('@g.us')) return true
 const settings=await getGroupSettings(chatJid)
 return settings?.[key]!==false
 }
+// O JID real e descoberto pelo nome autenticado do WhatsApp apenas uma vez.
+// Apos o registro, nenhuma mudanca de nome pode redirecionar o bloqueio.
+async function isSupportRestrictedInGroup(chatJid){
+if(!chatJid?.endsWith('@g.us'))return false
+const registered=await getSupportBlockedGroupJid()
+if(registered)return isSupportBlockedGroupJid(chatJid,registered)
+let meta
+try{
+meta=await sock.groupMetadata(chatJid)
+}catch(err){
+console.warn('[suporte] falha ao obter metadata do grupo para identificar restricao',err?.message||err)
+return false
+}
+if(!isAlphaBotGroupSubject(meta?.subject))return false
+const saved=await registerSupportBlockedGroupJid(chatJid)
+console.info('[suporte] grupo protegido identificado por JID autenticado')
+return isSupportBlockedGroupJid(chatJid,saved)
+}
 async function currentGroupPlayerJids(chatJid){
 if(!chatJid?.endsWith('@g.us')) return []
 try{
@@ -5562,6 +5581,11 @@ await reply(
 )
 }
 const supportMenu=async()=>{
+if(await isSupportRestrictedInGroup(chat)){
+clearQuickFlow(chat,sender)
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
+return
+}
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
 await reply(
 `🆘 *SUPORTE ALPHA BOT*
@@ -6044,6 +6068,11 @@ await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\
 clearQuickFlow(chat,sender)
 await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
 }
+return true
+}
+if((flow.stage==='support_menu'||flow.stage==='support_message') && await isSupportRestrictedInGroup(chat)){
+clearQuickFlow(chat,sender)
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
 return true
 }
 if(flow.stage==='support_menu'){
@@ -9842,6 +9871,25 @@ reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
+// Vincula automaticamente o grupo de nome EXATO "Alpha Bot" ao JID real.
+// Nao supoe qual grupo e o certo a partir de IDs antigos ou nomes digitados.
+void (async()=>{
+if(await getSupportBlockedGroupJid())return
+const licenses=await listGroupLicenses(100)
+const matches=[]
+for(const license of licenses){
+const id=String(license?.chat_jid||'')
+if(!id.endsWith('@g.us'))continue
+const meta=await sock.groupMetadata(id).catch(()=>null)
+if(isAlphaBotGroupSubject(meta?.subject))matches.push(id)
+}
+if(matches.length===1){
+await registerSupportBlockedGroupJid(matches[0])
+console.info('[suporte] grupo Alpha Bot identificado; restricao por JID pronta')
+}else{
+console.info('[suporte] nao foi possivel vincular grupo automaticamente; candidatos:',matches.length)
+}
+})().catch(err=>console.warn('[suporte] verificacao de grupo no login falhou',err?.message||err))
 void refreshOwnerEventTimers().catch(err=>console.error('[Eventos Owner] inicialização',err?.message||err))
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 // A Raid dos Sete Pecados substitui o antigo Boss temporário de fragmentos.
@@ -11146,6 +11194,10 @@ const reason=String(err?.message||'')
 await reply('❌ '+(/tamanho|limite|512 KB|30 segundos|Mídia|mídia/.test(reason)?reason:'Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.'))
 }finally{stickerCommandBusy=false}
 } else if(['suporte','support','ajuda'].includes(cmd)){
+if(await isSupportRestrictedInGroup(chat)){
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
+continue
+}
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
 await reply(
 `🆘 *SUPORTE ALPHA BOT*
