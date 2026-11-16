@@ -388,6 +388,7 @@ economy_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 rpg_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 games_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 progression_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+support_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 updated_by TEXT,
 updated_at BIGINT NOT NULL DEFAULT ${nowSql}
 );
@@ -3648,7 +3649,7 @@ return (await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid
 })
 }
 export async function setGroupSetting(chatJid, key, enabled, updatedBy='') {
-const allowed=new Set(['economy_enabled','rpg_enabled','games_enabled','progression_enabled'])
+const allowed=new Set(['economy_enabled','rpg_enabled','games_enabled','progression_enabled','support_enabled'])
 if(!allowed.has(key)) throw new Error('Configuração de grupo inválida.')
 await getGroupSettings(chatJid)
 const { rows } = await db.query(
@@ -4759,6 +4760,9 @@ for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
 return out
 }
 export async function createSupportTicket(requesterJid, chatJid, category, message) {
+if(chatJid?.endsWith('@g.us') && (await getGroupSettings(chatJid))?.support_enabled===false){
+throw new Error('🔒 A abertura de chamados está desativada neste grupo. Use !suporte no privado.')
+}
 category=String(category||'outro').trim().slice(0,40)
 message=String(message||'').trim()
 if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
@@ -4841,6 +4845,7 @@ ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antibadword_enabled BOOLEAN 
 ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antidelete_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS rules_text TEXT NOT NULL DEFAULT '';
 ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antiflood_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS support_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 CREATE TABLE IF NOT EXISTS group_warnings(
 chat_jid TEXT NOT NULL,
 jid TEXT NOT NULL,
