@@ -8,9 +8,9 @@ const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8');
 const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
 const manifest=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
 
-test('Garage, events, NPCs, clan preview and live Boss survive the password release',()=>{
-  for(const needle of ["['racing','🏎️','Garagem Alpha']","['events','🎉','Eventos']","['npcs','🏘️','NPCs / Comerciantes']",
-    "racing:()=>renderRacing(ui)","events:renderEvents","npcs:renderNpcs","loadRacing(false)","loadEventCenter(false)"])
+test('Garage, events, clan preview and live Boss survive the password release without retired NPCs',()=>{
+  for(const needle of ["['racing','🏎️','Garagem Alpha']","['events','🎉','Eventos']",
+    "racing:()=>renderRacing(ui)","events:renderEvents","loadRacing(false)","loadEventCenter(false)"])
     assert.ok(ui.includes(needle),'UI is missing: '+needle);
   for(const file of ['racing-ui.js','clan-siege-ui.js','version.json'])
     assert.ok(existsSync(new URL('../web/'+file,import.meta.url)),'Missing rich UI module: '+file);
@@ -21,6 +21,17 @@ test('Garage, events, NPCs, clan preview and live Boss survive the password rele
   assert.ok(css.includes('.race'),'Garage visual CSS not restored');
   assert.ok(manifest.includes('/racing-ui.js'),'PWA not caching garage assets');
 });
+test('NPCs removidos não retornam na navegação nem em compras Web',()=>{
+  assert.ok(!ui.includes("['npcs','🏘️','NPCs / Comerciantes']"));
+  assert.ok(!ui.includes('npcs:renderNpcs'));
+  assert.ok(!ui.includes("data-npc-buy"));
+  assert.ok(!ui.includes("api('/api/v1/me/npcs')"));
+  assert.ok(!ui.includes("doAction('npc.buy'"));
+  assert.ok(ui.includes("if(page==='npcs')page='shop'"),'Links antigos devem abrir Loja Alpha');
+  for(const key of ['renderClanSiegePreview(ui)','loadSiege(true)','checkWebBuild()'])
+    assert.ok(ui.includes(key),'Não mexer na interface do Cerco: '+key);
+});
+
 test('restoring richer interface does not bypass phone/password authentication',()=>{
   for(const id of ['passwordLoginForm','loginPhone','verifiedPhoneHint','registerForm','recoverForm','linkForm'])
     assert.ok(html.includes('id="'+id+'"'),'Login form missing: '+id);
