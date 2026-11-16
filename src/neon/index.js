@@ -866,6 +866,13 @@ i--
 await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
 continue
 }
+if(r.phaseTransition){
+ const phase=r.phaseTransition
+ void safeRaidNotify(reply,
+  '🌌 *BLEACH — AIZEN: FASE '+phase.index+'/'+phase.total+'*\n'
+  +'👁️ *'+phase.name+'*\n'
+  +'⚔️ O combate continua automaticamente. HP e dano já causado foram preservados.')
+}
 for(const e of (r.events||[])){
 if(e.type!=='boss'||!e.autoPetHeal)continue
 const player=String(e.name||'Jogador'),pet=String(e.autoPetHeal.petName||e.petName||'Pet'),potion=String(e.autoPetHeal.name||'Poção')
@@ -972,11 +979,11 @@ const vitalHeals=(r.events||[]).filter(e=>e.type==='vital_pulse')
 const petSwitches=bossEvents.filter(e=>e.petSwitch)
 const deaths=bossEvents.filter(e=>!e.alive)
 const petFalls=bossEvents.filter(e=>e.petFainted)
-if(r.round===1 || r.round%10===0 || deaths.length || revives.length || petSwitches.length || vitalHeals.length){
+if(r.round===1 || r.round%10===0 || r.phaseTransition || deaths.length || revives.length || petSwitches.length || vitalHeals.length){
 const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
 const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
 let text=`⚔️ *RAID — RODADA ${r.round}*
-👹 *${r.config.name}*
+👹 *${r.config.name}*${r.phase?' — Fase '+r.phase.index+'/'+r.config.phases.length+' • '+r.phase.name:''}
 ❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*
 💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*
 `
@@ -13174,7 +13181,7 @@ await reply(
 ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 1*.':'⚔️ Continue na Raid 1 ou compre mais caixas para completar o altar.'}`
 )
 } else if(['chaveraid'].includes(cmd)){
-const level=collabRaidNumber(args[0])
+const level=raidSelection(args[0],getRaidCatalog())
 const cfg=getRaidCatalog().find(r=>r.level===level)
 if(!cfg) return await reply('🔑 Níveis de chave disponíveis: *10, 15, 20, 25, 30, 40 e 50*.\nEx.: *!chaveraid 20*')
 const p=await getProfile(sender)
