@@ -517,16 +517,22 @@ async function viewMatch(match,jid){
   };
 }
 export async function clanSiegeStatus(session){
+  // A fortaleza pertence ao clã do jogador, não à partida nem ao vínculo do grupo.
+  // A sessão já foi autenticada no roteador HTTP; não liberar ações de guerra aqui.
+  const fortress=session?.jid?await clanFortressStatus(session.jid):null;
   if(!ON()){
     const reason='Partidas reais ainda não foram ativadas no servidor.';
-    if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\.us$/.test(siegeGroup())){
-      try{return {enabled:false,reason,preflight:await clanSiegePreflight()};}
+    if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\\.us$/.test(siegeGroup())){
+      try{return {enabled:false,reason,preflight:await clanSiegePreflight(),fortress,fortressUpgradesEnabled:false};}
       catch(err){console.warn('[Cerco] Preflight indisponível:',String(err?.message||err).slice(0,130));}
     }
-    return {enabled:false,reason};
+    return {enabled:false,reason,fortress,fortressUpgradesEnabled:false};
   }
   session=await authorizedSiegeSession(session);
-  if(!session?.chatJid)return {enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'};
+  if(!session?.chatJid)return {
+    enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.',
+    fortress,fortressUpgradesEnabled:true
+  };
   const chat=group(session);
   await ensureClanSiegeSchema();await settleClanSiege(chat);await startDailyClanSiege();
   const teams=await eligible(db,chat);
@@ -537,11 +543,13 @@ export async function clanSiegeStatus(session){
     enabled:true,nextRulesVersion:V6_ON()?6:5,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
     match:await viewMatch(match,session.jid),
-    fortress:mine?await clanFortressStatus(session.jid):null
+    fortress,fortressUpgradesEnabled:true
   };
 }
 export async function clanSiegeFortressUpgrade(session,stat){
-  gate();group(session);
+  // Comprar melhoria exige líder do clã (checado transacionalmente em clanFortressUpgrade).
+  // Não exige vínculo a um grupo porque não registra ação de Cerco.
+  gate();
   return clanFortressUpgrade(session.jid,stat);
 }
 export async function clanSiegeChallenge(session){
