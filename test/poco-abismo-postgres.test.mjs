@@ -19,24 +19,25 @@ if(!connectionString){
  test.skip('PostgreSQL efêmero: apenas no job de integração com POCO_TEST_POSTGRES_URL',()=>{})
 } else {
 const parsed=new URL(connectionString)
-if(!['127.0.0.1','localhost','::1'].includes(parsed.hostname))
- throw new Error('Teste PostgreSQL bloqueado fora de localhost (nunca usar produção)')
+if(!['postgres:', 'postgresql:'].includes(parsed.protocol)||
+ !['127.0.0.1','localhost','[::1]'].includes(parsed.hostname)||parsed.search||parsed.hash)
+ throw new Error('Teste PostgreSQL exige URL local sem parâmetros de conexão adicionais')
 if(parsed.pathname!=='/poco_ci')
  throw new Error('Nome obrigatório do DB temporário: poco_ci')
+process.env.DATABASE_URL=connectionString
 const {default:pg}=await import('pg')
 const pool=new pg.Pool({connectionString,max:3})
 const user='poco@ci',key=POCO_LIVE_PLAYER_PREFIX+user
-const grantExp=async(c,jid,gain)=>{
- const result=await c.query('UPDATE users SET exp=exp+$1 WHERE jid=$2 RETURNING exp',[gain,jid])
- if(result.rowCount!==1)throw new Error('Usuário sem EXP')
- return {awardedGain:gain}
-}
 const stateParams={jid:user,name:'Jogador CI',key,
  settlementKey:POCO_LIVE_SETTLEMENT_KEY,season:POCO_SEASON.id,
  empty:name=>({season:POCO_SEASON.id,name,attempts:0,active:null,best:null,processed:[]}),
  now:()=>POCO_SEASON.startAt+10000}
 async function setup(){
- await pool.query('CREATE TABLE users(jid TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 1, exp BIGINT NOT NULL DEFAULT 0)')
+ await pool.query('CREATE TABLE users(jid TEXT PRIMARY KEY, level INTEGER NOT NULL DEFAULT 1, exp BIGINT NOT NULL DEFAULT 0, updated_at BIGINT DEFAULT 0)')
+ await pool.query('CREATE TABLE stats(jid TEXT PRIMARY KEY REFERENCES users(jid), class_id TEXT, class_applied BOOLEAN NOT NULL DEFAULT FALSE)')
+ await pool.query('CREATE TABLE player_class_levels(jid TEXT REFERENCES users(jid), class_id TEXT, level INTEGER, xp BIGINT)')
+ await pool.query('CREATE TABLE player_hero_mode(jid TEXT PRIMARY KEY REFERENCES users(jid), hero_species TEXT)')
+ await pool.query('CREATE TABLE pet_collection(jid TEXT REFERENCES users(jid), species TEXT)')
  await pool.query('CREATE TABLE wallets(jid TEXT PRIMARY KEY REFERENCES users(jid), cash BIGINT NOT NULL DEFAULT 0, updated_at BIGINT DEFAULT 0)')
  await pool.query('CREATE TABLE items(id TEXT PRIMARY KEY)')
  await pool.query('CREATE TABLE inventories(jid TEXT REFERENCES users(jid),item_id TEXT REFERENCES items(id),quantity INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(jid,item_id))')
@@ -48,7 +49,7 @@ async function setup(){
  await pool.query('CREATE TABLE trevo_settings(key TEXT PRIMARY KEY,value JSONB NOT NULL,updated_at BIGINT DEFAULT 0)')
  await pocoInitRewardLedger(pool)
  for(const jid of [user,'outro@ci','terceiro@ci']){
-  await pool.query('INSERT INTO users(jid) VALUES($1)',[jid])
+  await pool.query('INSERT INTO users(jid,level) VALUES($1,600)',[jid])
   await pool.query('INSERT INTO wallets(jid) VALUES($1)',[jid])
  }
  for(const id of [
@@ -64,7 +65,7 @@ test('transação registra andar e EXP juntos ou não registra nada',async()=>{
  const begin=await pocoRunPlayerTransaction(pool,stateParams,async(c,s,now)=>{
   const start=pocoStart({now,seed:7,profile:{heroId:'pecado_ban',level:200}})
   s.attempts=1;s.active=start.state
-  for(const floor of start.cleared)await pocoClaimFloorInTx(c,user,floor,{grantExp})
+  for(const floor of start.cleared)await pocoClaimFloorInTx(c,user,floor)
   return start.cleared
  })
  assert.deepEqual(begin,[1,2,3,4])
@@ -76,7 +77,7 @@ test('transação registra andar e EXP juntos ou não registra nada',async()=>{
  assert.equal(stored.value.active.floor,4)
  await assert.rejects(()=>pocoRunPlayerTransaction(pool,stateParams,async(c,s)=>{
   s.active.floor=5
-  await pocoClaimFloorInTx(c,user,5,{grantExp})
+  await pocoClaimFloorInTx(c,user,5)
   throw new Error('falha injetada depois do crédito')
  }),/falha injetada/)
  assert.equal(Number((await row('SELECT cash FROM wallets WHERE jid=$1',[user])).cash),120000)
@@ -87,13 +88,30 @@ test('transação registra andar e EXP juntos ou não registra nada',async()=>{
  // O mesmo andar pode ser pago após rollback, uma vez só.
  const result=await pocoRunPlayerTransaction(pool,stateParams,async(c,s)=>{
   s.active.floor=5
-  return pocoClaimFloorInTx(c,user,5,{grantExp})
+  return pocoClaimFloorInTx(c,user,5)
  })
  assert.equal(result.cash,30000)
- const repeat=await pocoRunPlayerTransaction(pool,stateParams,(c)=>pocoClaimFloorInTx(c,user,5,{grantExp}))
+ const repeat=await pocoRunPlayerTransaction(pool,stateParams,(c)=>pocoClaimFloorInTx(c,user,5))
  assert.equal(repeat.alreadyClaimed,true)
  assert.equal(Number((await row('SELECT cash FROM wallets WHERE jid=$1',[user])).cash),150000)
 })
+
+test('30 andares: valores naturais uma vez com a implementação real de EXP',async()=>{
+ const finishSeason=()=>pocoRunPlayerTransaction(pool,stateParams,async c=>{
+  const credits=[]
+  for(let floor=1;floor<=POCO_SEASON.floorLimit;floor++)
+   credits.push(await pocoClaimFloorInTx(c,user,floor))
+  return credits
+ })
+ const first=await finishSeason()
+ assert.equal(first.filter(x=>!x.alreadyClaimed).length,25)
+ assert.ok((await finishSeason()).every(x=>x.alreadyClaimed))
+ assert.equal(Number((await row('SELECT cash FROM wallets WHERE jid=$1',[user])).cash),3_500_000)
+ const player=await row('SELECT level,exp FROM users WHERE jid=$1',[user])
+ assert.equal(player.level,600)
+ assert.equal(Number(player.exp),43_250)
+})
+
 test('drop lendário pronto e caixas: persistência, forja, deduplicação',async()=>{
  const gear=POCO_ABISMO_GEAR[0]
  const exclusive=await pocoRunPlayerTransaction(pool,stateParams,(c)=>
@@ -118,6 +136,18 @@ test('drop lendário pronto e caixas: persistência, forja, deduplicação',asyn
  assert.equal(again.alreadyClaimed,true)
  const inv=await row('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[user,POCO_BOX_LEGEND_ID])
  assert.equal(inv.quantity,0)
+ const secondPlayer='outro@ci'
+ for(const [index,floor] of POCO_SEASON.dropBossFloors.entries()){
+  const expected=POCO_ABISMO_GEAR[index]
+  const params={...stateParams,jid:secondPlayer,key:POCO_LIVE_PLAYER_PREFIX+secondPlayer}
+  const prize=await pocoRunPlayerTransaction(pool,params,c=>
+   pocoClaimBossDropInTx(c,secondPlayer,floor,'2026-11-17',()=>index*12/10_000))
+  assert.equal(prize.itemId,expected.id)
+  const forged=await row('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[secondPlayer,expected.id])
+  assert.deepEqual(forged,{stars:5,level:10})
+  const equippedLevel=await row('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[secondPlayer,expected.id])
+  assert.equal(equippedLevel.level,10)
+ }
 })
 test('liquidação só depois do prazo e uma vez, sem jamais usar prévia',async()=>{
  const cutoff=await pocoSettleFinalRanking(pool,POCO_SEASON.endAt-1)
@@ -132,6 +162,12 @@ test('liquidação só depois do prazo e uma vez, sem jamais usar prévia',async
  const fake={season:POCO_SEASON.id,best:{jid:'falso@ci',name:'falso',floor:30,turns:1}}
  await pool.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',
   ['poco_abismo_preview_20261116:player:falso@ci',JSON.stringify(fake)])
+ const missingWallet='terceiro@ci'
+ await pool.query('DELETE FROM wallets WHERE jid=$1',[missingWallet])
+ await assert.rejects(()=>pocoSettleFinalRanking(pool,POCO_SEASON.endAt+1),/Carteira não encontrada/)
+ assert.equal((await pool.query("SELECT 1 FROM transactions WHERE type='poco_ranking'")).rowCount,0)
+ assert.equal(await row('SELECT key FROM trevo_settings WHERE key=$1',[POCO_LIVE_SETTLEMENT_KEY]),undefined)
+ await pool.query('INSERT INTO wallets(jid) VALUES($1)',[missingWallet])
  const settled=await pocoSettleFinalRanking(pool,POCO_SEASON.endAt+1)
  assert.deepEqual(settled.winners.map(p=>p.jid),['outro@ci',user,'terceiro@ci'])
  assert.deepEqual(settled.winners.map(p=>p.cash),[25000000,15000000,10000000])
