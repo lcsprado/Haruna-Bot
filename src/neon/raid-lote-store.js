@@ -226,7 +226,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -242,7 +242,7 @@ export async function getRaidLoteAttemptReports(db,jid,jobId){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
