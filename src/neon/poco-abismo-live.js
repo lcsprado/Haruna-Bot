@@ -12,6 +12,7 @@ import {
 import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage} from './poco-abismo-delivery.js'
 import {pocoInitRewardLedger,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
 import {pocoGearById} from './poco-abismo-gear.js'
+import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
 import {pocoFinalLeaderboard,pocoSettleFinalRanking,POCO_LIVE_PLAYER_PREFIX,POCO_LIVE_SETTLEMENT_KEY} from './poco-abismo-settlement.js'
 
 const ENABLED=process.env.POCO_ABISMO_LIVE==='true'&&process.env.POCO_ABISMO_PREVIEW!=='true'
@@ -45,22 +46,10 @@ function dayInBrazil(now){
 function empty(name){return {season:POCO_SEASON.id,name,attempts:0,active:null,best:null,last:null,
  processedMessageIds:[],cashEarned:0,xpEarned:0,drops:[],chat:null}}
 async function mutate(jid,name,fn){
- const c=await db.connect()
- try{
-  await c.query('BEGIN')
-  await c.query("SET LOCAL statement_timeout='25000ms'")
-  // Mesmo lock global usado pela liquidação, impede disputa de commit com a classificação final.
-  await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[POCO_LIVE_SETTLEMENT_KEY])
-  await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[keyFor(jid)])
-  const row=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[keyFor(jid)])).rows[0]
-  const s=row?.value?.season===POCO_SEASON.id?row.value:empty(name)
-  s.name=String(name||s.name||'Jogador').slice(0,48)
-  const result=await fn(c,s,Date.now())
-  await c.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",[keyFor(jid),JSON.stringify(s)])
-  await c.query('COMMIT')
-  return result
- }catch(error){await c.query('ROLLBACK').catch(()=>{});throw error}
- finally{c.release()}
+ return pocoRunPlayerTransaction(db,{
+  jid,name,key:keyFor(jid),settlementKey:POCO_LIVE_SETTLEMENT_KEY,
+  season:POCO_SEASON.id,empty
+ },fn)
 }
 function updateBest(s,jid){
  if(!s.active)return
