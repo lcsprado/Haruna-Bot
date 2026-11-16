@@ -74,15 +74,33 @@ function simulate(seed,heroId,policy){
  }
  return state.status==='completed'
 }
-test('simulação determinística: em 3 papéis estratégia supera só atacar e curar',()=>{
+test('ruptura avisada pune ataque cego, defender reduz 75% e regras oficiais continuam iguais',()=>{
+ const old=pocoStart({profile:profile('pecado_ban'),seed:18,now:100}).state
+ const beta=pocoStart({profile:profile('pecado_ban'),seed:18,now:100,balanceVersion:'beta-v2'}).state
+ old.boss.turn=3
+ beta.boss.turn=3
+ assert.equal(pocoBossSkill(5,3).type,'charge')
+ assert.equal(POCO_BETA_BALANCE.unblockedChargeFactor,2.4)
+ const oldHit=pocoDecision(old,1,{now:101})
+ const betaHit=pocoDecision(beta,1,{now:101})
+ const betaBlock=pocoDecision(beta,2,{now:101})
+ assert.equal(oldHit.message.damage,betaHit.message.damage)
+ assert.ok(betaHit.message.enemyDamage>oldHit.message.enemyDamage*1.30)
+ assert.ok(betaBlock.message.enemyDamage<=betaHit.message.enemyDamage*.26)
+ assert.ok(betaBlock.message.damage>0,'defesa deve contra-atacar no beta')
+ assert.equal(old.boss.hp,2050,'a chamada não pode consumir o estado original')
+})
+
+test('simulação determinística: sem bloquear rupturas, completar o Poço é raro',()=>{
  for(const heroId of ['pecado_ban','pecado_diane','pecado_meliodas']){
    let simple=0,strategic=0
    for(let seed=1;seed<=60;seed++){
      if(simulate(seed,heroId,'attacks-and-heals'))simple++
      if(simulate(seed,heroId,'four-options'))strategic++
    }
-   assert.ok(strategic>=35,`${heroId}: quatro ações não completam o poço, ${strategic}/60`)
-   assert.ok(strategic-simple>=17,`${heroId}: estratégia não cria vantagem real (${strategic} vs ${simple})`)
+   assert.ok(simple<=3,`${heroId}: atacar e curar ainda vence demais (${simple}/60)`)
+   assert.ok(strategic>=35,`${heroId}: o jogador estratégico não consegue terminar (${strategic}/60)`)
+   assert.ok(strategic-simple>=30,`${heroId}: estratégia não cria vantagem real (${strategic} vs ${simple})`)
  }
 })
 
