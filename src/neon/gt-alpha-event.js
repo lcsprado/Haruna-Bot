@@ -4,7 +4,7 @@ import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from '.
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
- gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS
+ gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings
 } from './gt-alpha-rules.js'
 import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 
@@ -42,21 +42,13 @@ async function eligible(c){
 function rankText(rows,title){
  return title+'\n\n'+(rows.length?rows.map((r,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.')+' *'+gtCleanName(r.name)+'* — *'+r.points+' pts* • '+r.wins+' vitória(s)').join('\n'):'Nenhum resultado registrado.')
 }
-function parcial(s){
- const table=new Map()
- for(const heat of (s?.results?.heats||[]).slice(0,Number(s?.stage||0)))for(const p of (heat.positions||[])){
-  const row=table.get(p.jid)||{jid:p.jid,name:p.name,points:0,wins:0,performance:0}
-  row.points+=p.points;row.wins+=p.place===1?1:0;row.performance+=p.score
-  table.set(p.jid,row)
- }
- return gtLeaderboard([...table.values()])
-}
+
 function heatText(heat,n,s){
  return '🏁 *GT ALPHA BOT — '+n+'ª PROVA*\n'+heat.name+
   '\n🌦️ Condições: '+(GT_WEATHER_LABELS[heat.weather]||'☀️ Pista seca')+'\n\n'+
   heat.positions.map(p=>(p.place===1?'🥇':p.place===2?'🥈':p.place===3?'🥉':p.place+'.')+
    ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts').join('\n')+
-  '\n\n'+rankText(parcial(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
+  '\n\n'+rankText(gtPartialStandings(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
 }
 async function prepNotice(day){
  const key=dayKey(day)
@@ -251,7 +243,7 @@ export async function getGtAlphaTable(scope='dia',now=Date.now()){
     '\n📊 Ranking acumulado: *!gttabela semana*.'
   }
  }
- const table=s?.phase==='completed'?s.results?.standings||[]:parcial(s)
+ const table=s?.phase==='completed'?s.results?.standings||[]:gtPartialStandings(s)
  return rankText(table,'🏎️ *GT ALPHA BOT — RANKING DIÁRIO*')+
   '\n📅 '+day+
   (s?.phase==='running'?'\n🏁 Corridas: '+s.stage+'/3':
