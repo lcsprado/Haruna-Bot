@@ -48,6 +48,50 @@ export function gtRaceReward(place,startingLevel){
  if(!Number.isSafeInteger(playerXp))throw Error('XP fora do limite')
  return {cash:GT_RACE_CASH_PRIZES[idx],pilotXp:GT_RACE_PILOT_XP[idx],playerXp,percent:GT_RACE_XP_PERCENTS[idx]}
 }
+
+/**
+ * Reclassifica uma etapa quando um carro equipado foi excluído indevidamente
+ * por uma melhoria em andamento. Preserva os desempenhos já registrados dos
+ * demais pilotos e insere o carro omitido com fator neutro de sorte (1.00).
+ * O pagamento da correção é realizado separadamente, na mesma transação.
+ */
+export function gtReplayWithEntrant(original,entrant,day){
+ if(!original||!Array.isArray(original.heats)||original.heats.length!==3)
+  throw Error('Resultado original do GT inválido')
+ if(!entrant?.jid||!Number.isSafeInteger(entrant.carId))throw Error('Entrante inválido')
+ const entrantHeats=gtRunHeats([entrant],()=>.5,day).heats
+ const board=new Map()
+ const heats=original.heats.map((heat,i)=>{
+  if(heat.id!==entrantHeats[i].id||heat.baseId!==entrantHeats[i].baseId)
+   throw Error('Programa de pistas do replay não confere')
+  const seen=new Set()
+  const originalPositions=heat.positions.map(({reward,...p})=>{
+   if(!p.jid||seen.has(p.jid)||!Number.isFinite(Number(p.score)))
+    throw Error('Resultado original duplicado ou inválido')
+   seen.add(p.jid)
+   return p
+  })
+  if(seen.has(entrant.jid))throw Error('Entrante já estava na corrida')
+  const entrantPosition=entrantHeats[i].positions[0]
+  const positions=[...originalPositions,entrantPosition]
+   .sort((a,b)=>b.score-a.score||String(a.jid).localeCompare(String(b.jid)))
+   .map((p,index)=>{
+    const place=index+1,points=gtPoints(index)
+    const row=board.get(p.jid)||{
+     jid:p.jid,name:p.name,carId:p.carId,model:p.model,
+     points:0,wins:0,performance:0
+    }
+    row.points+=points
+    if(place===1)row.wins++
+    row.performance=rounded(row.performance+p.score)
+    board.set(p.jid,row)
+    return {...p,place,points}
+   })
+  return {...heat,positions}
+ })
+ return {heats,standings:gtLeaderboard([...board.values()])}
+}
+
 export const GT_MIN_DRIVERS=2
 export const GT_DAILY_WEAR=9
 export const GT_TIME='20:30'

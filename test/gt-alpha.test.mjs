@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {
  GT_TRACK_IDS,GT_TIME,GT_GROUP,GT_WEEKLY_PRIZES,GT_MIN_DRIVERS,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,
- gtPoints,gtLeaderboard,gtRunHeats,gtPartialStandings,gtRaceReward,
+ gtPoints,gtLeaderboard,gtRunHeats,gtReplayWithEntrant,gtPartialStandings,gtRaceReward,
  GT_RACE_XP_PERCENTS,GT_RACE_CASH_PRIZES,GT_RACE_PILOT_XP
 } from '../src/neon/gt-alpha-rules.js'
 
@@ -135,4 +135,48 @@ test('motor isolado e seguro contra troca de carro depois da largada',()=>{
  assert.match(src,/Math\.max\(start\+30000,Date\.now\(\)\+30000\)/)
  assert.ok(!src.includes('user_cars'))
  assert.ok(!src.includes('clt_uber'))
+})
+
+
+test('carro em melhoria continua elegível e usa as peças já concluídas',()=>{
+ const src=source('gt-alpha-event.js')
+ assert.match(src,/rows\.filter\(r=>Number\(r\.condition\)>=RACING_MIN_CONDITION\)/)
+ assert.doesNotMatch(src,/rows\.filter\(r=>!r\.pending_part/)
+ assert.match(src,/melhoria em andamento não impede a corrida/)
+})
+test('correção da etapa preserva desempenho dos adversários e reapura quatro carros',()=>{
+ const base=gtRunHeats([
+  player('1','palio',{motor:5,turbo:5}),
+  player('2','corsa',{motor:5,freios:3}),
+  player('3','gol',{motor:1})
+ ],()=>.5,'2026-11-16')
+ const missing=player('4','gol',full,100)
+ const rerun=gtReplayWithEntrant(base,missing,'2026-11-16')
+ assert.equal(rerun.heats.length,3)
+ for(let i=0;i<3;i++){
+  assert.equal(rerun.heats[i].positions.length,4)
+  assert.equal(rerun.heats[i].positions[0].jid,'4')
+  for(const original of base.heats[i].positions){
+   assert.equal(rerun.heats[i].positions.find(p=>p.jid===original.jid).score,original.score)
+  }
+  assert.deepEqual(rerun.heats[i].positions.map(p=>p.points),[10,7,5,3])
+ }
+ assert.equal(rerun.standings.find(p=>p.jid==='4')?.points,30)
+ assert.equal(rerun.standings.reduce((total,p)=>total+p.points,0),75)
+ assert.equal(base.heats[0].positions.length,3)
+ assert.throws(()=>gtReplayWithEntrant(base,player('1','gol',full),'2026-11-16'),/já estava/)
+})
+test('reparação de 16-11 atômica, não duplica prêmios e preserva histórico',()=>{
+ const src=source('gt-alpha-event.js')
+ assert.match(src,/GT_ALPHA_REPLAY_20261116/)
+ assert.match(src,/s\.correction\?\.id===mark/)
+ assert.match(src,/originalResults:oldResults/)
+ assert.match(src,/gtReplayWithEntrant\(oldResults,entrant,day\)/)
+ assert.match(src,/GT_DAILY_WEAR\*3/)
+ assert.match(src,/gt_alpha_rematch_adjustment/)
+ assert.match(src,/gtSponsorProgressInTx\(c,/)
+ assert.match(src,/grantExpInTransaction\(c,delta\.jid,delta\.playerXp/)
+ assert.match(src,/AND cash\+\$1>=0/)
+ assert.match(src,/AND exp\+\$1>=0/)
+ assert.match(src,/await c\.query\('ROLLBACK'\)/)
 })
