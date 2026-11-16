@@ -1,0 +1,27 @@
+name: Leilao ultimo lote - prorrogar sempre 30 segundos
+on:
+  push:
+    branches:
+      - fix/auction-unlimited-30s-overtime-reopen-20261115
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  bid-extension:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check src/neon/auction-20261115-2100.js
+          node --check test/auction-unlimited-last-minute-20261115.test.mjs
+      - name: Validate 30-second overtime without cap
+        run: |
+          node --test test/auction-unlimited-last-minute-20261115.test.mjs
+          node --test test/auction-20261115.test.mjs
