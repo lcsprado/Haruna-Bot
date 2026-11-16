@@ -93,7 +93,7 @@ test('5 equipamentos são recebidos forjados ★5 Lv10 e sem segunda concessão 
  for(let n=0;n<5;n++){
   const gear=POCO_ABISMO_GEAR[n]
   const day='2026-11-16'
-  const floor=[5,10,15,20,25][n]
+  const floor=[10,15,20,25,30][n]
   const result=await pocoClaimBossDropInTx(c,'a@jid',floor,day,()=>.0001+n*.0012)
   assert.equal(result.itemId,gear.id)
   assert.equal(result.stars,5);assert.equal(result.level,10)
@@ -107,8 +107,8 @@ test('5 equipamentos são recebidos forjados ★5 Lv10 e sem segunda concessão 
 })
 test('segundo drop do mesmo modelo vira caixa, nunca peça comum falsamente ★5',async()=>{
  const c=makeDb()
- const first=await pocoClaimBossDropInTx(c,'a@jid',5,'2026-11-16',()=>0)
- const second=await pocoClaimBossDropInTx(c,'a@jid',5,'2026-11-17',()=>0)
+ const first=await pocoClaimBossDropInTx(c,'a@jid',10,'2026-11-16',()=>0)
+ const second=await pocoClaimBossDropInTx(c,'a@jid',10,'2026-11-17',()=>0)
  assert.equal(first.kind,'exclusive')
  assert.equal(second.kind,'duplicate_converted')
  assert.equal(c.items.get(first.itemId),1)
@@ -141,7 +141,7 @@ test('dia e Guardião inválidos são rejeitados',async()=>{
  await assert.rejects(()=>pocoClaimBossDropInTx(c,'a@jid',10,'2026-11-22'),RangeError)
 })
 
-test('expedição completa: batalha + 30 créditos únicos + 6 caixas + ranking + prêmio sem duplicação',async()=>{
+test('expedição completa: 30 créditos únicos + 5 drops diários + ranking sem duplicação',async()=>{
  const jid='a@jid',baseNow=POCO_SEASON.startAt+3600000
  const profile={heroId:'pecado_diane',level:200,effective_atk:500,effective_def:500}
  const tactic=(state)=>{
@@ -171,7 +171,7 @@ test('expedição completa: batalha + 30 créditos únicos + 6 caixas + ranking 
    assert.ok(!gained.has(floor))
    gained.add(floor);earnedCash+=award.cash;totalXp+=award.xp
   }
-  if(progress.bossDefeated){
+  if(POCO_SEASON.dropBossFloors.includes(progress.bossDefeated)){
    rolled.add(progress.bossDefeated)
    const loot=await pocoClaimBossDropInTx(c,jid,progress.bossDefeated,'2026-11-16',()=>.006)
    assert.equal(loot.kind,'legendary_box')
@@ -192,11 +192,11 @@ test('expedição completa: batalha + 30 créditos únicos + 6 caixas + ranking 
  assert.equal(state.status,'completed')
  assert.equal(state.floor,30)
  assert.equal(gained.size,30)
- assert.equal(rolled.size,6)
+ assert.equal(rolled.size,5)
  assert.equal(earnedCash,3500000)
  assert.equal(totalXp,43250)
  assert.equal(c.wallet.cash,3500000)
- assert.equal(c.items.get(POCO_BOX_LEGEND_ID),6)
+ assert.equal(c.items.get(POCO_BOX_LEGEND_ID),5)
  const ranks=pocoFinalLeaderboard([{key:POCO_LIVE_PLAYER_PREFIX+jid,value:{season:POCO_SEASON.id,name:'Participante',best}}])
  assert.equal(ranks[0].floor,30)
  assert.equal(ranks[0].turns,best.turns)
@@ -209,7 +209,7 @@ test('expedição completa: batalha + 30 créditos únicos + 6 caixas + ranking 
  const resend=await pocoOpenBoxInTx(c,jid,'legendary','msg-alfa',()=>.9)
  assert.equal(chest.kind,'box')
  assert.equal(resend.alreadyClaimed,true)
- assert.equal(c.items.get(POCO_BOX_LEGEND_ID),5)
+ assert.equal(c.items.get(POCO_BOX_LEGEND_ID),4)
  assert.equal(c.wallet.cash,28500000+chest.cash)
  const firstAgain=await pocoClaimFloorInTx(c,jid,1,{grantExp:()=>{throw new Error('exp duplicada')}})
  assert.equal(firstAgain.alreadyClaimed,true)
