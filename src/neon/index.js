@@ -42,7 +42,7 @@ getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, st
 getPaymentLink, setPaymentLink,
 createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
 approveSubscriptionOrder, cancelSubscriptionOrder,
-createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket,
+createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket, isSupportUserBlocked, setSupportUserBlocked,
 saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
 saveSnipeMessage, markSnipeDeleted, getLastDeletedSnipe, cleanupSnipeMessages,
 openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
@@ -5561,6 +5561,10 @@ await reply(
 )
 }
 const supportMenu=async()=>{
+if(await isSupportUserBlocked(sender)){
+await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
+return
+}
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
 await reply(
 `🆘 *SUPORTE ALPHA BOT*
@@ -6043,6 +6047,11 @@ await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\
 clearQuickFlow(chat,sender)
 await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
 }
+return true
+}
+if((flow.stage==='support_menu'||flow.stage==='support_message') && await isSupportUserBlocked(sender)){
+clearQuickFlow(chat,sender)
+await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
 return true
 }
 if(flow.stage==='support_menu'){
@@ -11126,7 +11135,30 @@ await sock.sendMessage(chat,{react:{text:'❌',key:msg.key}})
 const reason=String(err?.message||'')
 await reply('❌ '+(/tamanho|limite|512 KB|30 segundos|Mídia|mídia/.test(reason)?reason:'Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.'))
 }finally{stickerCommandBusy=false}
+ } else if(['bloquearsuporte','liberarsuporte'].includes(cmd)){
+if(!isOwner){await reply('⛔ Apenas o proprietário pode alterar restrições do suporte.');continue}
+const mentioned=mentionsOf(msg)[0]
+if(!mentioned){
+await reply('Uso: *!'+cmd+' @pessoa*. Marque a pessoa usando a menção real do WhatsApp.')
+continue
+}
+const target=await resolveVerifiedAdminTarget(sock,chat,mentioned,msg)
+if(!target){
+await reply('⚠️ Não consegui verificar a identidade da pessoa marcada. Peça que envie !saldo no grupo e marque novamente. Nenhuma restrição foi alterada.')
+continue
+}
+if(target===sender||target===ownerJid){
+await reply('⛔ Não é permitido restringir o próprio proprietário.')
+continue
+}
+const blocked=cmd==='bloquearsuporte'
+await setSupportUserBlocked(target,blocked,sender)
+await reply(blocked?'🔒 Usuário impedido de abrir novos chamados em qualquer conversa.':'✅ Suporte liberado novamente para este usuário.')
 } else if(['suporte','support','ajuda'].includes(cmd)){
+if(await isSupportUserBlocked(sender)){
+await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
+continue
+}
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
 await reply(
 `🆘 *SUPORTE ALPHA BOT*
