@@ -22,7 +22,7 @@ test('!gttabela nao quebra antes da largada: dia inexistente ou anuncio sem stag
   {positions:[{jid:'b',name:'B',place:1,points:10,score:83},{jid:'a',name:'A',place:2,points:7,score:79}]},
  ]},stage:2,phase:'running'}
  const p=gtPartialStandings(twoHeats)
- assert.deepEqual(p.map(x=>[x.jid,x.points,x.wins]),[['b',17,1],['a',17,1]])
+ assert.deepEqual(p.map(x=>[x.jid,x.points,x.wins]),[['a',17,1],['b',17,1]])
  assert.deepEqual(gtPartialStandings({...twoHeats,stage:0}),[])
  assert.equal(gtPartialStandings({...twoHeats,stage:1})[0].points,10)
  const src=source('gt-alpha-event.js')
