@@ -50,8 +50,11 @@ export function pocoRememberMessage(session,messageId){
 export async function pocoDispatchActionPrompt({reply,message,token,confirm,clock=Date.now}){
  if(typeof reply!=='function'||typeof confirm!=='function'||typeof clock!=='function')
   throw new TypeError('Envio precisa de transporte e confirmação transacional')
- await reply(message)
+ const sent=await reply(message)
  if(!token)return {sent:true,confirmed:false}
+ // O transporte precisa devolver a chave da mensagem criada pelo Baileys.
+ // Promise resolvida sem WAMessage não comprova envio: sem penalidade de tempo.
+ if(!sent?.key?.id)return {sent:false,confirmed:false}
  const sentAt=clock()
  return {sent:true,confirmed:Boolean(await confirm(token,sentAt))}
 }
