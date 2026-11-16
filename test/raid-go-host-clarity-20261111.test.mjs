@@ -47,6 +47,7 @@ test('Código mantém autorização host-only e recibo de status exibe o host',(
  assert.match(games,/resolveRaidRoom\(c,chat,level\|\|null,\{host,lobbyOnly:true\}\)/)
  assert.match(games,/raidGoUnavailableMessage\(\{rooms:visible,level,sender:host,now:Date\.now\(\)\}\)/)
  assert.match(main,/👑 Host:/)
- assert.match(main,/Somente o host pode iniciar com/)
+ assert.match(main,/somente o host pode iniciar\./)
+ assert.match(main,/Você é o host desta sala\. Inicie com/)
  assert.match(main,/!entrar '\+requestedRoom\.level/)
 })
