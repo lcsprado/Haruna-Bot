@@ -9205,7 +9205,7 @@ try{
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
 await progressDailyMission(sender,'game')
 clearQuickFlow(chat,sender)
-await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n👥 Participantes: *1/5*\n\n✅ Você já pode iniciar *solo* com *!go*.\n👥 Se quiser, outros jogadores ainda podem entrar antes de começar.\n🚀 Quando estiver pronto, use *!go*.`)
+await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name}*${r.slug?'':' — Lv.'+r.level}\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n👥 Participantes: *1/5*\n\n✅ Você já pode iniciar *solo* com *!go*.\n👥 Se quiser, outros jogadores ainda podem entrar antes de começar.\n🚀 Quando estiver pronto, use *!go*.`)
 }catch(err){
 await reply('❌ '+(err?.message||'Não foi possível abrir essa Raid.'))
 }
@@ -13342,8 +13342,8 @@ return await reply(text)
 }
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
 await progressDailyMission(sender,'game')
-const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+const raidNo=raidCatalog.filter(x=>!x.slug).findIndex(x=>Number(x.level)===Number(r.level))+1
+await reply(`⚔️ *SALA DA ${r.slug?raidPublicName(r).toUpperCase():'RAID '+raidNo} ABERTA!*\n\n👹 *${r.name}*${r.slug?'':' — Lv.'+r.level}\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${raidPublicArg(r)}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${raidPublicArg(r)}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
@@ -13351,28 +13351,31 @@ const level=raidSelection(args[0],catalog)
 if(args[0]&&!level) return await reply('⚔️ Raid inválida. Use *!entrar bleach* ou consulte *!raid*.')
 const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
-const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo, mas a Raid dos Sete Pecados é difícil e recomenda equipe.`))
+const raidNo=catalog.filter(x=>!x.slug).findIndex(x=>Number(x.level)===Number(r.level))+1
+const raidTitle=r.slug?raidPublicName(r):`Raid ${raidNo} — Lv.${r.level}`
+await reply(r.already?`⚔️ Você já está na *${raidTitle}*.`:(r.lateJoin?`⚔️ *ENTROU NA ${raidTitle.toUpperCase()} EM ANDAMENTO!*\n\n👹 ${r.name}${r.slug?'':' — Lv.'+r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA ${raidTitle.toUpperCase()}!*\n\n👹 ${r.name}${r.slug?'':' — Lv.'+r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${raidPublicArg(r)}*. Todas as Raids aceitam início solo, mas a Raid dos Sete Pecados é difícil e recomenda equipe.`))
 } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
 const level=raidSelection(args[0],catalog)
+if(args[0]&&!level)return await reply('⚔️ Raid inválida. Use !cancelarraide bleach ou consulte !raid.')
 const r=await cancelRaid(chat,sender,level||null)
-await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
+await reply(`✅ ${raidPublicName(r)} cancelada. Como a luta não começou, as chaves foram preservadas.`)
 } else if(['desistir','sairraid','abandonarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use *!desistir* dentro do grupo da Raid.')
 const catalog=getRaidCatalog()
 const level=raidSelection(args[0],catalog)||null
 if(args[0]&&!level) return await reply('⚔️ Raid inválida. Use *!desistir bleach* ou consulte *!raid*.')
 const r=await withdrawRaid(chat,sender,level)
-await reply(`🏳️ *DESISTÊNCIA DA RAID Lv.${r.level}*\n\n👤 *${r.playerName}* saiu da batalha.\n🧪 Nenhuma nova poção será usada automaticamente por este jogador.\n🔑 ${r.lobby?'A chave não foi consumida.':'A chave já utilizada não será devolvida.'}\n🎁 Sem recompensas por desistência.\n${r.ended?'🛑 Raid encerrada: nenhum participante restante.':`👥 ${r.remaining} participante(s) continuam na Raid.`}`)
+await reply(`🏳️ *DESISTÊNCIA DA ${raidPublicName(r)}*\n\n👤 *${r.playerName}* saiu da batalha.\n🧪 Nenhuma nova poção será usada automaticamente por este jogador.\n🔑 ${r.lobby?'A chave não foi consumida.':'A chave já utilizada não será devolvida.'}\n🎁 Sem recompensas por desistência.\n${r.ended?'🛑 Raid encerrada: nenhum participante restante.':`👥 ${r.remaining} participante(s) continuam na Raid.`}`)
 } else if(['go','iniciarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
 const level=raidSelection(args[0],catalog)
+if(args[0]&&!level)return await reply('⚔️ Raid inválida. Use !go bleach ou consulte !raid.')
 const r=await startRaid(chat,sender,level||null)
-const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
+const raidNo=catalog.filter(x=>!x.slug).findIndex(x=>Number(x.level)===Number(r.level))+1
+await reply(`🚨 *${r.slug?raidPublicName(r).toUpperCase():'RAID '+raidNo} INICIADA!*\n\n👹 *${r.name}*${r.slug?'':' — Lv.'+r.level}\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
 runRaidCombat(chat,Number(r.level),reply)
 } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
