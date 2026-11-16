@@ -117,7 +117,8 @@ export function pocoStart({profile={},attempt=1,seed=1,now=Date.now()}={}){
   return {state,cleared,bossDefeated:null};
 }
 export function pocoDecision(state,choice,{now=Date.now()}={}){
-  if(!state||state.status!=='active'||!state.boss)throw new Error('Nenhuma decisão ativa');
+  if(!state||state.status!=='active'||!state.boss)throw new Error('Nenhuma decisão ativa')
+  if(state.deliveryPending)throw new Error('Aguardando confirmação de envio da decisão pelo WhatsApp. Consulte !poco para reenviar.');
   if(now>state.deadline)return pocoEnd(state,'timeout',now);
   const action=Number(choice);
   if(!Number.isInteger(action)||action<1||action>4)throw new RangeError('Escolha 1, 2, 3 ou 4');
