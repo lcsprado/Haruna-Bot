@@ -103,6 +103,7 @@ import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
+import {startBingoNov16Scheduler,handleBingoNov16Command} from './bingo-20261116.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
@@ -9908,6 +9909,8 @@ void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] 
 startBingoRebootScheduler(sock)
 // Edição independente do Bingo de 15/11, às 19h30 de Brasília.
 startBingoNov15Scheduler(sock)
+// Edição de Bingo de 16/11 às 16h, independente e com prêmio de R$ 1 milhão.
+startBingoNov16Scheduler(sock)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
@@ -10528,6 +10531,7 @@ if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   continue
 }
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+if(await handleBingoNov16Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
