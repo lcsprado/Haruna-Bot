@@ -6,6 +6,9 @@ import {
  POCO_BOX_EPIC_ID,POCO_BOX_LEGEND_ID
 } from '../src/neon/poco-abismo-rewards.js'
 import {POCO_ABISMO_GEAR} from '../src/neon/poco-abismo-gear.js'
+import {POCO_SEASON,pocoStart,pocoDecision,pocoBossSkill,pocoScore,pocoBetter,pocoCashForFloor} from '../src/neon/poco-abismo-rules.js'
+import {pocoStagePrompt,pocoConfirmPrompt} from '../src/neon/poco-abismo-delivery.js'
+import {pocoFinalLeaderboard,POCO_LIVE_PLAYER_PREFIX} from '../src/neon/poco-abismo-settlement.js'
 
 function makeDb(){
  const claims=new Map(),items=new Map(),bound=new Map(),forged=new Map(),effective=new Map()
@@ -136,4 +139,79 @@ test('dia e Guardião inválidos são rejeitados',async()=>{
  const c=makeDb()
  await assert.rejects(()=>pocoClaimBossDropInTx(c,'a@jid',12,'2026-11-16'),RangeError)
  await assert.rejects(()=>pocoClaimBossDropInTx(c,'a@jid',10,'2026-11-22'),RangeError)
+})
+
+test('expedição completa: batalha + 30 créditos únicos + 6 caixas + ranking + prêmio sem duplicação',async()=>{
+ const jid='a@jid',baseNow=POCO_SEASON.startAt+3600000
+ const profile={heroId:'pecado_diane',level:200,effective_atk:500,effective_def:500}
+ const tactic=(state)=>{
+  const sk=pocoBossSkill(state.boss.floor,state.boss.turn)
+  return state.hp<state.stats.maxHp*.60 && state.potions>0 && sk.type==='barrier'?3
+   :sk.type==='charge'?2 :sk.type==='bleed' && state.skillCharges>0?4:1
+ }
+ function tryFinish(seed){
+  let state=pocoStart({profile,seed,now:baseNow}).state
+  for(let turn=0;state.status==='active'&&turn<140;turn++){
+   const token=pocoStagePrompt(state)
+   pocoConfirmPrompt(state,token,baseNow+turn*1000)
+   state=pocoDecision(state,tactic(state),{now:baseNow+turn*1000+100}).state
+  }
+  return state.status==='completed'
+ }
+ const winSeed=Array.from({length:60},(_,i)=>i+1).find(tryFinish)
+ assert.ok(winSeed,'uma estratégia deve ter possibilidade de chegar ao 30')
+ const c=makeDb()
+ const gained=new Set(),rolled=new Set()
+ let now=baseNow,run=pocoStart({profile,seed:winSeed,now}),state=run.state
+ let totalXp=0,earnedCash=0,best=null
+ const apply=async progress=>{
+  for(const floor of progress.cleared||[]){
+   const award=await pocoClaimFloorInTx(c,jid,floor,{grantExp:fixedXp})
+   assert.equal(award.alreadyClaimed,false)
+   assert.ok(!gained.has(floor))
+   gained.add(floor);earnedCash+=award.cash;totalXp+=award.xp
+  }
+  if(progress.bossDefeated){
+   rolled.add(progress.bossDefeated)
+   const loot=await pocoClaimBossDropInTx(c,jid,progress.bossDefeated,'2026-11-16',()=>.006)
+   assert.equal(loot.kind,'legendary_box')
+  }
+ }
+ await apply(run)
+ for(let turn=0;state.status==='active'&&turn<140;turn++){
+  const token=pocoStagePrompt(state)
+  const sentAt=now+50
+  assert.equal(pocoConfirmPrompt(state,token,sentAt),true)
+  now+=1000
+  run=pocoDecision(state,tactic(state),{now})
+  state=run.state
+  await apply(run)
+  const score=pocoScore(state,'Participante',jid)
+  if(pocoBetter(score,best))best=score
+ }
+ assert.equal(state.status,'completed')
+ assert.equal(state.floor,30)
+ assert.equal(gained.size,30)
+ assert.equal(rolled.size,6)
+ assert.equal(earnedCash,3500000)
+ assert.equal(totalXp,43250)
+ assert.equal(c.wallet.cash,3500000)
+ assert.equal(c.items.get(POCO_BOX_LEGEND_ID),6)
+ const ranks=pocoFinalLeaderboard([{key:POCO_LIVE_PLAYER_PREFIX+jid,value:{season:POCO_SEASON.id,name:'Participante',best}}])
+ assert.equal(ranks[0].floor,30)
+ assert.equal(ranks[0].turns,best.turns)
+ const prize=await pocoClaimRankPrizeInTx(c,jid,1)
+ const duplicatedPrize=await pocoClaimRankPrizeInTx(c,jid,1)
+ assert.equal(prize.cash,25000000)
+ assert.equal(duplicatedPrize.alreadyClaimed,true)
+ assert.equal(c.wallet.cash,28500000)
+ const chest=await pocoOpenBoxInTx(c,jid,'legendary','msg-alfa',()=>.01)
+ const resend=await pocoOpenBoxInTx(c,jid,'legendary','msg-alfa',()=>.9)
+ assert.equal(chest.kind,'box')
+ assert.equal(resend.alreadyClaimed,true)
+ assert.equal(c.items.get(POCO_BOX_LEGEND_ID),5)
+ assert.equal(c.wallet.cash,28500000+chest.cash)
+ const firstAgain=await pocoClaimFloorInTx(c,jid,1,{grantExp:()=>{throw new Error('exp duplicada')}})
+ assert.equal(firstAgain.alreadyClaimed,true)
+ assert.equal(c.wallet.cash,28500000+chest.cash)
 })
