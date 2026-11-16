@@ -87,7 +87,7 @@ function prompt(state){
 function report(s){
  const last=s.last
  if(!last)return '📋 Nenhuma tentativa encerrada até agora.'
- const descriptions={death:'Derrota',timeout:'Tempo esgotado',abandoned:'Desistência',completed:'Concluído'}
+ const descriptions={death:'Derrota',timeout:'Tempo esgotado',abandoned:'Desistência',completed:'Concluído',season_closed:'Temporada encerrada'}
  return '📋 *RELATÓRIO DO POÇO*'+
   '\nMotivo: '+(descriptions[last.reason]||last.reason)+
   '\n🏰 Último andar concluído: '+last.floor+
@@ -150,6 +150,10 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat}){
  }
  if(/^[1-4]$/.test(option)){
   const result=await mutate(sender,name,s=>{
+   if(now>=POCO_SEASON.endAt){
+    if(s.active){s.active=pocoEnd(s.active,'season_closed',now).state;finish(s,sender)}
+    return {message:'🏁 Encerrado o prazo competitivo de sexta às 21h.\n'+report(s)}
+   }
    if(expire(s,sender,now))return {message:'⏳ Prazo esgotado; tentativa encerrada.\n'+report(s)}
    if(!s.active)return {message:'❌ Sem tentativa ativa. Use !poco iniciar.'}
    let progress
@@ -180,10 +184,14 @@ export function startPocoPreviewScheduler(sock){
   busy=true
   try{
    const now=Date.now()
-   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE key LIKE $1 AND (value->'active'->>'deadline')::bigint < $2 LIMIT 50",[PREFIX+'%',now])
+   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE key LIKE $1 AND value->'active' IS NOT NULL AND ((value->'active'->>'deadline')::bigint < $2 OR $2 >= $3) LIMIT 50",[PREFIX+'%',now,POCO_SEASON.endAt])
    for(const row of rows){
     const jid=row.key.slice(PREFIX.length)
     const result=await mutate(jid,row.value?.name,s=>{
+     if(now>=POCO_SEASON.endAt && s.active){
+      s.active=pocoEnd(s.active,'season_closed',now).state;finish(s,jid)
+      return {chat:s.chat,name:s.name,text:'🏁 *POÇO DO ABISMO — TEMPORADA ENCERRADA*\n'+s.name+', o recorde ficou congelado no horário oficial.'}
+     }
      if(!expire(s,jid,now))return null
      return {chat:s.chat,name:s.name,text:'⏳ *POÇO DO ABISMO — TEMPO ESGOTADO*\n'+s.name+
       ', você não respondeu em 2 minutos. Seu recorde foi preservado. Próxima tentativa do zero.'}
