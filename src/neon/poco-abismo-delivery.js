@@ -62,3 +62,16 @@ export async function pocoDispatchActionPrompt({reply,message,token,confirm,cloc
  const sentAt=clock()
  return {sent:true,confirmed:Boolean(await confirm(token,sentAt))}
 }
+
+/**
+ * Números soltos só pertencem ao Poço se o mesmo jogador tiver
+ * combate ativo no mesmo chat e na mesma temporada.
+ * Fora disso, quiz, inventário e demais menus seguem seu fluxo normal.
+ */
+export function pocoNumericChoiceInSession({session,chat,season}={}){
+ return Boolean(
+  typeof chat==='string'&&chat.length>0&&
+  session?.season===season&&session?.chat===chat&&
+  session.active?.status==='active'&&session.active.boss
+ )
+}
