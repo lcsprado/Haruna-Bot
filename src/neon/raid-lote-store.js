@@ -130,6 +130,18 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       [jid,openStatuses]
     )).rows[0]
     if(active)throw new Error('Ja existe pacote de Raid em andamento')
+    // Passe Supremo do leilão: até 3 PACOTES em 24h, sem mudar preços, drops ou max 10 tentativas por pacote.
+    const pass=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',
+      ['auction_raid_lote_pass_20261115:'+jid])).rows[0]?.value
+    const passActive=Number(pass?.activatedAt)>0&&Number(pass?.expiresAt)>Date.now()&&
+      Number(pass?.maxPackages)===3
+    if(passActive){
+      const used=(await c.query(
+        'SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',
+        [jid,pass.activatedAt,pass.expiresAt]
+      )).rows[0]
+      if(Number(used?.n||0)>=3)throw new Error('Passe Supremo esgotado: máximo de 3 pacotes em 24h.')
+    }
     // Renova as 00:00 de Brasilia, nao 24h apos a compra anterior.
     // Calcula o inicio do dia no fuso do jogo antes de comparar TIMESTAMPTZ;
     // o limite vale para todos os pacotes comprados na mesma data local.
@@ -139,7 +151,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       WHERE jid=$1
         AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
     `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
-    if(Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
+    if(!passActive&&Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
       throw new Error('Limite de 10 tentativas por dia. Renova as 00:00 (horario de Brasilia).')
     const publicRaid=(await c.query(`
       SELECT 1 FROM trevo_games
