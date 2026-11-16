@@ -15,7 +15,7 @@ import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
 import {pocoFinalLeaderboard,pocoSettleFinalRanking,POCO_LIVE_PLAYER_PREFIX,POCO_LIVE_SETTLEMENT_KEY} from './poco-abismo-settlement.js'
 
-const ENABLED=process.env.POCO_ABISMO_LIVE==='true'&&process.env.POCO_ABISMO_PREVIEW!=='true'
+const ENABLED=process.env.POCO_ABISMO_LIVE==='true'&&process.env.POCO_ABISMO_PREVIEW!=='true'&&process.env.POCO_BETA_GROUP_PREVIEW!=='true'
 const PREFIX=POCO_LIVE_PLAYER_PREFIX
 let initPromise=null
 function ensureReady(){
