@@ -190,8 +190,8 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
       assert.deepEqual(ten.map(x=>Number(x.seq)),[1,2,3,4,5,6,7,8,9,10])
       assert.ok(ten.every(x=>x.status==='won'))
       assert.ok(ten.every(x=>x.reward_summary?.rewards?.length===1))
-      const manualCash=Math.floor(cfg.keyPrice*1.08)+Math.floor(cfg.cashPool*.16)
-      const cashExpected=cfg.keyPrice+Math.ceil(cfg.keyPrice*.1)+Math.floor((manualCash-cfg.keyPrice)*.5)
+      const baseManualCashForCashTest=Math.floor(cfg.keyPrice*1.08)+Math.floor(cfg.cashPool*.16)
+      const cashExpected=cfg.keyPrice+Math.ceil(cfg.keyPrice*.1)+Math.floor((baseManualCashForCashTest-cfg.keyPrice)*.5)
       assert.ok(ten.every(x=>Number(x.reward_summary.rewards[0].cash)===cashExpected),
         'A vitória do RaidLote comum deve gerar 50% do lucro manual após chave e taxa')
       const xpExpected=Math.floor(cfg.xpPool*.6)
