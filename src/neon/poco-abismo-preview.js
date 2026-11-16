@@ -7,7 +7,7 @@ import {getActivePlayableHero} from './playable-heroes.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
 import {
  POCO_SEASON,pocoStart,pocoDecision,pocoEnd,pocoScore,pocoBetter,
- pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
+ pocoRankingCompare,pocoBetaRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
 import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
@@ -17,7 +17,7 @@ const ENABLED=BETA_ONLY||process.env.POCO_ABISMO_PREVIEW==='true'
 const PREFIX='poco_abismo_preview_20261116:player:'
 const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
-const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
+const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender'+(BETA_ONLY?' (reduz dano e contra-ataca)':'')+'\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
 async function sendActionPrompt(jid,name,reply,result){
  // Falha no transporte preserva o prompt pendente; confirmar apenas
  // depois de envio aceito e transação de ACK concluída.
@@ -59,7 +59,7 @@ async function mutate(jid,name,fn){
 function updateBest(s,jid){
  if(!s.active)return
  const score=pocoScore(s.active,s.name,jid)
- if(pocoBetter(score,s.best))s.best=score
+ if(BETA_ONLY?(!s.best||pocoBetaRankingCompare(score,s.best)<0):pocoBetter(score,s.best))s.best=score
 }
 function finish(s,jid){
  if(!s.active||s.active.status==='active')return
@@ -127,10 +127,10 @@ function status(s){
 }
 async function ranking(){
  const {rows}=await db.query('SELECT key,value FROM trevo_settings WHERE LEFT(key,LENGTH($1))=$1 AND value->>\'season\'=$2',[PREFIX,POCO_SEASON.id])
- const ranked=rows.filter(r=>r.value?.best).map(r=>r.value.best).sort(pocoRankingCompare).slice(0,15)
+ const ranked=rows.filter(r=>r.value?.best).map(r=>r.value.best).sort(BETA_ONLY?pocoBetaRankingCompare:pocoRankingCompare).slice(0,15)
  return '🏆 *POÇO — RANKING PRELIMINAR*\n'+
   (ranked.length?ranked.map((p,i)=>(i+1)+'º '+String(p.name).slice(0,48)+' — andar '+p.floor+' • '+p.turns+' rodadas').join('\n'):'Nenhum resultado')+
-  '\n📌 No empate de andar, vence quem gastou menos rodadas virtuais.'
+  (BETA_ONLY?'\n📌 No empate de andar, vence quem preservou maior % de HP; depois, menos rodadas.':'\n📌 No empate de andar, vence quem gastou menos rodadas virtuais.')
 }
 export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,messageId,betaAllowed=false}){
  if(!ENABLED||!['poco','pocorank'].includes(cmd))return false
@@ -154,7 +154,7 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
    if(pocoMessageSeen(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    expire(s,sender,now)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
-   const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now})
+   const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now,balanceVersion:BETA_ONLY?'beta-v2':'legacy'})
    s.attempts++;s.active=start.state;s.chat=chat
    updateBest(s,sender)
    recordRewards(s,start,now)
