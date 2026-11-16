@@ -1,3 +1,4 @@
+import {LEGENDARY_BOX_SHIELD_IDS} from './anti-crit-shields.js'
 // Equipamentos exclusivos do pool da Caixa Lendária.
 export const LEGENDARY_BOX_GEAR=Object.freeze([
   {
@@ -121,14 +122,15 @@ export const LEGENDARY_BOX_GEAR=Object.freeze([
     "crit": 0.02
   }
 ].map(item=>Object.freeze({...item,description:'Lendário superior exclusivo da Caixa Lendária.'})))
-// Probabilidade idêntica por equipamento: 5 antigos + 12 novos = 17 opções.
+// Pool legado: 5 antigos + 12 novos = 17 opções. Caixa Lendária adiciona 3 escudos exclusivos (20); Caixa Épica preserva os 17 originais.
 export const LEGENDARY_BOX_WEIGHTS=Object.freeze({existing:1,new:1})
 
-export function pickLegendaryBoxGear(existingIds,random=Math.random){
+export function pickLegendaryBoxGear(existingIds,random=Math.random,{includeShields=false}={}){
   if(!Array.isArray(existingIds)||!existingIds.length)throw new Error('Pool lendário original ausente')
   const pool=[
     ...existingIds.map(id=>({id,weight:LEGENDARY_BOX_WEIGHTS.existing})),
-    ...LEGENDARY_BOX_GEAR.map(item=>({id:item.id,weight:LEGENDARY_BOX_WEIGHTS.new}))
+    ...LEGENDARY_BOX_GEAR.map(item=>({id:item.id,weight:LEGENDARY_BOX_WEIGHTS.new})),
+    ...(includeShields?LEGENDARY_BOX_SHIELD_IDS.map(id=>({id,weight:LEGENDARY_BOX_WEIGHTS.new})):[])
   ]
   const total=pool.reduce((sum,item)=>sum+item.weight,0)
   const roll=Number(random())

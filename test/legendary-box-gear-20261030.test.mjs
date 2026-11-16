@@ -44,7 +44,7 @@ test('registro de catálogo e combate usa mecanismo de equipamentos existente',(
 test('garantia lendária e chances de caixas não lendárias preservadas',()=>{
   assert.match(db,/caixa_lendaria: \{\s*label:'Caixa Lendária',minRarity:'legendary',legendary:1/)
   assert.match(db,/const itemId=rarity==='legendary'&&\(boxId==='caixa_lendaria'\|\|boxId==='caixa_epica'\)/)
-  assert.match(db,/\?pickLegendaryBoxGear\(LOOT_POOLS\.legendary\)\s*:pick\(LOOT_POOLS\[rarity\]\)/)
+  assert.match(db,/\?pickLegendaryBoxGear\(LOOT_POOLS\.legendary,Math\.random,\{includeShields:boxId==='caixa_lendaria'\}\)\s*:pick\(LOOT_POOLS\[rarity\]\)/)
   assert.match(db,/legendary:\['excalibur','katana_divina','armadura_titan','armadura_divina','bota_celestial'\]/)
   for(const item of LEGENDARY_BOX_GEAR)assert.ok(!original.includes(item.id))
 })
@@ -70,7 +70,7 @@ test('Caixa Épica mantém chance mínima lendária e sorteia os mesmos 17 equip
   assert.match(db,/caixa_epica: \{\s*label:'Caixa Épica',\s*minRarity:'rare',\s*legendary:0\.01/)
   assert.match(db,/cashChance:0\.12,\s*expChance:0\.08/)
   assert.match(db,/const itemId=rarity==='legendary'&&\(boxId==='caixa_lendaria'\|\|boxId==='caixa_epica'\)/)
-  assert.match(db,/\?pickLegendaryBoxGear\(LOOT_POOLS\.legendary\)\s*:pick\(LOOT_POOLS\[rarity\]\)/)
+  assert.match(db,/\?pickLegendaryBoxGear\(LOOT_POOLS\.legendary,Math\.random,\{includeShields:boxId==='caixa_lendaria'\}\)\s*:pick\(LOOT_POOLS\[rarity\]\)/)
   const rawLegendaryChance=0.01
   const itemPathProbability=1-0.12-0.08
   const oddsAnyLegendary=itemPathProbability*rawLegendaryChance
