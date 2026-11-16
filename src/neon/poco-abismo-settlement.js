@@ -61,9 +61,9 @@ export async function pocoSettleFinalRanking(db,now=Date.now()){
   }
   const settlement={settled:true,season:POCO_SEASON.id,closedAt:POCO_SEASON.endAt,
    settledAt:now,winners,eligibleCount:ranked.length}
-  await c.query(\`INSERT INTO trevo_settings(key,value,updated_at)
+  await c.query(`INSERT INTO trevo_settings(key,value,updated_at)
    VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint)
-   ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at\`,
+   ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
    [POCO_LIVE_SETTLEMENT_KEY,JSON.stringify(settlement)])
   await c.query('COMMIT')
   return {...settlement,alreadySettled:false}
