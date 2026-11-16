@@ -66,6 +66,7 @@ startNumberGame, guessNumber,
 startBoss, attackBoss, settleExpiredWeeklyBoss,getWeeklyGolemChoiceStatus,claimWeeklyGolemChoice, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
 tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
+import {raidSelection,raidPublicName,raidPublicArg} from './named-collab-raids.js'
 import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
 getDailyMissions, progressDailyMission, claimDailyMissions,
@@ -13285,26 +13286,20 @@ return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
-const resolveRaidLevel=value=>{
-const n=collabRaidNumber(value)
-if(!n) return 0
-if(raidCatalog.some(r=>Number(r.level)===n)) return n
-if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
-return 0
-}
+const resolveRaidLevel=value=>raidSelection(value,raidCatalog)
 const requested=resolveRaidLevel(args[0])
-if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
+if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *!raid bleach*, *!raid pecados* ou consulte *!raid*.')
 const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
 const players=Object.values(requestedRoom.players||{})
-let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n👑 Host: *${String(requestedRoom.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,60)}*\n`
+let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name}* • ${raidPublicName(requestedRoom)}\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n👑 Host: *${String(requestedRoom.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,60)}*\n`
 if(requestedRoom.status==='lobby'){
 const remaining=Math.max(1,Math.ceil((Number(requestedRoom.expiresAt||0)-Date.now())/60000))
 text+='\n⏳ Sala expira em aproximadamente *'+remaining+' min* se não iniciar.'
 text+=requestedRoom.host===sender
- ?'\n✅ Você é o host desta sala. Inicie com *!go '+requestedRoom.level+'*.'
- :'\n👥 Esta sala já foi aberta por '+String(requestedRoom.hostName||'outro jogador').replace(/[\r\n*]/g,' ').slice(0,60)+'. Use *!entrar '+requestedRoom.level+'* para participar; somente o host pode iniciar.'
+ ?'\n✅ Você é o host desta sala. Inicie com *!go '+raidPublicArg(requestedRoom)+'*.'
+ :'\n👥 Esta sala já foi aberta por '+String(requestedRoom.hostName||'outro jogador').replace(/[\r\n*]/g,' ').slice(0,60)+'. Use *!entrar '+raidPublicArg(requestedRoom)+'* para participar; somente o host pode iniciar.'
 }else{
 text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
 runRaidCombat(chat,Number(requestedRoom.level),reply)
@@ -13316,21 +13311,31 @@ let text='⚔️ *RAIDS DO ALPHA*\n\n'
 if(rooms.length){
 text+='🏠 *SALAS ABERTAS*\n'
 for(const room of rooms.sort((a,b)=>Number(a.level)-Number(b.level))){
-const n=raidCatalog.findIndex(r=>Number(r.level)===Number(room.level))+1
-text+=`• *Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores • Host: ${String(room.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,40)}\n`
+const n=raidCatalog.filter(r=>!r.slug).findIndex(r=>Number(r.level)===Number(room.level))+1
+text+=`• *${room.slug?raidPublicName(room):'Raid '+n+' — Lv.'+room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores • Host: ${String(room.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,40)}\n`
 }
 text+='\n'
 }
 text+='➕ *RAIDS DISPONÍVEIS PARA ABRIR*\n'
 let available=0
-raidCatalog.forEach((r,i)=>{
+raidCatalog.filter(r=>!r.slug).forEach((r,i)=>{
 const alreadyOpen=rooms.some(room=>Number(room.level)===Number(r.level))
 if(alreadyOpen) return
 available++
 text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'Material de Raid'}*\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min • 🛡️ CRIT -${critResistancePercent(r.critResistance)} p.p.\n`
 })
-if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
-text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
+if(!available) text+='Nenhuma Raid numérica livre neste grupo.\n'
+const namedRaids=raidCatalog.filter(r=>r.slug)
+if(namedRaids.length){
+ text+='\n🌟 *RAIDS DE COLLAB*\n'
+ for(const r of namedRaids){
+  const room=rooms.find(x=>Number(x.level)===Number(r.level))
+  text+='• *!raid '+r.slug+'* — '+r.name+' • '+(room?'sala '+(room.status==='lobby'?'aguardando':'em andamento'):'disponível')+'\n'
+  text+='  🔑 R$ '+fmt(r.keyPrice)+' • ⏱️ '+r.durationMinutes+' min • nível mínimo '+r.minLevel+'\n'
+ }
+}
+
+text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2*, *!raid 75* ou *!raid bleach*\n'
 if(rooms.length) text+='👉 *Entrar:* !entrar NÚMERO ou !entrar NÍVEL\n'
 text+='\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
 return await reply(text)
@@ -13342,9 +13347,8 @@ await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.$
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=collabRaidNumber(args[0])
-const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
-if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
+const level=raidSelection(args[0],catalog)
+if(args[0]&&!level) return await reply('⚔️ Raid inválida. Use *!entrar bleach* ou consulte *!raid*.')
 const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
@@ -13352,23 +13356,20 @@ await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.leve
 } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=collabRaidNumber(args[0])
-const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
+const level=raidSelection(args[0],catalog)
 const r=await cancelRaid(chat,sender,level||null)
 await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
 } else if(['desistir','sairraid','abandonarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use *!desistir* dentro do grupo da Raid.')
 const catalog=getRaidCatalog()
-const raw=collabRaidNumber(args[0])
-const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):null
-if(raw&&!level) return await reply('⚠️ Nível de Raid inválido. Exemplo: *!desistir 70*.')
+const level=raidSelection(args[0],catalog)||null
+if(args[0]&&!level) return await reply('⚔️ Raid inválida. Use *!desistir bleach* ou consulte *!raid*.')
 const r=await withdrawRaid(chat,sender,level)
 await reply(`🏳️ *DESISTÊNCIA DA RAID Lv.${r.level}*\n\n👤 *${r.playerName}* saiu da batalha.\n🧪 Nenhuma nova poção será usada automaticamente por este jogador.\n🔑 ${r.lobby?'A chave não foi consumida.':'A chave já utilizada não será devolvida.'}\n🎁 Sem recompensas por desistência.\n${r.ended?'🛑 Raid encerrada: nenhum participante restante.':`👥 ${r.remaining} participante(s) continuam na Raid.`}`)
 } else if(['go','iniciarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=collabRaidNumber(args[0])
-const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
+const level=raidSelection(args[0],catalog)
 const r=await startRaid(chat,sender,level||null)
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
 await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
