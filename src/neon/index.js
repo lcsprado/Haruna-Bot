@@ -101,6 +101,9 @@ import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
+import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
+import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
+import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {startBingoNov16Scheduler,handleBingoNov16Command} from './bingo-20261116.js'
@@ -9868,6 +9871,8 @@ scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whats
 scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGtAlphaScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
+startPocoPreviewScheduler(sock)
+startPocoLiveScheduler(sock)
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
 pokemonQuizEngine=createPokemonQuizEngine({db,
@@ -10530,6 +10535,18 @@ if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   await openRaidPetVoucherMenu(chat,sender,reply,args[0]??null)
   continue
 }
+// Piloto somente no grupo cujo título atual é confirmado pela API de grupos do Baileys.
+// Com POCO_BETA_GROUP_PREVIEW=true os demais grupos não recebem o comando Poço.
+// O controlador de pagamento real fica desabilitado enquanto houver piloto.
+if(process.env.POCO_BETA_GROUP_PREVIEW==='true'&&['poco','pocorank'].includes(cmd)){
+  const betaMeta=isGroup?await sock.groupMetadata(chat).catch(()=>null):null
+  const betaAllowed=pocoBetaGroupAllowed({chat,subject:betaMeta?.subject})
+  if(!betaAllowed)continue
+  if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||''),betaAllowed}))continue
+  continue
+}
+if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
+if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoNov16Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue

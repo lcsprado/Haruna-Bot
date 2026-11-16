@@ -1,3 +1,4 @@
+import {POCO_ABISMO_GEAR} from './poco-abismo-gear.js'
 // Escudos são equipamentos anti-crítico, não alteram atributos-base de heróis ou classes.
 // Resistência reduz a chance efetiva (em pontos percentuais); guarda reduz somente
 // o bônus do dano crítico, nunca o dano normal.
@@ -10,7 +11,8 @@ export const ANTI_CRIT_SHIELDS=Object.freeze([
   Object.freeze({id:'bastiao_eclipse',name:'Bastião do Eclipse',category:'shield',rarity:'legendary',price:0,critResist:.12,critGuard:.18,description:'Recompensa exclusiva do Cerco ao Castelo de 14/11/2026: -12 p.p. de chance de crítico inimigo e -18% do bônus crítico recebido. Não vendido na loja.'}),
   Object.freeze({id:'escudo_monarca_caido_20261116',name:'Escudo do Monarca Caído',category:'shield',rarity:'legendary',price:0,critResist:.09,critGuard:.15,description:'Exclusivo da Caixa Lendária: -9 p.p. de chance CRIT inimigo e -15% do bônus de dano CRIT recebido.'}),
   Object.freeze({id:'muralha_abismo_imperial_20261116',name:'Muralha do Abismo Imperial',category:'shield',rarity:'legendary',price:0,critResist:.105,critGuard:.125,description:'Exclusivo da Caixa Lendária: -10,5 p.p. de chance CRIT inimigo e -12,5% do bônus de dano CRIT recebido.'}),
-  Object.freeze({id:'baluarte_trovao_eterno_20261116',name:'Baluarte do Trovão Eterno',category:'shield',rarity:'legendary',price:0,critResist:.10,critGuard:.14,description:'Exclusivo da Caixa Lendária: -10 p.p. de chance CRIT inimigo e -14% do bônus de dano CRIT recebido.'})
+  Object.freeze({id:'baluarte_trovao_eterno_20261116',name:'Baluarte do Trovão Eterno',category:'shield',rarity:'legendary',price:0,critResist:.10,critGuard:.14,description:'Exclusivo da Caixa Lendária: -10 p.p. de chance CRIT inimigo e -14% do bônus de dano CRIT recebido.'}),
+  ...POCO_ABISMO_GEAR.filter(x=>x.category==='shield').map(x=>Object.freeze({...x}))
 ]);
 export const LEGENDARY_BOX_SHIELD_IDS=Object.freeze([
   'escudo_monarca_caido_20261116',

@@ -50,7 +50,7 @@ test('Raid dos Sete Pecados substitui o Boss temporário sem forçar equipe',()=
  assert.equal(collabRaidBrazilDay(Date.parse('2026-10-25T02:59:00Z')),'2026-10-24')
  assert.equal(collabRaidBrazilDay(Date.parse('2026-10-25T03:01:00Z')),'2026-10-25')
  assert.match(games,/collabRaidEligible\(p\.damage,share\)/)
- assert.match(games,/const qty=lote\s+\?Math\.min\(raidLoteReward\(COLLAB_RAID_FRAGMENTS_PER_WIN,'fragment'\)/)
+ assert.match(games,/const qty=loteReduced\s+\?Math\.min\(raidLoteReward\(COLLAB_RAID_FRAGMENTS_PER_WIN,'fragment'\)/)
  assert.match(games,/:collabRaidPayout\(creditedToday,p\.damage,share\)/)
  assert.match(games,/SELECT value FROM trevo_settings WHERE key=\$1 FOR UPDATE/)
  assert.match(games,/if\(Number\(s\.hp\)<=0\)\{/)
@@ -67,7 +67,7 @@ test('Raid dos Sete Pecados substitui o Boss temporário sem forçar equipe',()=
 test('Fragmentos da Ascensão agora são exclusivos da forja; upgrades de nível usam dinheiro',()=>{
  assert.notEqual(COLLAB_FRAGMENT_ITEM,'fragmento_universal_raid')
  assert.match(db,/if\(payment!=='cash'\)/)
- assert.match(db,/const donors=collab\?sevenSinsForgePlan\(\{stars\}\)\.donorUpgradeRows/)
+ assert.match(db,/const donors=shieldForge\?0:collab\?sevenSinsForgePlan\(\{stars\}\)\.donorUpgradeRows/)
  assert.match(db,/const units=collab\?/)
  assert.match(db,/equipment_star_forge_collab_fragments/)
  const upgrading=db.split('export async function upgradeEquipment(')[1].split('export async function equipItem(')[0]

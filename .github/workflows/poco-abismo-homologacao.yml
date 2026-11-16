@@ -1,0 +1,48 @@
+name: poco-abismo-homologacao
+on:
+  push:
+    branches:
+      - feat/poco-abismo-temporada1-20261116
+  pull_request:
+    paths:
+      - 'src/neon/poco-abismo-*.js'
+      - 'test/poco-abismo-*.test.mjs'
+      - '.github/workflows/poco-abismo-homologacao.yml'
+jobs:
+  motor-regras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Checar sintaxe do motor e preview
+        run: |
+          node --check src/neon/poco-abismo-rules.js
+          node --check src/neon/poco-abismo-preview.js
+          node --check src/neon/poco-abismo-gear.js
+          node --check src/neon/poco-abismo-rewards.js
+          node --check src/neon/poco-abismo-delivery.js
+          node --check src/neon/poco-abismo-settlement.js
+          node --check src/neon/poco-abismo-live.js
+          node --check src/neon/index.js
+      - name: Rodar regras isoladas (sem banco nem prêmios)
+        run: node --test test/poco-abismo-temporada1.test.mjs test/poco-abismo-gear.test.mjs test/poco-abismo-rewards.test.mjs test/poco-abismo-delivery.test.mjs test/poco-abismo-beta-group.test.mjs test/poco-abismo-whatsapp-wiring.test.mjs test/poco-abismo-settlement.test.mjs
+
+  preservar-versao-oficial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar GT, garagem, NPCs removidos, inventário e artes
+        run: |
+          node --test \
+            test/gt-alpha.test.mjs \
+            test/npc-web-schema-bootstrap-20261116.test.mjs \
+            test/web-catalog-npc-ui.test.mjs \
+            test/web-rich-ui-preservation.test.mjs \
+            test/alpha-web-art-integrity-20261114.test.mjs

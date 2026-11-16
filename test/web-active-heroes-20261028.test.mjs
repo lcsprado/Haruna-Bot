@@ -8,53 +8,56 @@ const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8')
 const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8')
 const sw=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8')
 
-test('todos os sete herois possuem retratos correspondentes, sem sprites do Paladino',()=>{
-  const portraits={pecado_meliodas:'chara01',pecado_diane:'chara04',
-    pecado_ban:'chara05',pecado_king:'chara06',pecado_gowther:'chara07',
-    pecado_merlin:'chara08',pecado_escanor:'chara09'}
-  for(const [hero,portrait] of Object.entries(portraits)){
-    assert.ok(app.includes(hero+":{name:"),hero)
-    assert.ok(app.includes("portrait:'"+portrait+"'"),hero)
-  }
-  assert.match(app,/tv-tokyo\.co\.jp\/anime\/7-taizai_funnu\/images\/chara\//)
-  assert.match(app,/function characterVisual\(ch,className\)/)
-  assert.match(app,/characterVisual\(ch,'combat-character-art'\)/)
-  assert.match(app,/characterVisual\(mine,'duel-character-svg'\)/)
+test('sete heróis mantêm retratos individuais no atlas WebP, sem links externos ou Paladino',()=>{
+ const portraits={pecado_meliodas:'chara01',pecado_diane:'chara04',
+   pecado_ban:'chara05',pecado_king:'chara06',pecado_gowther:'chara07',
+   pecado_merlin:'chara08',pecado_escanor:'chara09'}
+ for(const [hero,portrait] of Object.entries(portraits)){
+   assert.ok(app.includes(hero+':{name:'),hero)
+   assert.ok(app.includes("portrait:'"+portrait+"'"),hero)
+ }
+ assert.match(app,/function characterVisual\(ch,className\)/)
+ assert.ok(app.includes("return petCroppedSprite(ch.id,(className||'')+' collab-modern-portrait',ch.name)"))
+ assert.ok(!app.includes('tv-tokyo.co.jp/anime/7-taizai_funnu/images/chara/'),'não voltar a URLs externas quebradas')
+ assert.match(app,/characterVisual\(character,'character-official-art'\)/)
+ assert.match(app,/duelFighterPortrait\(mine\)/)
 })
 
-test('ficha e seleção usam heroi ativo, classe salva e progressao real',()=>{
-  const picked=app.slice(app.indexOf('function selectedCharacter(){'),app.indexOf('function classRule('))
-  assert.match(picked,/activePlayableHero\(\)/)
-  assert.match(picked,/selectedClassCharacter\(\)/)
-  const heroCards=app.slice(app.indexOf('function renderPlayableHeroes(){'),app.indexOf('function renderCharacter(){'))
-  assert.match(heroCards,/characterVisual\(character,'character-official-art'\)/)
-  assert.match(heroCards,/h\.petLevel/)
-  assert.match(heroCards,/h\.masteryStage/)
-  const character=app.slice(app.indexOf('function renderCharacter(){'),app.indexOf('function renderPets(){'))
-  assert.match(character,/const activeHero=activePlayableHero\(\)/)
-  assert.match(character,/const selected=selectedClassCharacter\(\)/)
-  assert.match(character,/collab-current-hero/)
-  assert.match(character,/const active=!activeHero&&applied&&ch\.id===selected\.id/)
-  assert.match(character,/const saved=Boolean\(activeHero&&applied&&ch\.id===selected\.id\)/)
-  assert.match(character,/Classe preservada/)
-  assert.match(app,/collab-home-active/)
+test('herói ativo e classe salva permanecem separados na Web e na seleção',()=>{
+ const selected=app.slice(app.indexOf('function selectedCharacter(){'),app.indexOf('function classRule('))
+ assert.match(selected,/ui\.data\.combatProfile\.class_applied/)
+ assert.match(selected,/ui\.data\.combatProfile\.class_id/)
+ const heroes=app.slice(app.indexOf('function renderPlayableHeroes(){'),app.indexOf('const PET_TEAM_SLOT_LABELS=',app.indexOf('function renderPlayableHeroes(){')))
+ assert.match(heroes,/const active=activePlayableHero\(\)/)
+ assert.match(heroes,/h\.petLevel/)
+ assert.match(heroes,/h\.masteryStage/)
+ assert.match(heroes,/data-character-select/)
+ const character=app.slice(app.indexOf('function renderCharacter(){'),app.indexOf('function renderPlayableHeroes(){'))
+ assert.match(character,/const selected=selectedCharacter\(\)/)
+ assert.match(character,/const activeHero=activePlayableHero\(\)/)
+ assert.match(character,/const locked=Boolean\(activeHero\)/)
+ assert.match(character,/collab-current-hero/)
+ assert.match(character,/preservada enquanto o herói combate/)
 })
 
-test('atributos do heroi vêm do servidor autoritativo, nunca da classe simulada no cliente',()=>{
-  assert.match(api,/getPlayableHeroCombatSheet/)
-  assert.match(api,/activeHeroCombat=heroes\.some/)
-  assert.match(api,/profile,combatProfile,activeHeroCombat,inventory/)
-  assert.match(app,/ui\.data\?\.activeHeroCombat/)
-  assert.match(app,/effective_atk:hero\.atk/)
-  assert.match(app,/effective_def:hero\.def/)
-  assert.match(app,/effective_spd:hero\.spd/)
+test('servidor fornece atributos reais do herói e arena usa perfil efetivo do backend',()=>{
+ assert.match(api,/const activeHeroCombat=heroes\.some\(hero=>hero\.active\)/)
+ assert.match(api,/getPlayableHeroCombatSheet\(jid,combatProfile\)/)
+ assert.match(api,/profile,combatProfile,activeHeroCombat,inventory/)
+ assert.match(app,/const hero=activePlayableHero\(\)/)
+ assert.match(app,/const myCombat=profile\(\)/)
+ assert.match(app,/myCombat\.effective_atk/)
+ assert.match(app,/myCombat\.effective_def/)
+ assert.match(app,/myCombat\.effective_spd/)
+ assert.doesNotMatch(app,/effective_atk:hero\.atk/,'não simular stats do herói no navegador')
 })
 
-test('retratos responsivos e PWA com cache renovado',()=>{
-  assert.match(css,/collab-hero-portrait/)
-  assert.match(css,/collab-current-hero/)
-  assert.match(css,/collab-hero-card-art/)
-  assert.match(html,/\/app\.js\?v=20261028-seven-sins-web-v1/)
-  assert.match(html,/\/styles\.css\?v=20261028-seven-sins-web-v1/)
-  assert.match(sw,/alpha-rpg-pwa-20261028-seven-sins-web-v1/)
+test('retratos responsivos e cache Web atual sem recuperar aba NPC antiga',()=>{
+ assert.match(css,/collab-modern-portrait/)
+ assert.match(css,/collab-current-hero/)
+ assert.match(css,/collab-hero-card-art/)
+ assert.match(css,/@media\(max-width:610px\)\{\.collab-current-hero/)
+ assert.match(html,/\/app\.js\?v=20261116-no-npcs-v1/)
+ assert.match(html,/\/styles\.css\?v=20261116-no-npcs-v1/)
+ assert.match(sw,/alpha-rpg-pwa-20261116-no-npcs-v1/)
 })

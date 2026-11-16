@@ -28,5 +28,6 @@ test('loja descreve percentual, comando aplica regra e pets permanecem intactos'
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
   assert.match(games,/heal:playerPotionHealAmount\(x.item_id,maxHp\)/)
   assert.match(games,/heal:playerPotionHealAmount\(x.item_id,effectiveMaxHp\)/)
-  assert.match(games,/pocao_pet_suprema:800/)
+  assert.match(db,/pocao_pet_suprema: \{ heal:800, name:'Poção de Pet Suprema' \}/)
+  assert.match(games,/chooseEconomicPetPotion\(rows,missingHp,context\)/)
 })

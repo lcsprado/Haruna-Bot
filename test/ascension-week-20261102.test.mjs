@@ -35,7 +35,9 @@ test('hero bonus requires eligible player, hero below 70, and event window', () 
   assert.equal(ascensionHeroLevelDailyCap({playerLevel:299,heroLevel:20,nowMs:before}),550);
   assert.equal(heroLevelAwardPolicy({earnedToday:500,currentXp:6800,xp:150,playerLevel:299,heroLevel:69,nowMs:within}).amount,150);
   assert.equal(heroLevelAwardPolicy({earnedToday:550,currentXp:6800,xp:150,playerLevel:299,heroLevel:70,nowMs:within}).amount,0);
-  assert.equal(heroLevelAwardPolicy({earnedToday:550,currentXp:6800,xp:150,nowMs:after}).amount,0);
+  // Em 09/11 começou a Semana dos Sete Pecados: os limites diários foram suspensos até 15/11.
+  assert.equal(heroLevelAwardPolicy({earnedToday:550,currentXp:6800,xp:150,nowMs:after}).amount,150);
+  assert.equal(heroLevelAwardPolicy({earnedToday:550,currentXp:6800,xp:150,nowMs:Date.parse('2026-11-16T00:00:00-03:00')}).amount,0);
 });
 test('veteran goals validate eligible raid levels and existing activities', () => {
   assert.equal(ascensionVeteranTrial('raid',{raidLevel:20}),null);

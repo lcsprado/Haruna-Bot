@@ -8,8 +8,10 @@ const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
 const db=read('../src/neon/db.js')
 const app=read('../src/neon/index.js')
 
-test('nove escudos reconhecidos, quatro evoluções por modelo e preço definido',()=>{
-  assert.equal(ANTI_CRIT_SHIELDS.length,9)
+test('nove escudos oficiais e o do Poço reconhecidos, com quatro evoluções por modelo',()=>{
+  assert.equal(ANTI_CRIT_SHIELDS.length,10)
+  assert.equal(ANTI_CRIT_SHIELDS.filter(x=>x.id!=='poco_escudo_eternidade_20261116').length,9)
+  assert.equal(ANTI_CRIT_SHIELDS.find(x=>x.id==='poco_escudo_eternidade_20261116')?.price,0)
   assert.equal(shieldForgeCost('escudo_madeira',1),2000)
   assert.equal(shieldForgeCost('escudo_madeira',4),8000)
   assert.equal(shieldForgeCost('escudo_runico',1),22500)
@@ -55,7 +57,7 @@ test('os escudos entram na lista e a forja debita uma cópia e dinheiro atomicam
 })
 
 test('perfil e duelo PvP usam estrelas de escudo e bônus efetivos',()=>{
-  assert.match(db,/const stars=await getEquipmentStarLevels\(jid,\[p\.weapon_id,p\.armor_id,p\.helmet_id,p\.shield_id\]\)/)
+  assert.match(db,/const stars=await getEquipmentStarLevels\(jid,\[p\.weapon_id,p\.armor_id,p\.boot_id,p\.helmet_id,p\.shield_id\]\)/)
   assert.match(db,/levels\[p\.shield_id\]\|\|1,stars\[p\.shield_id\]\|\|1/)
   assert.match(db,/shield_stars:Number\(sh\.stars\|\|1\)/)
   assert.match(db,/starLevel\(attackerJid,a\.shield_id\)/)

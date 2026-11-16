@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {existsSync,readFileSync,statSync} from 'node:fs'
+import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from '../src/neon/equipment-sale-policy.js'
 
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -171,24 +172,47 @@ test('inventory and shop labels are localized',()=>{
 })
 
 test('web inventory separates equipped gear and protects it from every sale path',()=>{
-  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
+  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
   assert.ok(db.includes("END AS equipped_slot"),'inventory bootstrap must expose equipped slot')
   assert.ok(db.includes("AS sellable_quantity"),'inventory bootstrap must expose free quantity')
-  assert.ok(app.includes("['weapons','🗡️ Armas']"),'inventory must have an Armas section')
+  assert.ok(app.includes("['weapons','⚔️ Armas']"),'inventory must have an Armas section')
   assert.ok(app.includes("['armors','🛡️ Armaduras']"),'inventory must have an Armaduras section')
   assert.ok(app.includes("['boots','🥾 Botas']"),'inventory must have a Botas section')
   assert.ok(app.includes("['consumables','🧪 Consumíveis']"),'inventory must have a Consumíveis section')
   assert.ok(app.includes("['raid','⚔️ Itens de Raid']"),'inventory must have an Itens de Raid section')
   assert.ok(app.includes("🔒 Equipados"),'inventory must isolate equipped gear')
   assert.ok(app.includes("PROTEGIDO DE VENDA"),'equipped cards must visibly block selling')
-  assert.ok(app.includes("quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)"),'normal inventory sections must exclude the equipped copy')
+  assert.ok(app.includes("quantity:Math.max(0,Number(i.quantity||0)-(i.equipped?1:0))"),'inventory separates equipped physical copy')
+  assert.ok(app.includes('const sellQty=equippedCopy?0:Math.min(9999,qty,Math.max(0,Number(i.sellable_quantity||0)))'),'sell buttons use server-authorized sale limit')
+  assert.ok(db.includes('sellable_quantity:sale.maxSellable') && db.includes('regular_sellable_quantity:sale.regularSellable') && db.includes('can_sell_all:sale.canSellAll'),'inventory must expose authoritative policy, including bound items')
   const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
   assert.ok(db.includes("qty:Math.min(Number(i.quantity)-1,"),'duplicate sale must always preserve one copy')
-  assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,") && db.includes("equipmentSaleQuantityAllowed(sale,qty,owned)"),'market backend must preserve equipped copy')
+  assert.ok(app.includes("market_quantity:Math.max(0,Number(i.regular_sellable_quantity||0))"),'market UI must exclude equipped copies')
+  assert.ok(db.includes('const bound=await boundItemQuantity(client,jid,itemId)') &&
+    db.includes('const available=Math.min(Math.max(0,owned-Math.max(equipped,bound)),Math.max(0,owned-Number(paid?.qty||0)))') &&
+    db.includes('if(qty>available)'),
+    'market backend must reject bound, equipped and upgraded copies')
+})
+
+test('mercado exclui peças aprimoradas, forjadas e vinculadas enquanto inventário permite liquidação segura',()=>{
+ const upgraded=equipmentSalePolicy({quantity:3,upgradedQuantity:1})
+ assert.equal(upgraded.regularSellable,2)
+ assert.equal(upgraded.maxSellable,3)
+ assert.equal(equipmentSaleQuantityAllowed(upgraded,3,3),true)
+ const bound=equipmentSalePolicy({quantity:4,boundQuantity:2,upgradedQuantity:1})
+ assert.equal(bound.regularSellable,2)
+ assert.equal(bound.maxSellable,2)
+ assert.equal(equipmentSaleQuantityAllowed(bound,3,4),false)
+ const forged=equipmentSalePolicy({quantity:3,equipped:true,hasForge:true})
+ assert.equal(forged.regularSellable,2)
+ assert.equal(forged.canSellAll,false)
+ assert.equal(equipmentSaleQuantityAllowed(forged,3,3),false)
+ const unsellable=equipmentSalePolicy({quantity:10,sellable:false})
+ assert.equal(unsellable.maxSellable,0)
+ assert.equal(unsellable.regularSellable,0)
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
@@ -264,7 +288,7 @@ test('level rewards retain the explicit table and spaced endgame milestones with
 
 test('group web linking upgrades existing sessions',()=>{
   assert.ok(webApi.includes("UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2"),'!web in a group must upgrade existing sessions')
-  assert.ok(webApi.includes("groupLinked:true"),'auth health self-test must verify group binding')
+  assert.ok(webApi.includes('groupLinked:Boolean(row.chat_jid)'),'group binding must be derived from actual linked session')
 })
 
 test('corrected art sheet protects known broken assets',()=>{
@@ -339,8 +363,8 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'missing exclusive special art for '+species)
   }
-  assert.ok(app.includes('data-pet-adopt-direct'),'adoption cards must have a direct adoption action')
-  assert.ok(app.includes('data-pet-adopt-name'),'adoption cards must allow naming before adoption')
+  assert.ok(app.includes("if(p.source!=='raid')return '';"),'regular pet adoption remains intentionally outside Web')
+  assert.ok(app.includes('data-pet-summon'),'raid pet catalog must offer invocation only for eligible summons')
   assert.ok(app.includes('data-pet-rename='),'every owned pet card must expose rename by collection id')
   assert.ok(webApi.includes("renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))"),'web rename must target the selected pet id')
   assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
@@ -353,7 +377,8 @@ test('web item and pet galleries never render wrong stacked artwork',()=>{
   for(const id of ['energetico_pet','espada_madeira','espada_ferro','espada_aco','lanca_solar','excalibur','armadura_aco','bota_cacador','bota_relampago','bota_celestial','escama_vulcanica','insignia_eclipse','marca_insone','coroa_madrugada']){
     assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
   }
-  assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
+  assert.ok(app.includes('const visual=itemFallbackVisual(item);'),'blank sprite keys must render a category-safe fallback, not a broken image')
+  assert.ok(app.includes('if(key) return') && app.includes('item-art item-art-fallback'),'known sprites and unknown-item fallback must both render safely')
   assert.ok(app.includes('pet-image-fallback'),'exact pet images need a species-safe fallback')
   assert.ok(app.includes("classList.add(\\'pet-art-loaded\\')"),'exact pet art must hide fallback after loading')
   assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must leave the safe fallback visible')

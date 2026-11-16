@@ -14,10 +14,11 @@ test('Raid reanima pet de HP zero antes de avaliar roundActive',()=>{
 });
 test('Boss limita a uma poção por ataque, inclusive quando o pet começa desmaiado',()=>{
   const boss=games.slice(games.indexOf('export async function attackBoss('));
-  assert.ok(boss.includes('if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow)'));
+  assert.ok(boss.includes('if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow,Number(s.atk||18))'));
   assert.ok(boss.includes('!pet.petFainted && !autoPetHeal'));
   assert.ok(boss.includes('if(!switched&&!autoPetHeal)'));
-  assert.ok(boss.includes('Boolean(pet?.petFainted&&!petSwitch)'));
+  assert.ok(boss.includes('if(!pet.petFainted && !autoPetHeal && maxPetHp>0'), 'não gastar duas poções na mesma rodada');
+  assert.ok(boss.includes('if(!switched&&!autoPetHeal)'), 'reserva tem prioridade antes de gastar outra poção');
 });
 test('Raid e Boss não gastam poções em pet sem energia para voltar ao combate',()=>{
   assert.ok(games.includes("item_id='energetico_pet' AND quantity>0 FOR UPDATE"));

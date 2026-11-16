@@ -15,6 +15,7 @@ import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rul
 import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
 import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {WEEKLY_GOLEM_V2_GEAR,WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER} from './weekly-golem-v2-20261113.js'
+import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
@@ -562,6 +563,9 @@ starterItems.push(...ANTI_CRIT_SHIELDS.map(g=>[g.id,g.name,g.description,'shield
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(...LEGENDARY_BOX_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push(...WEEKLY_GOLEM_V2_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'event']))
+starterItems.push(...POCO_ABISMO_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
+starterItems.push(['caixa_epica_abissal_20261116','Caixa Épica Abissal','Caixa do Poço: dinheiro e recurso sorteado. Abrir por comando próprio.','special',0,'epic'])
+starterItems.push(['caixa_lendaria_abissal_20261116','Caixa Lendária Abissal','Caixa do Poço: dinheiro e recurso superior sorteado. Abrir por comando próprio.','special',0,'legendary'])
 starterItems.push([WEEKLY_GOLEM_V2_VOUCHER,'Direito de Escolha — Golem Forja V','Permite escolher um equipamento exclusivo ★★★★★ Lv.10 da edição de 13/11/2026. Use !golempremio 1, 2 ou 3.','special',0,'event'])
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
@@ -590,6 +594,8 @@ await db.query('UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id=$1',[HAL
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_GEAR.map(g=>g.id)])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_ALTAR_GEAR_IDS])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[[...WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER]])
+await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id=ANY($1::text[])',[POCO_ABISMO_GEAR_IDS])
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE,price=0 WHERE id=ANY($1::text[])",[['caixa_epica_abissal_20261116','caixa_lendaria_abissal_20261116']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
@@ -1618,9 +1624,9 @@ return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{le
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
-sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
-regular_sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
-can_sell_all:!r.equipped,
+sellable_quantity:sale.maxSellable,
+regular_sellable_quantity:sale.regularSellable,
+can_sell_all:sale.canSellAll,
 upgrade_refund:sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
 ? (upgradeRows.length?refundFromCopies:equipmentUpgradeSellRefund(r.rarity,r.equipment_level))
 : 0
@@ -2110,6 +2116,7 @@ const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
 ...Object.fromEntries(WEEKLY_GOLEM_V2_GEAR.map(({id,description,...gear})=>[id,gear])),
+...Object.fromEntries(POCO_ABISMO_GEAR.map(({id,description,rarity,price,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_ALTAR_NEW_GEAR.map(({id,cost,short,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
@@ -2287,7 +2294,8 @@ COALESCE(ub.level,1)::int AS boot_level,
 COALESCE(uh.level,1)::int AS helmet_level,
 CASE WHEN fw.level=COALESCE(uw.level,1) THEN fw.stars ELSE 1 END AS weapon_stars,
 CASE WHEN fa.level=COALESCE(ua.level,1) THEN fa.stars ELSE 1 END AS armor_stars,
-CASE WHEN fh.level=COALESCE(uh.level,1) THEN fh.stars ELSE 1 END AS helmet_stars
+CASE WHEN fh.level=COALESCE(uh.level,1) THEN fh.stars ELSE 1 END AS helmet_stars,
+CASE WHEN fb.level=COALESCE(ub.level,1) THEN fb.stars ELSE 1 END AS boot_stars
 FROM stats s
 LEFT JOIN equipment_upgrades uw ON uw.jid=s.jid AND uw.item_id=s.weapon_id
 LEFT JOIN equipment_upgrades ua ON ua.jid=s.jid AND ua.item_id=s.armor_id
@@ -2296,11 +2304,12 @@ LEFT JOIN equipment_upgrades uh ON uh.jid=s.jid AND uh.item_id=s.helmet_id
 LEFT JOIN equipment_star_forges fw ON fw.jid=s.jid AND fw.item_id=s.weapon_id
 LEFT JOIN equipment_star_forges fa ON fa.jid=s.jid AND fa.item_id=s.armor_id
 LEFT JOIN equipment_star_forges fh ON fh.jid=s.jid AND fh.item_id=s.helmet_id
+LEFT JOIN equipment_star_forges fb ON fb.jid=s.jid AND fb.item_id=s.boot_id
 WHERE s.jid=$1 FOR UPDATE OF s
 `,[jid])).rows[0]
 const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,st.weapon_level,st.weapon_stars):null
 const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,st.armor_level,st.armor_stars):null
-const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,st.boot_level):null
+const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,st.boot_level,st.boot_stars):null
 const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,st.helmet_level,st.helmet_stars):null
 const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
 const restoredHp=Math.max(1,Number(st?.max_hp||100)+levels*8+gearHp)
@@ -2370,7 +2379,7 @@ const eq=EQUIPMENT[itemId]
 if(!eq) return null
 level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)||POCO_ABISMO_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
 const mult=multipliers[level-1]
 return {
@@ -2897,10 +2906,10 @@ const ups=ids.length?(await client.query(
 [jid,ids]
 )).rows:[]
 const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id,st?.helmet_id],client)
+const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id,st?.helmet_id,st?.boot_id],client)
 const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
 const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id),starLv[st.armor_id]||1):{hp:0}
-const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,lvl(st.boot_id)):{hp:0}
+const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,lvl(st.boot_id),starLv[st.boot_id]||1):{hp:0}
 const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id),starLv[st.helmet_id]||1):{hp:0}
 const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0))
 if(Number(st?.hp||0)>effectiveMax){
@@ -3036,10 +3045,10 @@ const levels=idsEq.length?(await client.query(
 [jid,idsEq]
 )).rows:[]
 const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
-const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id,row.helmet_id],client)
+const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id,row.helmet_id,row.boot_id],client)
 const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{hp:0}
-const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{hp:0}
+const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id),starLv[row.boot_id]||1):{hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id),starLv[row.helmet_id]||1):{hp:0}
 const hp=Number(row.hp||0)
 const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0))
@@ -3077,10 +3086,10 @@ export async function getCombatProfile(jid) {
 const p=await getProfile(jid)
 if(!p) return null
 const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
-const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id,p.helmet_id,p.shield_id])
+const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
 const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
 const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
-const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
+const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1,stars[p.boot_id]||1):null
 const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1,stars[p.helmet_id]||1):null
 const shield=p.shield_id?equipmentStatsAtLevel(p.shield_id,levels[p.shield_id]||1,stars[p.shield_id]||1):null
 const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
@@ -3281,11 +3290,11 @@ const starRows=(await client.query('SELECT jid,item_id,stars,level FROM equipmen
 const starLevel=(jid,itemId)=>{const r=starRows.find(x=>x.jid===jid&&x.item_id===itemId);return r&&Number(r.level)===eqLevel(jid,itemId)?Number(r.stars):1}
 const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id),starLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id),starLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id),starLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id),starLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id),starLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id),starLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const aeS=a.shield_id?equipmentStatsAtLevel(a.shield_id,eqLevel(attackerJid,a.shield_id),starLevel(attackerJid,a.shield_id)):{critResist:0,critGuard:0}
 const beS=b.shield_id?equipmentStatsAtLevel(b.shield_id,eqLevel(defenderJid,b.shield_id),starLevel(defenderJid,b.shield_id)):{critResist:0,critGuard:0}
@@ -4354,10 +4363,10 @@ const ups=eqIds.length?(await client.query(
 [jid,eqIds]
 )).rows:[]
 const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id,row.helmet_id],client)
+const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id,row.helmet_id,row.boot_id],client)
 const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
-const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{atk:0,def:0,hp:0}
+const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id),starLv[row.boot_id]||1):{atk:0,def:0,hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id),starLv[row.helmet_id]||1):{atk:0,def:0,hp:0}
 const classBase=classCombatStats(row,row.class_id,row.level,row.class_applied)
 const gearHp=Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)

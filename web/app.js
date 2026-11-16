@@ -2094,7 +2094,7 @@ function inventoryCard(i,options={}){
   const eq=['weapon','armor','boots','helmet'].includes(i.category);
   const equippedCopy=Boolean(options.equippedCopy);
   const qty=Math.max(0,Number(options.quantity??i.quantity??0));
-  const sellQty=Math.min(9999,qty);
+  const sellQty=equippedCopy?0:Math.min(9999,qty,Math.max(0,Number(i.sellable_quantity||0)));
   const petPotion=id.startsWith('pocao_pet_');
   const energy=id==='energetico_pet';
   const box=String(id).includes('caixa_') || id==='lootbox_std' || i.category==='box';
@@ -2540,7 +2540,7 @@ function renderMarket(){
   const ex=ui.extras||{}, market=ex.market||[], mine=ui.data.market||[], inv=ui.data.inventory||[];
   const available=inv.map(i=>({
     ...i,
-    market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0
+    market_quantity:Math.max(0,Number(i.regular_sellable_quantity||0))
   })).filter(i=>i.market_quantity>0 && i.sellable!==false);
   return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><span class="tag">'+market.length+' ativos</span></div>'+
     '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+

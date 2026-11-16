@@ -10,7 +10,9 @@ test('ranking global de doadores soma totais retornados e conta contribuições'
   assert.match(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
   assert.match(result,/João.*R\$ 15\.000 \(3 doações\)/);
   assert.match(result,/Augusto.*R\$ 2\.000 \(1 doação\)/);
-  assert.match(result,/anteriores não tinham identificação/);
+  assert.match(result,/doações realizadas após a criação do histórico de doadores/);
+  assert.match(result,/!rankdoacoes/);
+  assert.doesNotMatch(result,/R\$ 17\.000 doados/);
 });
 
 test('ranking interno distingue nome do clã e lista vazia',()=>{
