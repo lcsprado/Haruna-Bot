@@ -1,0 +1,26 @@
+name: Bingo Alpha 16-11-2026 16h
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/bingo-20261116.js'
+      - 'src/neon/index.js'
+      - 'test/bingo-nov16-1600.test.mjs'
+      - '.github/workflows/bingo-20261116-1600.yml'
+  workflow_dispatch:
+jobs:
+  bingo-16h:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/bingo-20261116.js
+          node --check src/neon/index.js
+      - name: Teste isolado da edição 16h
+        run: node --test test/bingo-nov16-1600.test.mjs
