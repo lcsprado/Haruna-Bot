@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {existsSync,readFileSync,statSync} from 'node:fs'
+import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from '../src/neon/equipment-sale-policy.js'
 
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -194,6 +195,24 @@ test('web inventory separates equipped gear and protects it from every sale path
     db.includes('const available=Math.min(Math.max(0,owned-Math.max(equipped,bound)),Math.max(0,owned-Number(paid?.qty||0)))') &&
     db.includes('if(qty>available)'),
     'market backend must reject bound, equipped and upgraded copies')
+})
+
+test('mercado exclui peças aprimoradas, forjadas e vinculadas enquanto inventário permite liquidação segura',()=>{
+ const upgraded=equipmentSalePolicy({quantity:3,upgradedQuantity:1})
+ assert.equal(upgraded.regularSellable,2)
+ assert.equal(upgraded.maxSellable,3)
+ assert.equal(equipmentSaleQuantityAllowed(upgraded,3,3),true)
+ const bound=equipmentSalePolicy({quantity:4,boundQuantity:2,upgradedQuantity:1})
+ assert.equal(bound.regularSellable,2)
+ assert.equal(bound.maxSellable,2)
+ assert.equal(equipmentSaleQuantityAllowed(bound,3,4),false)
+ const forged=equipmentSalePolicy({quantity:3,equipped:true,hasForge:true})
+ assert.equal(forged.regularSellable,2)
+ assert.equal(forged.canSellAll,false)
+ assert.equal(equipmentSaleQuantityAllowed(forged,3,3),false)
+ const unsellable=equipmentSalePolicy({quantity:10,sellable:false})
+ assert.equal(unsellable.maxSellable,0)
+ assert.equal(unsellable.regularSellable,0)
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
