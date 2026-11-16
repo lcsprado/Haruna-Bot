@@ -11,6 +11,7 @@ import {
 
 import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage} from './poco-abismo-delivery.js'
 import {pocoInitRewardLedger,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
+import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoFinalLeaderboard,pocoSettleFinalRanking,POCO_LIVE_PLAYER_PREFIX,POCO_LIVE_SETTLEMENT_KEY} from './poco-abismo-settlement.js'
 
 const ENABLED=process.env.POCO_ABISMO_LIVE==='true'&&process.env.POCO_ABISMO_PREVIEW!=='true'
@@ -221,7 +222,7 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
     ?'\n⚔️ Você causou '+label(progress.message.damage)+' de dano e recebeu '+label(progress.message.enemyDamage)+'.'+
      (progress.message.heal?'\n💚 Curou '+label(progress.message.heal)+' HP.':''):''
    const passed=progress.bossDefeated?'\n✅ Guardião '+progress.bossDefeated+' derrotado.':''
-   const loot=drop?'\n🎲 Saque: '+(drop.itemId||drop.kind)+(drop.alreadyClaimed?' (já contabilizado)':'')+'.':''
+   const loot=drop?'\n🎲 Saque: '+(pocoGearById(drop.itemId)?.name||drop.itemId||drop.kind)+(drop.kind==='exclusive'?' ★★★★★ Lv.10':'')+(drop.alreadyClaimed?' (já contabilizado)':'')+'.':''
    const money=(gains.cash||gains.xp)?'\n💰 R$ '+label(gains.cash)+' • '+label(gains.xp)+' EXP':''
    if(s.active.status!=='active'){finish(s,sender);return {message:recap+passed+money+loot+'\n'+report(s)}}
    const promptToken=pocoStagePrompt(s.active)
