@@ -27,7 +27,7 @@ test('NPC Web compartilha a fonte de verdade de compras e reputação',()=>{
   assert.doesNotMatch(app,/data-npc-buy/)
   assert.doesNotMatch(app,/npcs:renderNpcs/)
   assert.doesNotMatch(app,/api\('\/api\/v1\/me\/npcs'\)/)
-  assert.match(app,/Compras restantes:/)
+  assert.doesNotMatch(app,/Compras restantes:/)
 })
 
 test('loja exclui registros legados também no endpoint de compra',()=>{
