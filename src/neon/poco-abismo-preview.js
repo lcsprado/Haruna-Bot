@@ -122,7 +122,7 @@ function status(s){
   '\n\nUse *!poco iniciar*, *!poco ranking* ou *!poco relatorio*.'
 }
 async function ranking(){
- const {rows}=await db.query('SELECT key,value FROM trevo_settings WHERE key LIKE $1 AND value->>\'season\'=$2',[PREFIX+'%',POCO_SEASON.id])
+ const {rows}=await db.query('SELECT key,value FROM trevo_settings WHERE LEFT(key,LENGTH($1))=$1 AND value->>\'season\'=$2',[PREFIX,POCO_SEASON.id])
  const ranked=rows.filter(r=>r.value?.best).map(r=>r.value.best).sort(pocoRankingCompare).slice(0,15)
  return '🏆 *POÇO — RANKING PRELIMINAR*\n'+
   (ranked.length?ranked.map((p,i)=>(i+1)+'º '+String(p.name).slice(0,48)+' — andar '+p.floor+' • '+p.turns+' rodadas').join('\n'):'Nenhum resultado')+
@@ -214,7 +214,7 @@ export function startPocoPreviewScheduler(sock){
   busy=true
   try{
    const now=Date.now()
-   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE key LIKE $1 AND value->'active' IS NOT NULL AND ((value->'active'->>'deadline')::bigint < $2 OR $2 >= $3) LIMIT 50",[PREFIX+'%',now,POCO_SEASON.endAt])
+   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE LEFT(key,LENGTH($1))=$1 AND value->'active' IS NOT NULL AND ((value->'active'->>'deadline')::bigint < $2 OR $2 >= $3) LIMIT 50",[PREFIX,now,POCO_SEASON.endAt])
    for(const row of rows){
     const jid=row.key.slice(PREFIX.length)
     const result=await mutate(jid,row.value?.name,s=>{
