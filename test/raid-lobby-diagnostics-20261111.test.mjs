@@ -58,7 +58,7 @@ test('Nenhuma sala existente informa a forma correta de abrir uma',()=>{
 test('Uma sala alheia não se torna propriedade do jogador pelo !raid 75',()=>{
  const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  assert.match(src,/requestedRoom\.host===sender/)
- assert.match(src,/!entrar '\+requestedRoom\.level/)
+ assert.match(src,/!entrar '\+raidPublicArg\(requestedRoom\)/)
  assert.match(src,/Somente o host pode iniciar|somente o host pode iniciar/)
 })
 test('Aumenta apenas TTL de Raid manual, não o torneio ou Raidlote interno',()=>{
