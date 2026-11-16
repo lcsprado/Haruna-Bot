@@ -13267,7 +13267,7 @@ if(confirmation){
     +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
     +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
     +'\n🏛️ Taxa Prefeitura: R$ '+bought.quote.serviceTotal.toLocaleString('pt-BR')
-    +(bought.job?.auction_pass_manual_rewards===true?'\n🎟️ *PASSE SUPREMO:* 100% das recompensas-base de Raid manual e chances normais de drop.':'\n🏆 Recompensas reduzidas do Raid Lote comum.')
+    +(bought.job?.auction_pass_manual_rewards===true?'\n🎟️ *PASSE SUPREMO:* 100% das recompensas-base de Raid manual e chances normais de drop.':'\n💰 Dinheiro por vitória: chave + taxa de automação + 50% do lucro líquido da Raid manual. Demais recompensas seguem reduzidas.')
     +'\n⚠️ Se morrer/perder, o pacote acaba sem reembolso.'
     +'\n📊 Acompanhe: !raidlote status ou !raidlote painel')
 }
@@ -13281,7 +13281,7 @@ return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
   +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
   +'\n🏛️ Automação 10%: R$ '+quote.serviceTotal.toLocaleString('pt-BR')
   +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
-  +'\n\n'+(nextPassPackage?'🎟️ *PASSE SUPREMO:* 100% das recompensas-base da Raid manual: dinheiro, EXP, maestria, pets, fragmentos e chances normais de equipamentos e caixas.':'🏆 80% dinheiro • 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos')
+  +'\n\n'+(nextPassPackage?'🎟️ *PASSE SUPREMO:* 100% das recompensas-base da Raid manual: dinheiro, EXP, maestria, pets, fragmentos e chances normais de equipamentos e caixas.':'💰 Em cada vitória: custo da chave + taxa de automação + 50% do lucro líquido da Raid manual.\n✨ 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos')
   +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
   +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+count+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
