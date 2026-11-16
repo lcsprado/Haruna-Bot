@@ -373,12 +373,6 @@ answered_by TEXT
 );
 CREATE INDEX IF NOT EXISTS support_tickets_status_idx
 ON support_tickets(status, created_at);
-CREATE TABLE IF NOT EXISTS support_user_restrictions (
-requester_jid TEXT PRIMARY KEY,
-blocked BOOLEAN NOT NULL DEFAULT TRUE,
-updated_by TEXT,
-updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-);
 CREATE TABLE IF NOT EXISTS group_licenses (
 chat_jid TEXT PRIMARY KEY,
 status TEXT NOT NULL DEFAULT 'blocked',
@@ -4764,23 +4758,25 @@ let out='SUP-'
 for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
 return out
 }
-export async function isSupportUserBlocked(requesterJid){
-const {rows}=await db.query('SELECT blocked FROM support_user_restrictions WHERE requester_jid=$1',[String(requesterJid||'')])
-return rows[0]?.blocked===true
+// O ID real do grupo Alpha Bot é registrado depois de validar o nome pelo WhatsApp.
+// Uma vez registrado, restrições são aplicadas exclusivamente pelo chat_jid.
+const SUPPORT_BLOCKED_GROUP_SETTING='support_blocked_alpha_group_jid'
+export async function getSupportBlockedGroupJid(){
+const {rows}=await db.query("SELECT value->>'jid' AS jid FROM trevo_settings WHERE key=$1",[SUPPORT_BLOCKED_GROUP_SETTING])
+return String(rows[0]?.jid||'')
 }
-export async function setSupportUserBlocked(requesterJid,blocked,updatedBy=''){
-if(!/^\d{10,15}@s\.whatsapp\.net$/.test(String(requesterJid||''))) throw new Error('Usuário sem identidade WhatsApp verificada.')
-const {rows}=await db.query(`
-INSERT INTO support_user_restrictions(requester_jid,blocked,updated_by,updated_at)
-VALUES($1,$2,$3,${nowSql})
-ON CONFLICT(requester_jid) DO UPDATE
-SET blocked=EXCLUDED.blocked,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at
-RETURNING requester_jid,blocked
-`,[requesterJid,Boolean(blocked),updatedBy])
-return rows[0]
+export async function registerSupportBlockedGroupJid(chatJid){
+if(!/^\d+@g\.us$/.test(String(chatJid||''))) throw new Error('ID do grupo inválido.')
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES($1,$2::jsonb,${nowSql})
+ON CONFLICT(key) DO NOTHING
+`,[SUPPORT_BLOCKED_GROUP_SETTING,JSON.stringify({jid:chatJid})])
+return getSupportBlockedGroupJid()
 }
 export async function createSupportTicket(requesterJid, chatJid, category, message) {
-if(await isSupportUserBlocked(requesterJid)) throw new Error('🔒 A abertura de chamados está restrita para esta conta.')
+if(chatJid?.endsWith('@g.us') && (await getSupportBlockedGroupJid())===chatJid)
+throw new Error('suporte disponível apenas para pagantes')
 category=String(category||'outro').trim().slice(0,40)
 message=String(message||'').trim()
 if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
