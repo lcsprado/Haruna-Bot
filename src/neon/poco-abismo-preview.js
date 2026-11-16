@@ -133,6 +133,11 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
  const option=cmd==='pocorank'?'ranking':String(args[0]||'').toLowerCase()
  if(option==='ranking'||option==='rank'){await reply(await ranking());return true}
  const now=Date.now()
+ if((option==='iniciar'||option==='sair'||/^[1-4]$/.test(option))&&
+   (!messageId||typeof messageId!=='string'||messageId.length>180)){
+  await reply('⚠️ Não foi possível validar o ID único da mensagem. Nenhuma ação foi executada; envie novamente o comando.')
+  return true
+ }
  if(option==='iniciar'){
   if(!pocoSeasonActive(now)){await reply('⛔ O Poço está fora da janela de 16–20/11, até sexta às 21h.');return true}
   const [profile,hero,petTeam]=await Promise.all([getCombatProfile(sender),getActivePlayableHero(db,sender),getPetTeam(sender)])
