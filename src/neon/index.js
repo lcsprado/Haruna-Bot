@@ -10529,7 +10529,7 @@ if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   await openRaidPetVoucherMenu(chat,sender,reply,args[0]??null)
   continue
 }
-if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat})) continue
+if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
