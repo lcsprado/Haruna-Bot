@@ -1,0 +1,42 @@
+name: poco-abismo-postgres-isolado
+on:
+  push:
+    branches:
+      - feat/poco-abismo-temporada1-20261116
+  pull_request:
+    paths:
+      - 'src/neon/poco-abismo-*.js'
+      - 'test/poco-abismo-postgres.test.mjs'
+      - '.github/workflows/poco-abismo-postgres.yml'
+jobs:
+  rollback-e-liquidacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: poco_ci
+          POSTGRES_PASSWORD: poco_ci_only
+          POSTGRES_DB: poco_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U poco_ci -d poco_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependências do repositório sem scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validar transações no PostgreSQL efêmero, nunca Neon/Aiven de produção
+        env:
+          POCO_TEST_POSTGRES_URL: postgresql://poco_ci:poco_ci_only@127.0.0.1:5432/poco_ci
+          POCO_ABISMO_LIVE: 'false'
+          POCO_ABISMO_PREVIEW: 'false'
+        run: node --test test/poco-abismo-postgres.test.mjs
