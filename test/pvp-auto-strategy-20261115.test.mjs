@@ -86,6 +86,7 @@ test('production WhatsApp retains 100% automatic !batalhar and no manual duel co
  const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
  assert.match(index,/\['batalhar','batalha','battle','duelo'\]\.includes\(cmd\)/);
  assert.match(index,/cmd==='estrategia'/);
+ assert.match(index,/const RPG_CMDS=new Set\(\[[^\n]*'estrategia'[^\n]*\]\)/,'estrategia must follow group RPG module gate');
  assert.match(db,/ALPHA_PVP_AUTO_STRATEGY_ENABLED==='1'/);
  assert.match(db,/readAutoBattlePostures\(client,/);
  assert.doesNotMatch(db,/from '\.\/pvp-duel-/);
