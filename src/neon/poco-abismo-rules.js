@@ -23,6 +23,7 @@ export const POCO_DROP_WEIGHTS=Object.freeze([
 // Nunca aplicado ao controlador de recompensas reais.
 export const POCO_BETA_BALANCE=Object.freeze({
  id:'beta-v2',corridorMultiplier:.78,defendCounterMultiplier:.38,
+ unblockedChargeFactor:2.40,
  specialAttackMultiplier:.85,
  bossHpMultipliers:Object.freeze({10:1.25,15:1.35,20:1.30,25:1.20,30:1.15})
 });
@@ -159,7 +160,10 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   }
   if(action===4){s.skillCharges--;interrupted=skill.type!=='barrier';}
   if(s.boss.hp>0){
-    const factor={charge:1.8,drain:1.18,barrier:.80,bleed:1.28}[skill.type];
+    // No beta, ignorar a Ruptura Abissal avisada é caro; defender ainda reduz 75% do golpe.
+    const factor=beta&&skill.type==='charge'
+      ? POCO_BETA_BALANCE.unblockedChargeFactor
+      : {charge:1.8,drain:1.18,barrier:.80,bleed:1.28}[skill.type];
     const base=115+s.boss.floor*8;
     enemyDamage=Math.max(1,Math.round(base*factor*s.stats.mitigation*(action===2 ? .25 : 1)*(interrupted?0:1)));
     s.hp=Math.max(0,s.hp-enemyDamage);
