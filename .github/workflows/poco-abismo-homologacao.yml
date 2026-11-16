@@ -23,5 +23,6 @@ jobs:
           node --check src/neon/poco-abismo-preview.js
           node --check src/neon/poco-abismo-gear.js
           node --check src/neon/poco-abismo-rewards.js
+          node --check src/neon/poco-abismo-delivery.js
       - name: Rodar regras isoladas (sem banco nem prêmios)
-        run: node --test test/poco-abismo-temporada1.test.mjs test/poco-abismo-gear.test.mjs test/poco-abismo-rewards.test.mjs
+        run: node --test test/poco-abismo-temporada1.test.mjs test/poco-abismo-gear.test.mjs test/poco-abismo-rewards.test.mjs test/poco-abismo-delivery.test.mjs
