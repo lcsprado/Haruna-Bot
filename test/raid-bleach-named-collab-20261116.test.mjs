@@ -87,6 +87,8 @@ test('command routes use literal named raid and preserve automation, existing Ra
  assert.match(i,/safeRaidNotify\(reply,/)
  assert.match(i,/runRaidCombat\(chat,Number\(r.level\),reply\)/)
  assert.doesNotMatch(i,/cmd==='raidcollab'/)
+ assert.match(i,/if\(cfg\?\.slug\)return await reply\('⚔️ O !raidlote/)
+ assert.match(g,/if\(loteAttemptId&&raidConfig\(level\)\?\.slug\)throw new Error/)
  assert.match(i,/!raid pecados/)
  // Per-player Raid membership and one-time keys cannot be bypassed by custom raids.
  assert.match(g,/resolveGlobalPlayerRaid\(c,host\)/)
