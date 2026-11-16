@@ -11,7 +11,8 @@ import {
 import {
  pocoSettleFinalRanking,POCO_LIVE_SETTLEMENT_KEY,POCO_LIVE_PLAYER_PREFIX
 } from '../src/neon/poco-abismo-settlement.js'
-import {POCO_SEASON,pocoStart,pocoScore} from '../src/neon/poco-abismo-rules.js'
+import {POCO_SEASON,pocoStart,pocoScore,pocoDecision} from '../src/neon/poco-abismo-rules.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt,POCO_PENDING_DEADLINE} from '../src/neon/poco-abismo-delivery.js'
 import {POCO_ABISMO_GEAR} from '../src/neon/poco-abismo-gear.js'
 
 const connectionString=process.env.POCO_TEST_POSTGRES_URL
@@ -142,3 +143,60 @@ test('liquidação só depois do prazo e uma vez, sem jamais usar prévia',async
  assert.equal(values.get('terceiro@ci'),10000000)
 })
 test.after(async()=>{await pool.end()})
+
+test('WhatsApp simulado + PostgreSQL: queda, reconexão, ACK e comando duplicado',async()=>{
+ const jid='terceiro@ci'
+ const scenario={...stateParams,jid,key:POCO_LIVE_PLAYER_PREFIX+jid,
+  now:()=>POCO_SEASON.startAt+20000}
+ const original=await pocoRunPlayerTransaction(pool,scenario,async(_c,s,at)=>{
+  const created=pocoStart({now:at,seed:5,profile:{heroId:'pecado_ban'}})
+  s.active=created.state
+  pocoRememberMessage(s,'inicio-1')
+  return pocoStagePrompt(s.active)
+ })
+ assert.equal(original.seq,1)
+ const fail=()=>pocoDispatchActionPrompt({
+  reply:async()=>{throw new Error('WA desconectado')},message:'Decisão',token:original,
+  confirm:async()=>{throw Error('Nunca confirmar antes de enviar')}
+ })
+ await assert.rejects(fail,/WA desconectado/)
+ const lost=(await row('SELECT value FROM trevo_settings WHERE key=$1',[scenario.key])).value
+ assert.equal(lost.active.deadline,POCO_PENDING_DEADLINE)
+ assert.equal(lost.active.deliveryPending,true)
+ assert.equal(lost.active.floor,4)
+ const newToken=await pocoRunPlayerTransaction(pool,scenario,async(_c,s)=>{
+  assert.equal(pocoMessageSeen(s,'inicio-1'),true)
+  assert.equal(s.active.floor,4)
+  return pocoStagePrompt(s.active)
+ })
+ assert.equal(newToken.seq,2)
+ const sentAt=POCO_SEASON.startAt+50000
+ const sent=await pocoDispatchActionPrompt({
+  reply:async()=>({key:{id:'send-confirmado'}}),message:'Resolução pendente',
+  token:newToken,clock:()=>sentAt,
+  confirm:(token,now)=>pocoRunPlayerTransaction(pool,scenario,async(_c,s)=>
+   pocoConfirmPrompt(s.active,token,now))
+ })
+ assert.deepEqual(sent,{sent:true,confirmed:true})
+ const staleAck=await pocoRunPlayerTransaction(pool,scenario,async(_c,s)=>
+  pocoConfirmPrompt(s.active,original,sentAt+100))
+ assert.equal(staleAck,false)
+ const saved=(await row('SELECT value FROM trevo_settings WHERE key=$1',[scenario.key])).value
+ assert.equal(saved.active.deliveryPending,false)
+ assert.equal(saved.active.deadline,sentAt+120000)
+ const turns=await pocoRunPlayerTransaction(pool,scenario,async(_c,s,at)=>{
+  assert.equal(pocoMessageSeen(s,'decisao-1'),false)
+  s.active=pocoDecision(s.active,2,{now:at}).state
+  pocoRememberMessage(s,'decisao-1')
+  return s.active.turns
+ })
+ const duplicate=await pocoRunPlayerTransaction(pool,scenario,async(_c,s)=>{
+  if(pocoMessageSeen(s,'decisao-1'))return {duplicate:true,turns:s.active.turns}
+  throw new Error('Processaria decisão duas vezes')
+ })
+ assert.equal(duplicate.duplicate,true)
+ assert.equal(duplicate.turns,turns)
+ const final=(await row('SELECT value FROM trevo_settings WHERE key=$1',[scenario.key])).value
+ assert.equal(final.active.turns,turns)
+ assert.equal(final.active.floor,4)
+})
