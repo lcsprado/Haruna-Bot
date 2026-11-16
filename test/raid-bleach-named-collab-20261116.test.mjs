@@ -94,3 +94,27 @@ test('command routes use literal named raid and preserve automation, existing Ra
  assert.match(g,/item_id=\$2 FOR UPDATE/)
  assert.match(g,/UPDATE inventories SET quantity=quantity-1 WHERE jid=ANY/)
 });
+
+
+test('named lobby diagnostics never suggest numeric internal id to a player',async()=>{
+ const {raidGoUnavailableMessage,raidJoinUnavailableMessage}=await import('../src/neon/raid-go-diagnostics.js')
+ const room={
+  level:BLEACH_RAID_ID,slug:'bleach',gameType:'raid:'+BLEACH_RAID_ID,
+  status:'lobby',host:'augusto',hostName:'Augusto',
+  players:{augusto:{jid:'augusto'}},createdAt:Date.now(),
+  expiresAt:Date.now()+15*60000
+ }
+ const go=raidGoUnavailableMessage({rooms:[room],sender:'lp',level:BLEACH_RAID_ID})
+ assert.match(go,/Raid Bleach/)
+ assert.match(go,/!entrar bleach/)
+ assert.match(go,/!go bleach/)
+ assert.doesNotMatch(go,/!entrar 76|!go 76|Raid Lv\.76/)
+ const j=raidJoinUnavailableMessage({rooms:[room],level:BLEACH_RAID_ID})
+ assert.match(j,/!entrar bleach/)
+ const existing=raidGoUnavailableMessage({rooms:[{...room,level:75,slug:null}],sender:'lp',level:75})
+ assert.match(existing,/!go 75/)
+ assert.match(existing,/!entrar 75/)
+ const expired=raidJoinUnavailableMessage({rooms:[{...room,expiresAt:Date.now()-1}],level:BLEACH_RAID_ID})
+ assert.match(expired,/!raid bleach/)
+ assert.match(expired,/!entrar bleach/)
+});
