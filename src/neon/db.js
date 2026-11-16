@@ -564,6 +564,8 @@ starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado 
 starterItems.push(...LEGENDARY_BOX_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push(...WEEKLY_GOLEM_V2_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'event']))
 starterItems.push(...POCO_ABISMO_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
+starterItems.push(['caixa_epica_abissal_20261116','Caixa Épica Abissal','Caixa do Poço: dinheiro e recurso sorteado. Abrir por comando próprio.','special',0,'epic'])
+starterItems.push(['caixa_lendaria_abissal_20261116','Caixa Lendária Abissal','Caixa do Poço: dinheiro e recurso superior sorteado. Abrir por comando próprio.','special',0,'legendary'])
 starterItems.push([WEEKLY_GOLEM_V2_VOUCHER,'Direito de Escolha — Golem Forja V','Permite escolher um equipamento exclusivo ★★★★★ Lv.10 da edição de 13/11/2026. Use !golempremio 1, 2 ou 3.','special',0,'event'])
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
@@ -593,6 +595,7 @@ await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1:
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_ALTAR_GEAR_IDS])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[[...WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER]])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id=ANY($1::text[])',[POCO_ABISMO_GEAR_IDS])
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE,price=0 WHERE id=ANY($1::text[])",[['caixa_epica_abissal_20261116','caixa_lendaria_abissal_20261116']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
