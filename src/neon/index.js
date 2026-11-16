@@ -55,6 +55,8 @@ createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelM
 listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
 recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel, setPlayerGroupContext
 } from './db.js'
+import {initNpcShops} from './npc-shops.js'
+import {initCity} from './city.js'
 import { useNeonAuthState } from './auth.js'
 import {
 initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, coinFlip, createCoinDuel, acceptCoinDuel, createRpsDuel, acceptRpsDuel, createTournament, joinTournament, startTournament, rps,
@@ -2065,6 +2067,11 @@ critPct:rawPct(Number(stats.crit||0))
 }
 async function start() {
 await initDatabase()
+// Both features are used by the authenticated Web API but were omitted from
+// the bot bootstrap; without their tables /api/v1/me/npcs returned HTTP 500.
+// CREATE TABLE/INDEX IF NOT EXISTS makes this safe on every restart.
+await initCity()
+await initNpcShops()
 await initPlayableHeroes()
 await initAwakening()
 await initRelics()
