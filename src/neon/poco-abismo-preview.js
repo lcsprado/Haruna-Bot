@@ -9,11 +9,31 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady} from './poco-abismo-delivery.js'
+
 const ENABLED=process.env.POCO_ABISMO_PREVIEW==='true'
 const PREFIX='poco_abismo_preview_20261116:player:'
 const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
 const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
+const MAX_SAVED_MESSAGE_IDS=80
+function seenMessage(s,messageId){return Boolean(messageId&&s.processedMessageIds?.includes(messageId))}
+function markMessage(s,messageId){
+ if(!messageId)return
+ s.processedMessageIds=[...(s.processedMessageIds||[]).slice(-(MAX_SAVED_MESSAGE_IDS-1)),messageId]
+}
+async function sendActionPrompt(jid,name,reply,result){
+ // O estado foi gravado antes do envio. Não começar a contagem por tempo de
+ // processamento, nem consumir janela quando Baileys não confirmar o envio.
+ await reply(result.message)
+ if(result.promptToken){
+  await mutate(jid,name,s=>{
+   if(!s.active)return false
+   return pocoConfirmPrompt(s.active,result.promptToken,Date.now())
+  })
+ }
+}
+
 let timer=null,busy=false
 function dayInBrazil(now){
  const x=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now))
@@ -49,7 +69,8 @@ function finish(s,jid){
  s.last=s.active.report;s.active=null
 }
 function expire(s,jid,now){
- if(!s.active||s.active.status!=='active'||now<=Number(s.active.deadline||0))return false
+ if(!s.active||s.active.status!=='active'||!pocoIsChoiceReady(s.active)||
+   !Number.isFinite(s.active.deadline)||now<=Number(s.active.deadline||0))return false
  s.active=pocoEnd(s.active,'timeout',now).state
  finish(s,jid)
  return true
@@ -113,7 +134,7 @@ async function ranking(){
   (ranked.length?ranked.map((p,i)=>(i+1)+'º '+String(p.name).slice(0,48)+' — andar '+p.floor+' • '+p.turns+' rodadas').join('\n'):'Nenhum resultado')+
   '\n📌 No empate de andar, vence quem gastou menos rodadas virtuais.'
 }
-export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat}){
+export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,messageId}){
  if(!ENABLED||!['poco','pocorank'].includes(cmd))return false
  const option=cmd==='pocorank'?'ranking':String(args[0]||'').toLowerCase()
  if(option==='ranking'||option==='rank'){await reply(await ranking());return true}
@@ -125,21 +146,26 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat}){
   const prepared={...profile,heroId:hero||'',classId:profile.class_id,
    petIds:(petTeam||[]).map(p=>p.id).filter(Boolean)}
   const result=await mutate(sender,name,s=>{
+   if(seenMessage(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    expire(s,sender,now)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
    const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now})
    s.attempts++;s.active=start.state;s.chat=chat
    updateBest(s,sender)
    recordRewards(s,start,now)
-   return {message:'⚔️ Tentativa '+s.attempts+' iniciada!\n'+prompt(s.active)}
+   const promptToken=pocoStagePrompt(s.active)
+   markMessage(s,messageId)
+   return {message:'⚔️ Tentativa '+s.attempts+' iniciada!\n'+prompt(s.active),promptToken}
   })
-  await reply(result.message);return true
+  await sendActionPrompt(sender,name,reply,result);return true
  }
  if(option==='sair'){
   const result=await mutate(sender,name,s=>{
+   if(seenMessage(s,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
    expire(s,sender,now)
    if(!s.active)return {message:report(s)}
    s.active=pocoEnd(s.active,'abandoned',now).state;finish(s,sender)
+   markMessage(s,messageId)
    return {message:'🚪 Você encerrou a tentativa.\n'+report(s)}
   })
   await reply(result.message);return true
@@ -150,16 +176,19 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat}){
  }
  if(/^[1-4]$/.test(option)){
   const result=await mutate(sender,name,s=>{
+   if(seenMessage(s,messageId))return {message:'↩️ Esta ação já foi processada. Consulte !poco para ver a situação atual.'}
    if(now>=POCO_SEASON.endAt){
     if(s.active){s.active=pocoEnd(s.active,'season_closed',now).state;finish(s,sender)}
     return {message:'🏁 Encerrado o prazo competitivo de sexta às 21h.\n'+report(s)}
    }
    if(expire(s,sender,now))return {message:'⏳ Prazo esgotado; tentativa encerrada.\n'+report(s)}
    if(!s.active)return {message:'❌ Sem tentativa ativa. Use !poco iniciar.'}
+   if(!pocoIsChoiceReady(s.active))return {message:'⌛ A decisão ainda não teve envio confirmado. Use !poco para reenviar sem perder tempo.'}
    let progress
    try{progress=pocoDecision(s.active,Number(option),{now})}
    catch(e){return {message:'⚠️ '+e.message+'\n'+prompt(s.active)}}
    s.active=progress.state
+   markMessage(s,messageId)
    const drop=recordRewards(s,progress,now)
    updateBest(s,sender)
    const recap=progress.message
@@ -168,12 +197,19 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat}){
    const passed=progress.bossDefeated?'\n✅ Guardião '+progress.bossDefeated+' derrotado.':''
    const loot=drop?'\n🎲 Saque SIMULADO: '+(drop.itemId||drop.kind)+'.':''
    if(s.active.status!=='active'){finish(s,sender);return {message:recap+passed+loot+'\n'+report(s)}}
-   return {message:recap+passed+loot+'\n'+prompt(s.active)}
+   const promptToken=pocoStagePrompt(s.active)
+   return {message:recap+passed+loot+'\n'+prompt(s.active),promptToken}
   })
-  await reply(result.message);return true
+  await sendActionPrompt(sender,name,reply,result);return true
  }
- const s=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[keyFor(sender)])).rows[0]?.value
- await reply(status(s||empty(name))+(s?.active?'\n\n'+prompt(s.active):''))
+ const result=await mutate(sender,name,s=>{
+  if(!s.active)return {message:status(s)}
+  if(!s.active.deliveryPending)return {message:status(s)+'\n\n'+prompt(s.active)}
+  // !poco reenvia exatamente a escolha pendente sem avançar nenhum turno.
+  const promptToken=pocoStagePrompt(s.active)
+  return {message:'📨 Reenviando a decisão sem penalidade de tempo.\n'+prompt(s.active),promptToken}
+ })
+ await sendActionPrompt(sender,name,reply,result)
  return true
 }
 export function startPocoPreviewScheduler(sock){
