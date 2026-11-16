@@ -33,8 +33,10 @@ function promptState(){
 }
 test('roteador WhatsApp prioriza Poço real antes da prévia e usa o ID único recebido',()=>{
  const real=source.indexOf('if(await handlePocoLiveCommand({cmd,args,sender')
- const preview=source.indexOf('if(await handlePocoCommand({cmd,args,sender')
- assert.ok(real>0 && preview>real)
+ const beta=source.indexOf("if(process.env.POCO_BETA_GROUP_PREVIEW==='true'&&['poco','pocorank'].includes(cmd))")
+ const preview=source.indexOf('if(await handlePocoCommand({cmd,args,sender',real)
+ assert.ok(beta>0 && beta<real,'o piloto beta gratuito precede o motor de pagamentos')
+ assert.ok(real>0 && preview>real,'fora do beta o motor real antecede a prévia')
  assert.match(source,/messageId:String\(msg\?\.key\?\.id\|\|''\)/)
  assert.match(live,/const ENABLED=process\.env\.POCO_ABISMO_LIVE==='true'&&process\.env\.POCO_ABISMO_PREVIEW!=='true'/)
  assert.match(live,/if\(!ENABLED\)return/)
