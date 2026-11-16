@@ -29,6 +29,7 @@ import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
+import {isAlphaBotGroupSubject,isSupportBlockedGroupJid,SUPPORT_ONLY_PAGANTES_MESSAGE} from './support-group-id.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -42,7 +43,7 @@ getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, st
 getPaymentLink, setPaymentLink,
 createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
 approveSubscriptionOrder, cancelSubscriptionOrder,
-createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket, isSupportUserBlocked, setSupportUserBlocked,
+createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket, getSupportBlockedGroupJid, registerSupportBlockedGroupJid,
 saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
 saveSnipeMessage, markSnipeDeleted, getLastDeletedSnipe, cleanupSnipeMessages,
 openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
@@ -103,6 +104,7 @@ import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
+import {pocoNumericRoute} from './poco-abismo-numeric-choice.js'
 import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
@@ -4327,6 +4329,24 @@ if(!chatJid?.endsWith('@g.us')) return true
 const settings=await getGroupSettings(chatJid)
 return settings?.[key]!==false
 }
+// O JID real e descoberto pelo nome autenticado do WhatsApp apenas uma vez.
+// Apos o registro, nenhuma mudanca de nome pode redirecionar o bloqueio.
+async function isSupportRestrictedInGroup(chatJid){
+if(!chatJid?.endsWith('@g.us'))return false
+const registered=await getSupportBlockedGroupJid()
+if(registered)return isSupportBlockedGroupJid(chatJid,registered)
+let meta
+try{
+meta=await sock.groupMetadata(chatJid)
+}catch(err){
+console.warn('[suporte] falha ao obter metadata do grupo para identificar restricao',err?.message||err)
+return false
+}
+if(!isAlphaBotGroupSubject(meta?.subject))return false
+const saved=await registerSupportBlockedGroupJid(chatJid)
+console.info('[suporte] grupo protegido identificado por JID autenticado')
+return isSupportBlockedGroupJid(chatJid,saved)
+}
 async function currentGroupPlayerJids(chatJid){
 if(!chatJid?.endsWith('@g.us')) return []
 try{
@@ -5561,8 +5581,9 @@ await reply(
 )
 }
 const supportMenu=async()=>{
-if(await isSupportUserBlocked(sender)){
-await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
+if(await isSupportRestrictedInGroup(chat)){
+clearQuickFlow(chat,sender)
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
 return
 }
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
@@ -6049,9 +6070,9 @@ await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
 }
 return true
 }
-if((flow.stage==='support_menu'||flow.stage==='support_message') && await isSupportUserBlocked(sender)){
+if((flow.stage==='support_menu'||flow.stage==='support_message') && await isSupportRestrictedInGroup(chat)){
 clearQuickFlow(chat,sender)
-await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
 return true
 }
 if(flow.stage==='support_menu'){
@@ -10485,8 +10506,26 @@ timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
 // A resposta pertence primeiro ao menu individual (inclusive recuperado do banco).
 // O quiz é um prompt global e só pode consumi-la quando não há menu do jogador.
-const activeNumericMenu=possibleQuizChoice
+const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
   ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+// O número sozinho é uma resposta do Poço somente durante uma decisão
+// ativa deste jogador, neste chat, sem outro menu individual aberto.
+// Deve vir ANTES dos quizzes e do fallback do inventário.
+if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)&&!activeNumericMenu){
+  const route=await pocoNumericRoute({db,sender,chat,body})
+  if(route){
+    const betaMeta=route==='beta'&&isGroup
+      ? await sock.groupMetadata(chat).catch(()=>null) : null
+    const betaAllowed=route==='beta'
+      ? pocoBetaGroupAllowed({chat,subject:betaMeta?.subject}) : false
+    if(route==='beta'&&!betaAllowed)continue
+    const params={cmd:'poco',args:[body],sender,name:msg.pushName||'Jogador',
+      reply,chat,messageId:String(msg?.key?.id||''),betaAllowed}
+    const handled=route==='live'
+      ? await handlePocoLiveCommand(params) : await handlePocoCommand(params)
+    if(handled)continue
+  }
+}
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
   if(await quizHandleChoice(chat,body,reply))continue
 }
@@ -11135,28 +11174,9 @@ await sock.sendMessage(chat,{react:{text:'❌',key:msg.key}})
 const reason=String(err?.message||'')
 await reply('❌ '+(/tamanho|limite|512 KB|30 segundos|Mídia|mídia/.test(reason)?reason:'Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.'))
 }finally{stickerCommandBusy=false}
- } else if(['bloquearsuporte','liberarsuporte'].includes(cmd)){
-if(!isOwner){await reply('⛔ Apenas o proprietário pode alterar restrições do suporte.');continue}
-const mentioned=mentionsOf(msg)[0]
-if(!mentioned){
-await reply('Uso: *!'+cmd+' @pessoa*. Marque a pessoa usando a menção real do WhatsApp.')
-continue
-}
-const target=await resolveVerifiedAdminTarget(sock,chat,mentioned,msg)
-if(!target){
-await reply('⚠️ Não consegui verificar a identidade da pessoa marcada. Peça que envie !saldo no grupo e marque novamente. Nenhuma restrição foi alterada.')
-continue
-}
-if(target===sender||target===ownerJid){
-await reply('⛔ Não é permitido restringir o próprio proprietário.')
-continue
-}
-const blocked=cmd==='bloquearsuporte'
-await setSupportUserBlocked(target,blocked,sender)
-await reply(blocked?'🔒 Usuário impedido de abrir novos chamados em qualquer conversa.':'✅ Suporte liberado novamente para este usuário.')
 } else if(['suporte','support','ajuda'].includes(cmd)){
-if(await isSupportUserBlocked(sender)){
-await reply('🔒 Sua conta está restrita para abrir chamados de suporte.')
+if(await isSupportRestrictedInGroup(chat)){
+await reply(SUPPORT_ONLY_PAGANTES_MESSAGE)
 continue
 }
 setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
