@@ -2,11 +2,10 @@
 // Não é chamado pela prévia e não realiza transações ao importar.
 // O chamador deve abrir BEGIN/COMMIT com conexão dedicada; nenhuma recompensa
 // pode ser enviada se a gravação do estado/recorde falhar.
-import {randomInt} from 'node:crypto'
+import {randomInt,createHash} from 'node:crypto'
 import {POCO_SEASON,pocoCashForFloor,pocoRollDrop} from './poco-abismo-rules.js'
 import {POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
-import {grantExpInTransaction} from './db.js'
 export const POCO_BOX_EPIC_ID='caixa_epica_abissal_20261116'
 export const POCO_BOX_LEGEND_ID='caixa_lendaria_abissal_20261116'
 export const POCO_REWARD_SCHEMA=`
@@ -77,18 +76,21 @@ async function grantExclusive(c,jid,itemId,claimKey){
  if(Number(verified?.stars)!==5||Number(verified?.level)!==10)throw new Error('Falha na forja: premiação revertida')
  return {kind:'exclusive',itemId,stars:5,level:10}
 }
-export async function pocoClaimFloorInTx(c,jid,floor){
+export async function pocoClaimFloorInTx(c,jid,floor,{grantExp=null}={}){
  if(!Number.isInteger(floor)||floor<1||floor>POCO_SEASON.floorLimit)throw new RangeError('Andar inválido')
  return claim(c,jid,'floor:'+floor,async()=>{
   const cash=pocoCashForFloor(floor),xp=pocoXpForFloor(floor)
   await addCash(c,jid,cash,'poco_floor','floor:'+floor)
-  if(xp)await grantExpInTransaction(c,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
+  if(xp){
+   const award=grantExp||(await import('./db.js')).grantExpInTransaction
+   await award(c,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
+  }
   return {kind:'floor',floor,cash,xp}
  })
 }
 export async function pocoClaimBossDropInTx(c,jid,floor,day,random=()=>randomInt(0,10000)/10000){
  if(!POCO_SEASON.bossFloors.includes(floor))throw new RangeError('Guardião inválido')
- if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day)))throw new RangeError('Dia inválido')
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day))||day<'2026-11-16'||day>'2026-11-20')throw new RangeError('Dia fora do evento')
  const key='boss:'+day+':'+floor
  return claim(c,jid,key,async()=>{
   const drop=pocoRollDrop(random)
@@ -117,9 +119,47 @@ export async function pocoClaimBossDropInTx(c,jid,floor,day,random=()=>randomInt
 }
 export async function pocoClaimRankPrizeInTx(c,jid,position){
  if(!Number.isInteger(position)||position<1||position>3)throw new RangeError('Classificação inválida')
- return claim(c,jid,'ranking:'+position,async()=>{
+ return claim(c,jid,'ranking',async()=>{
   const cash=POCO_SEASON.prizes[position-1]
   await addCash(c,jid,cash,'poco_ranking','ranking:'+position)
   return {kind:'ranking',position,cash}
+ })
+}
+
+const BOX_CONTENTS=Object.freeze({
+ epic:Object.freeze([
+  {weight:40,itemId:'fragmento_universal_raid',quantity:2},
+  {weight:35,itemId:'pocao_pet_epica',quantity:2},
+  {weight:15,itemId:'caixa_rara',quantity:1},
+  {weight:10,itemId:'pergaminho_experiencia',quantity:1}
+ ]),
+ legendary:Object.freeze([
+  {weight:35,itemId:'fragmento_universal_raid',quantity:5},
+  {weight:30,itemId:'pocao_pet_suprema',quantity:2},
+  {weight:25,itemId:'caixa_epica',quantity:1},
+  {weight:10,itemId:'caixa_lendaria',quantity:1}
+ ])
+})
+export function pocoBoxContents(tier){return BOX_CONTENTS[tier]||null}
+export async function pocoOpenBoxInTx(c,jid,tier,messageId,random=()=>randomInt(0,10000)/10000){
+ const content=pocoBoxContents(tier)
+ if(!content)throw new RangeError('Caixa deve ser epica ou legendary')
+ if(!messageId||String(messageId).length>512)throw new Error('Idempotência da abertura exige ID de mensagem')
+ const key='box:'+createHash('sha256').update(String(messageId)).digest('hex').slice(0,40)
+ return claim(c,jid,key,async()=>{
+  const boxId=tier==='epic'?POCO_BOX_EPIC_ID:POCO_BOX_LEGEND_ID
+  const removed=await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity',[jid,boxId])
+  if(removed.rowCount!==1)throw new Error('Caixa indisponível no inventário')
+  const roll=Number(random())
+  if(!Number.isFinite(roll)||roll<0||roll>=1)throw new RangeError('Sorteio de caixa inválido')
+  let cursor=roll*100
+  let prize=null
+  for(const option of content){cursor-=option.weight;if(cursor<0){prize=option;break}}
+  if(!prize)throw new Error('Tabela de caixa incompleta')
+  const cash=(tier==='epic'?100:300)+Math.floor(roll*(tier==='epic'?151:301))
+  const money=cash*1000
+  await addCash(c,jid,money,'poco_box',key)
+  await addItem(c,jid,prize.itemId,prize.quantity)
+  return {kind:'box',tier,boxId,cash:money,itemId:prize.itemId,quantity:prize.quantity}
  })
 }
