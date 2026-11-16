@@ -31,7 +31,7 @@ export function raidSelection(value,regularCatalog=[]){
  if(named)return named.level
  const raw=String(value||'').trim().toLowerCase()
  if(!raw)return 0
- const alias=raw==='pecados'?75:raw
+ const alias=['pecados','7pecados','setepecados','collab'].includes(raw)?75:raw
  if(!/^\d+$/.test(String(alias)))return 0
  const n=Number(alias)
  // Numeric selectors retain existing normal raid indexing. Collabs use names ONLY.
