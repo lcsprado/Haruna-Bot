@@ -47,5 +47,5 @@ test('PvP, Boss/Raid e comando curar usam conversão efetiva da Diane',()=>{
   assert.match(games,/heroEffectiveCombatHp\(st,heroStats,gearHp\)/)
   assert.match(games,/persistentMaxHp:Number\(st.max_hp\)\+gearHp/)
   assert.match(app,/const heroHpView=await getPlayableHeroCombatSheet\(sender,profile\)/)
-  assert.match(app,/HP já está cheio: \*\$\{shownHp\}\/\$\{shownMaxHp\}/)
+  assert.match(app,/Seu HP normal já está cheio: \*\$\{shownHp\}\/\$\{shownMaxHp\}/)
 })
