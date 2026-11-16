@@ -373,6 +373,12 @@ answered_by TEXT
 );
 CREATE INDEX IF NOT EXISTS support_tickets_status_idx
 ON support_tickets(status, created_at);
+CREATE TABLE IF NOT EXISTS support_user_restrictions (
+requester_jid TEXT PRIMARY KEY,
+blocked BOOLEAN NOT NULL DEFAULT TRUE,
+updated_by TEXT,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
 CREATE TABLE IF NOT EXISTS group_licenses (
 chat_jid TEXT PRIMARY KEY,
 status TEXT NOT NULL DEFAULT 'blocked',
@@ -4758,7 +4764,23 @@ let out='SUP-'
 for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
 return out
 }
+export async function isSupportUserBlocked(requesterJid){
+const {rows}=await db.query('SELECT blocked FROM support_user_restrictions WHERE requester_jid=$1',[String(requesterJid||'')])
+return rows[0]?.blocked===true
+}
+export async function setSupportUserBlocked(requesterJid,blocked,updatedBy=''){
+if(!/^\d{10,15}@s\.whatsapp\.net$/.test(String(requesterJid||''))) throw new Error('Usuário sem identidade WhatsApp verificada.')
+const {rows}=await db.query(`
+INSERT INTO support_user_restrictions(requester_jid,blocked,updated_by,updated_at)
+VALUES($1,$2,$3,${nowSql})
+ON CONFLICT(requester_jid) DO UPDATE
+SET blocked=EXCLUDED.blocked,updated_by=EXCLUDED.updated_by,updated_at=EXCLUDED.updated_at
+RETURNING requester_jid,blocked
+`,[requesterJid,Boolean(blocked),updatedBy])
+return rows[0]
+}
 export async function createSupportTicket(requesterJid, chatJid, category, message) {
+if(await isSupportUserBlocked(requesterJid)) throw new Error('🔒 A abertura de chamados está restrita para esta conta.')
 category=String(category||'outro').trim().slice(0,40)
 message=String(message||'').trim()
 if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
