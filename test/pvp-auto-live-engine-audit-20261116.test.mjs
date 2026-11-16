@@ -239,7 +239,7 @@ test('six flagged live matchups get 1000 mirrored seeds before balance conclusio
     wins[p]+=Number(pvpWinnerByHealth(reverse.A,reverse.B,.5).jid==='B');
    }
   }
-  const percentages=Object.fromEntries(stances.map(p=>[p,Math.round(wins[p]/20)/10]));
+  const percentages=Object.fromEntries(stances.map(p=>[p,Math.round(wins[p]/2)/10]));
   const largestSwing=+((Math.max(...Object.values(percentages))-
     Math.min(...Object.values(percentages))).toFixed(1));
   output.push({match:a+' vs '+b,percentages,largestSwing});
