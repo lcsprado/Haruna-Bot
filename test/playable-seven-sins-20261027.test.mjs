@@ -355,7 +355,7 @@ test('perfil mostra totais equipados e !heroi status mostra os quatro atributos 
   assert.match(heroes,/await reply\(text\|\|'❌ Personagem não encontrado\.'/);
   assert.match(heroes,/formatPlayableHeroBaseSheet\(heroSheet\)/);
   assert.match(heroes,/return formatActiveClassBaseStatus\(profile,awakeningStage\)/);
-  assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
+  assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true,pvpHp:hpForPvpProfile\}\)/);
   assert.match(app,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   assert.match(formatter,/baseWithoutGear/);
   assert.doesNotMatch(formatter,/sheet\.maxHp|sheet\.atk|sheet\.def|sheet\.spd|equipment\.|weapon|armor|Arma|Armadura|Encantamentos|VS\./);
@@ -367,7 +367,7 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   const hero=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   assert.match(ui,/const heroSheet=await getPlayableHeroCombatSheet\(jid,p\)/);
   assert.match(ui,/const heroSheetStatus=await getPlayableHeroCombatSheet\(statusTarget,p\)/);
-  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
+  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet,\{compact:true,pvpHp:hpForPvpProfile\}\)/);
   assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   const profileStart=ui.indexOf('👤 *PERFIL —');
   const profileEnd=ui.indexOf('await sock.sendMessage(chat,{text}',profileStart);
@@ -376,7 +376,7 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   const status=ui.slice(statusStart,ui.indexOf('🏆 Vitórias:',statusStart));
   assert.ok(profileStart>=0&&profileEnd>profileStart);
   assert.ok(statusStart>=0);
-  assert.match(profile,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\):`🧙 Classe:/);
+  assert.match(profile,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true,pvpHp:hpForPvpProfile\}\):`🧙 Classe:/);
   assert.match(profile,/⚜️ Passiva:/);
   assert.doesNotMatch(profile,/Classe original|Passiva da classe original|guardada|inativa em PvP/);
   assert.match(status,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\):`🧙 Classe:/);
@@ -505,7 +505,7 @@ test('Raid 75 em 02/11: 2x maestria real sem afetar outras raids nem outros dias
   assert.equal(raid75MasteryAwardXp({level:70,collab:true,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
   assert.equal(raid75MasteryAwardXp({level:75,collab:false,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
-  assert.match(games,/xp:lote\?raidLoteReward\(raid75MasteryAwardXp\(/);
+  assert.match(games,/xp:loteReduced\?raidLoteReward\(raid75MasteryAwardXp\(/);
   assert.match(games,/'masteryXp'\):raid75MasteryAwardXp\(/);
 });
 test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
