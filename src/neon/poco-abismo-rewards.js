@@ -89,7 +89,7 @@ export async function pocoClaimFloorInTx(c,jid,floor,{grantExp=null}={}){
  })
 }
 export async function pocoClaimBossDropInTx(c,jid,floor,day,random=()=>randomInt(0,10000)/10000){
- if(!POCO_SEASON.bossFloors.includes(floor))throw new RangeError('Guardião inválido')
+ if(!POCO_SEASON.dropBossFloors.includes(floor))throw new RangeError('Guardião sem drop elegível')
  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(day))||day<'2026-11-16'||day>'2026-11-20')throw new RangeError('Dia fora do evento')
  const key='boss:'+day+':'+floor
  return claim(c,jid,key,async()=>{
