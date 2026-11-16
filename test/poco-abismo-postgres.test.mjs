@@ -16,7 +16,9 @@ import {pocoStagePrompt,pocoConfirmPrompt,pocoMessageSeen,pocoRememberMessage,po
 import {POCO_ABISMO_GEAR} from '../src/neon/poco-abismo-gear.js'
 
 const connectionString=process.env.POCO_TEST_POSTGRES_URL
-if(!connectionString)throw new Error('Use exclusivamente POCO_TEST_POSTGRES_URL apontando para PostgreSQL descartável')
+if(!connectionString){
+ test.skip('PostgreSQL efêmero: apenas no job de integração com POCO_TEST_POSTGRES_URL',()=>{})
+} else {
 const parsed=new URL(connectionString)
 if(!['127.0.0.1','localhost','::1'].includes(parsed.hostname))
  throw new Error('Teste PostgreSQL bloqueado fora de localhost (nunca usar produção)')
@@ -200,3 +202,5 @@ test('WhatsApp simulado + PostgreSQL: queda, reconexão, ACK e comando duplicado
  assert.equal(final.active.turns,turns)
  assert.equal(final.active.floor,4)
 })
+
+}
