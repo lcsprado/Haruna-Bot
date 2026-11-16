@@ -53,12 +53,15 @@ test('pets preserve original and updated portrait variants',()=>{
 test('PWA and Web update together without removing rich game modules or login',()=>{
   const app=read('web/app.js'),sw=read('web/sw.js'),html=read('web/index.html');
   const version=JSON.parse(read('web/version.json'));
-  assert.equal(version.assetVersion,'alpha-rich-phone-20261114-v6');
-  assert.match(app,/WEB_ASSET_ID='alpha-rich-phone-20261114-v6'/);
-  assert.match(sw,/alpha-rpg-pwa-20261114-restore-all-art-v6/);
-  assert.match(html,/app\.js\?v=20261114-art-v6/);
-  for(const keep of ["['racing','🏎️','Garagem Alpha']","['npcs','🏘️','NPCs / Comerciantes']",
+  assert.equal(version.assetVersion,'alpha-web-canonical-20261116-no-npcs-v1');
+  assert.match(app,/WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1'/);
+  assert.match(sw,/alpha-rpg-pwa-20261116-no-npcs-v1/);
+  assert.match(html,/app\.js\?v=20261116-no-npcs-v1/);
+  for(const keep of ["['racing','🏎️','Garagem Alpha']",
     "['character','🧙','Personagem']","['pets','🐾','Pets']",
-    'racing:()=>renderRacing(ui)','npcs:renderNpcs'])
+    "['clan','🛡️','Clã']",
+    'racing:()=>renderRacing(ui)','clan:renderClan'])
     assert.ok(app.includes(keep),'RPG module regressed: '+keep);
+  for(const retired of ["['npcs','🏘️','NPCs / Comerciantes']", 'npcs:renderNpcs','data-npc-buy'])
+    assert.ok(!app.includes(retired),'Obsolete NPC module reintroduced: '+retired);
 });

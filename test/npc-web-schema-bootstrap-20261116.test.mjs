@@ -41,11 +41,12 @@ test('NPC merchant dependency on city reputation has a matching initialization',
   assert.match(npc,/getCityMerchantModifier\(jid,n\.id\)/)
 })
 
-test('Web NPC page uses the authenticated API and existing purchase logic only',()=>{
+test('legacy NPC business endpoints stay untouched while their Web page is retired',()=>{
   assert.match(api,/url\.pathname==='\/api\/v1\/me\/npcs'/)
   assert.match(api,/await listNpcShops\(session\.jid\)/)
   assert.match(api,/await Promise\.all\(listing\.merchants\.map\(n=>getNpcShop\(session\.jid,n\.id\)\)\)/)
   assert.match(api,/case 'npc\.buy': return buyNpcShopItem/)
-  assert.match(app,/api\('\/api\/v1\/me\/npcs'\)/)
-  assert.match(app,/data-npc-buy/)
+  assert.doesNotMatch(app,/api\('\/api\/v1\/me\/npcs'\)/)
+  assert.doesNotMatch(app,/data-npc-buy/)
+  assert.doesNotMatch(app,/npcs:renderNpcs/)
 })
