@@ -57,8 +57,6 @@ const ui = {
   inventorySection: 'equipment',
   inventorySearch: '',
   inventoryTabsScrollLeft: 0,
-  npcData: null,
-  npcLoading: false,
   contractData: null,
   contractLoading: false,
   relicStatus: null,
@@ -84,7 +82,6 @@ const navItems = [
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
   ['shop','🏪','Loja'],
-  ['npcs','🏘️','NPCs / Comerciantes'],
   ['contracts','📜','Contratos'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
@@ -1037,10 +1034,11 @@ async function loadEventCenter(force=false){
   return ui.eventCenter;
 }
 async function openWebPage(page){
+  // Rotas legadas não podem reabrir NPCs removidos da navegação.
+  if(page==='npcs')page='shop';
   ui.page=page;
   setMenu(false);
   const jobs=[];
-  if(page==='npcs')jobs.push(loadNpcShops());
   if(page==='contracts')jobs.push(loadContracts());
   if(page==='inventory')jobs.push(loadRelics());
   if(['social','market','clan','games','activities','progression','rankings','loans','contracts','events'].includes(page))
@@ -2214,15 +2212,6 @@ async function loadRelics(){
     return null;
   }
 }
-async function loadNpcShops(){
-  if(ui.npcLoading) return;
-  ui.npcLoading=true;
-  try{
-    const result=await api('/api/v1/me/npcs');
-    ui.npcData=result.data;
-  }catch(err){ui.npcData={error:err.message}}
-  finally{ui.npcLoading=false}
-}
 async function loadContracts(){
   if(ui.contractLoading) return;
   ui.contractLoading=true;
@@ -2259,38 +2248,6 @@ function renderContracts(){
       '</div>';
     }).join('')+'</div>';
 }
-function renderNpcs(){
-  const d=ui.npcData;
-  if(!d) return '<div class="notice">Carregando comerciantes…</div>';
-  if(d.error) return '<div class="notice warn">'+esc(d.error)+'</div>';
-  const karma=Number(d.karma||0);
-  return '<div class="page-head"><div><h2>🏘️ NPCs / Comerciantes</h2><p>As mesmas ofertas, preços e limites disponíveis no WhatsApp.</p></div><span class="tag">⚖️ '+(karma>=0?'+':'')+karma+' • '+esc(d.title||'Neutro')+'</span></div>'+
-    (d.shops||[]).map(shop=>{
-      const n=shop.npc||{};
-      return '<div class="section shop-section"><div class="section-title"><h3>'+esc(n.emoji||'🏘️')+' '+esc(n.name||'Comerciante')+'</h3><small>'+esc(n.title||'')+'</small></div>'+
-      '<p>'+esc(n.description||'')+'</p><div class="tag-row"><span class="tag">⚖️ Reputação: '+(karma>=0?'+':'')+karma+'</span>'+
-      '<span class="tag">Relação: '+(Number(shop.factor)<1?'Desconto de '+num(Math.round((1-Number(shop.factor))*100))+'%':Number(shop.factor)>1?'Acréscimo de '+num(Math.round((Number(shop.factor)-1)*100))+'%':'Preço normal')+'</span><span class="tag">Compras restantes: '+num(shop.remaining||0)+'</span><span class="tag">Fragmentos restantes: '+num(shop.fragmentsRemaining||0)+'</span><span class="tag">Equipamentos restantes: '+num(shop.gearRemaining||0)+'</span></div>'+
-      '<div class="grid cards section">'+(shop.stock||[]).map(i=>{
-        let reason='';
-        if(i.requiredKarma!=null&&(n.id==='helena'?karma<Number(i.requiredKarma):karma>Number(i.requiredKarma)))
-          reason='🔒 Requer '+(n.id==='helena'?'Honra +':'Karma ')+i.requiredKarma;
-        else if(i.requiredRaid&&Number(shop.highestRaid||0)<Number(i.requiredRaid)) reason='🔒 Requer vitória na Raid Lv.'+i.requiredRaid;
-        else if(i.soldOut) reason='🔒 Limite diário de fragmentos atingido';
-        else if(!i.permitted) reason='🔒 Requisito não atendido';
-        else if(Number(shop.remaining)<=0) reason='🔒 Limite de compras atingido';
-        else if(['weapon','armor','boots'].includes(i.category)&&Number(shop.gearRemaining)<=0) reason='🔒 Limite de equipamentos atingido';
-        const blocked=Boolean(reason);
-        return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
-        '<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-        '<h3>'+esc(itemDisplayName(i))+'</h3>'+
-        '<p>'+esc(itemDisplayDescription(i))+'</p>'+ 
-        (Number(i.price)!==Number(i.basePrice)?'<p>Preço original: <s>'+money(i.basePrice)+'</s></p>':'')+
-        '<strong>'+money(i.price)+'</strong><p>'+(reason||'✅ Disponível')+'</p>'+
-        '<button class="btn primary" data-npc-buy="'+esc(n.id)+'" data-npc-number="'+Number(i.number)+'" '+(blocked?'disabled':'')+'>Comprar 1</button></div>';
-      }).join('')+'</div></div>';
-    }).join('');
-}
-
 function raidState(level){
   const group=currentGroup();
   return group&&Array.isArray(group.raids)?group.raids.find(x=>Number(x.level)===Number(level)):null;
@@ -3267,7 +3224,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,racing:()=>renderRacing(ui),character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,auction:renderAuction,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,racing:()=>renderRacing(ui),character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,auction:renderAuction,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -3346,7 +3303,6 @@ function bind(){
   document.querySelectorAll('.inventory-tabs').forEach(tabs=>tabs.addEventListener('scroll',()=>{ui.inventoryTabsScrollLeft=tabs.scrollLeft;},{passive:true}));
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
-  document.querySelectorAll('[data-npc-buy]').forEach(x=>x.onclick=async()=>{if(!confirm('Confirmar compra com '+x.dataset.npcBuy+'?'))return;x.disabled=true;try{await doAction('npc.buy',{npcId:x.dataset.npcBuy,number:Number(x.dataset.npcNumber)},{success:'🛍️ Compra realizada.'});await loadNpcShops();render();}catch{render();}});
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{
     ui.petTab=x.dataset.petTab==='raid'?'raid':'owned';
     render();
