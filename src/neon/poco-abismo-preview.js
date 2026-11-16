@@ -4,6 +4,7 @@
 import {randomInt} from 'node:crypto'
 import {db,getCombatProfile,getPetTeam} from './db.js'
 import {getActivePlayableHero} from './playable-heroes.js'
+import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
 import {
  POCO_SEASON,pocoStart,pocoDecision,pocoEnd,pocoScore,pocoBetter,
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
@@ -11,7 +12,8 @@ import {
 
 import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
 
-const ENABLED=process.env.POCO_ABISMO_PREVIEW==='true'
+const BETA_ONLY=process.env.POCO_BETA_GROUP_PREVIEW==='true'
+const ENABLED=BETA_ONLY||process.env.POCO_ABISMO_PREVIEW==='true'
 const PREFIX='poco_abismo_preview_20261116:player:'
 const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
@@ -130,8 +132,10 @@ async function ranking(){
   (ranked.length?ranked.map((p,i)=>(i+1)+'º '+String(p.name).slice(0,48)+' — andar '+p.floor+' • '+p.turns+' rodadas').join('\n'):'Nenhum resultado')+
   '\n📌 No empate de andar, vence quem gastou menos rodadas virtuais.'
 }
-export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,messageId}){
+export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,messageId,betaAllowed=false}){
  if(!ENABLED||!['poco','pocorank'].includes(cmd))return false
+ // Piloto sem economia: só o grupo cuja identificação foi verificada pelo Baileys.
+ if(BETA_ONLY&&!betaAllowed)return false
  const option=cmd==='pocorank'?'ranking':String(args[0]||'').toLowerCase()
  if(option==='ranking'||option==='rank'){await reply(await ranking());return true}
  const now=Date.now()
@@ -233,7 +237,13 @@ export function startPocoPreviewScheduler(sock){
      return {chat:s.chat,name:s.name,text:'⏳ *POÇO DO ABISMO — TEMPO ESGOTADO*\n'+s.name+
       ', você não respondeu em 2 minutos. Seu recorde foi preservado. Próxima tentativa do zero.'}
     })
-    if(result?.chat)await sock.sendMessage(result.chat,{text:result.text}).catch(err=>console.error('[POCO] aviso',err?.message))
+    if(result?.chat){
+      if(BETA_ONLY){
+        const metadata=await sock.groupMetadata(result.chat).catch(()=>null)
+        if(!pocoBetaGroupAllowed({chat:result.chat,subject:metadata?.subject}))continue
+      }
+      await sock.sendMessage(result.chat,{text:result.text}).catch(err=>console.error('[POCO] aviso',err?.message))
+    }
    }
   }catch(e){console.error('[POCO] scheduler',e?.message||e)}
   finally{busy=false}
