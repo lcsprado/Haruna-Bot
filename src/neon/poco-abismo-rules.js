@@ -26,7 +26,7 @@ export function pocoRewardTotal(){return Array.from({length:30},(_,i)=>pocoCashF
 export function pocoRollDrop(random=Math.random){
   const roll=Number(random());
   if(!Number.isFinite(roll)||roll<0||roll>=1)throw new RangeError('Sorteio de drop inválido');
-  let point=Math.floor(roll*10000);
+  let point=Math.min(9999,Math.floor(roll*10000+1e-9));
   for(const bucket of POCO_DROP_WEIGHTS){
     if(point<bucket.weight){
       if(bucket.kind!=='exclusive')return {kind:bucket.kind};
