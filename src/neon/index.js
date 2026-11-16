@@ -13262,6 +13262,7 @@ const confirmation=action==='confirmar'
 const level=collabRaidNumber(confirmation?args[1]:args[0])
 const count=Number(confirmation?args[2]:args[1])
 const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
+if(cfg?.slug)return await reply('⚔️ O !raidlote ainda não aceita Raids de collab por nome. Use !raid '+cfg.slug+'.')
 if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
   return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.')
 if(confirmation){
