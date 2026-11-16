@@ -25,3 +25,18 @@ export function pocoConfirmPrompt(state,token,sentAt=Date.now()){
  return true
 }
 export function pocoIsChoiceReady(state){return Boolean(state&&state.status==='active'&&!state.deliveryPending)}
+
+export const POCO_ID_CACHE_LIMIT=80
+export function pocoMessageSeen(session,messageId){
+ if(typeof messageId!=='string'||!messageId||messageId.length>180)return false
+ return Boolean(session?.processedMessageIds?.includes(messageId))
+}
+export function pocoRememberMessage(session,messageId){
+ if(!session||typeof messageId!=='string'||!messageId||messageId.length>180)return false
+ if(pocoMessageSeen(session,messageId))return false
+ session.processedMessageIds=[
+  ...(session.processedMessageIds||[]).slice(-(POCO_ID_CACHE_LIMIT-1)),
+  messageId
+ ]
+ return true
+}
