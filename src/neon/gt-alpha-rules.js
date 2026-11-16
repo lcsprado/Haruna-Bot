@@ -39,9 +39,9 @@ export const GT_RACE_XP_PERCENTS=Object.freeze([60,50,40,35,30])
 export const GT_RACE_CASH_PRIZES=Object.freeze([300000,200000,120000,70000,30000])
 export const GT_RACE_PILOT_XP=Object.freeze([750,550,400,300,200])
 export function gtRaceReward(place,startingLevel){
- const rank=Math.max(1,Number(place)||1)
+ const rank=Number(place)
  const lv=Number(startingLevel)
- if(!Number.isSafeInteger(rank)||!Number.isSafeInteger(lv)||lv<1)throw Error('Colocação ou nível inicial inválido para XP do GT')
+ if(!Number.isSafeInteger(rank)||rank<1||!Number.isSafeInteger(lv)||lv<1)throw Error('Colocação ou nível inicial inválido para XP do GT')
  const idx=Math.min(rank,5)-1
  const need=Math.max(100,lv*100)
  const playerXp=Math.floor(need*GT_RACE_XP_PERCENTS[idx]/100)
