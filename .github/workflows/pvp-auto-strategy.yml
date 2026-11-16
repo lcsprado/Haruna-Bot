@@ -12,6 +12,7 @@ on:
       - 'test/pvp-auto-strategy-20261115.test.mjs'
       - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
+      - 'test/pvp-auto-real-battle-e2e-20261116.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - 'test/pvp-auto-strategy-20261115.test.mjs'
       - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
+      - 'test/pvp-auto-real-battle-e2e-20261116.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
 jobs:
   auto-pvp:
@@ -38,7 +40,9 @@ jobs:
       - run: node --check src/neon/pvp-auto-preferences.js
       - run: node --check src/neon/db.js
       - run: node --check src/neon/index.js
-      - run: node --test test/pvp-auto-strategy-20261115.test.mjs test/pvp-auto-live-engine-audit-20261116.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs
+      - run: node --check src/neon/web-api.js
+      - run: node --check web/app.js
+      - run: node --test test/pvp-auto-strategy-20261115.test.mjs test/pvp-auto-live-engine-audit-20261116.test.mjs test/pvp-hp-raid-consistency-20261113.test.mjs test/pvp-full-report-20261014.test.mjs test/pvp-samurai-class-hp-20261112.test.mjs test/web-activity-relay-singleton.test.mjs test/web-password-auth.test.mjs test/whatsapp-web-code-private-20261104.test.mjs
   postgres:
     name: Automatic PvP preferences - disposable PostgreSQL 16
     runs-on: ubuntu-latest
@@ -66,3 +70,37 @@ jobs:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund pg@8.13.0
       - run: node --test test/pvp-auto-postgres-20261115.test.mjs
+
+  real-battle-e2e:
+    name: Real battle() - two fake WhatsApp JIDs in disposable PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_pvp_auto_e2e
+          POSTGRES_USER: alpha_test
+          POSTGRES_PASSWORD: alpha_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_test -d alpha_pvp_auto_e2e"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://alpha_test:alpha_test@127.0.0.1:5432/alpha_pvp_auto_e2e
+      ALPHA_PVP_AUTO_E2E: '1'
+      ALPHA_PVP_AUTO_STRATEGY_ENABLED: '1'
+      NODE_ENV: test
+      ALPHA_RUNTIME: testing
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund
+      - run: node --check test/pvp-auto-real-battle-e2e-20261116.test.mjs
+      - run: node --test test/pvp-auto-real-battle-e2e-20261116.test.mjs
