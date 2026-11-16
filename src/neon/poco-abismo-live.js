@@ -78,7 +78,7 @@ async function recordRewards(c,s,jid,progress,now){
  }
  s.cashEarned+=cash;s.xpEarned+=xp;
  const boss=progress.bossDefeated;
- if(!boss)return {cash,xp,drop:null};
+ if(!boss || !POCO_SEASON.dropBossFloors.includes(boss))return {cash,xp,drop:null};
  const drop=await pocoClaimBossDropInTx(c,jid,boss,dayInBrazil(now));
  if(!drop.alreadyClaimed){
   s.cashEarned+=Number(drop.cash||0);
