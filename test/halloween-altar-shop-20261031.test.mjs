@@ -147,6 +147,7 @@ test('Hallloween insignia and title actually provide PvE rewards',async()=>{
  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
  assert.match(games,/async function halloweenPveXp\(c,jid,xp\)/)
  assert.match(games,/const normalExp=lote\?baseRaidExp:await halloweenPveXp\(/)
- assert.match(games,/const exp=lote\?raidLoteReward\(normalExp,'playerXp'\):normalExp/)
+ assert.match(games,/const cash=loteReduced\?raidLoteCashPayout\(normalCash,cfg.keyPrice\):normalCash/)
+ assert.match(games,/const exp=loteReduced\?raidLoteReward\(normalExp,'playerXp'\):normalExp/)
  assert.doesNotMatch(code,/\+1% de dano em Boss\/Raid/)
 })
