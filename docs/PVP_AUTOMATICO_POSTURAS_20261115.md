@@ -67,3 +67,32 @@ Os testes verificam:
 Nenhum nerf global é necessário pelas evidências atuais. O modo adaptativo continua abaixo dos modos fixos melhores em média. Existem diferenças ESTRUTURAIS entre classes e heróis (ex.: King × Arqueiro) que antecedem as posturas e precisam de uma auditoria de progressão separada.
 
 **Bloqueio de publicação mantido:** os testes são sobre o bloco de combate real, mas com snapshots equivalentes e sem a transação `battle()` completa em uma instância do bot conectada a banco de homologação, dois JIDs reais, Web e entrega WhatsApp. Migrar e habilitar flag só após esses testes, validação de Raids/Boss ativos e aprovação. O PR permanece em rascunho.
+
+
+## Homologação ponta a ponta com banco descartável — 16/11/2026
+
+Execução GitHub Actions: https://github.com/lcsprado/Haruna-Bot/actions/runs/43874487190
+
+- 46 testes de regressão, sintaxe, modelagem de estratégias e autenticação/relé Web.
+- 4 testes de persistência de posturas em PostgreSQL 16 descartável.
+- 6 testes de inicialização e integração real da função `battle()`, com múltiplos JIDs fictícios, no PostgreSQL 16 descartável (`alpha_pvp_auto_e2e`).
+- Resultado: **56 testes aprovados, 0 falhas**.
+
+### O que foi efetivamente exercitado
+
+1. Inicialização do esquema original do jogo e das tabelas de pets, heróis, Despertar, encantamentos e preferências de postura num banco vazio, sem Aiven produção.
+2. Jogadores simulados com equipamentos existentes `katana_divina`, `armadura_divina`, `escudo_runico`, forja ★★★★★ Lv.10 e encantamento; pet ativo e progressão de classe Lv.100.
+3. `battle()` real com flag **OFF**, com flag **ON/equilibrada** e depois **ON/agressiva × defensiva**, com mesma semente aleatória para comparação. O log de golpes, crítico e esquiva na postura equilibrada é idêntico ao modo anterior na mesma semente.
+4. Um herói Ban com maestria V e postura adaptativa contra Samurai defensivo, usando HP/atributos/pets/equipamentos reais construídos pelo motor a partir das tabelas do teste.
+5. Verificação no banco após batalha: um vencedor e um perdedor, HP positivo e persistido, EXP e nível correspondentes ao retorno de `applyExp`, uma transação `battle_reward`, carteira do vencedor acrescida exatamente do prêmio, carteira do perdedor preservada, cooldown impedindo pagamento duplicado, itens e estrelas/níveis preservados, energia/HP do pet sem alterações indevidas.
+6. Extração e execução do ramo de WhatsApp `!batalhar` do `index.js`, com menção/identidade/resposta simuladas, chamando o `battle()` REAL, retornando `formatPvpBattleReport()` e bloqueando repetição; execução do ramo `!estrategia` com resposta simulada e persistência da postura.
+
+### Problema real encontrado e corrigido na branch
+
+`initDatabase()` chama `fixLegacyPetVitals()` antes de `initCommunityPack()` criar a tabela `pet_collection` em um banco totalmente novo. A homologação revelou erro `42P01 relation pet_collection does not exist`. Uma condição `to_regclass('public.pet_collection')` evita rodar a reparação legado quando a tabela ainda não existe. Em bancos existentes, a reparação continua funcionando. A alteração foi testada em PostgreSQL limpo.
+
+### Cobertura e limites
+
+Esta bateria testa a função REAL de liquidação (HP, EXP e dinheiro) em PostgreSQL real, mas **não testa o transporte Baileys com um segundo número WhatsApp real**. O comando WhatsApp foi executado por injeção de menção e `reply()` de teste, sem enviar mensagens. A Web atual não oferece `!batalhar` como ação independente; foram executados testes de autenticação, relé e sintaxe, sem um navegador/sessão remota em staging.
+
+O PR #345 permanece DRAFT, sem migração ou flag em produção. Antes de liberar aos jogadores, ainda é necessário uma sessão de homologação com WhatsApp de teste, Web autenticada, verificação de Raids/Boss ativos e uma avaliação de eventual impacto das alterações no código-base atual.
