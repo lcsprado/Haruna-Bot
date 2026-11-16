@@ -20,7 +20,7 @@ test('dinheiro, pets e drops intactos, sem acumular o XP',()=>{
   const game=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
   assert.match(game,/const saturdayXp=saturdayRaidXpMultiplier\(cfg.level,now\)/)
   assert.match(game,/const xpMultiplier=lote\?1:Math.max\(/)
-  assert.match(game,/const moneyMultiplier=Math\.max\(raidGoldHour\?2:\(cacadaActive\?1\.25:1\),await getOwnerEventMultiplier\(c,'dinheiro'\)\)/)
+  assert.match(game,/const moneyMultiplier=lote\?1:Math\.max\(raidGoldHour\?2:\(cacadaActive\?1\.25:1\),await getOwnerEventMultiplier\(c,'dinheiro'\)\)/)
   assert.match(game,/const petXpMultiplier=lote\?1:Math\.max\(raidEventActive\?1\.5:\(cacadaActive\?1\.25:1\),ownerRaid,effectivePetXp\)\/effectivePetXp/)
   assert.match(game,/saturdayHuntActive:!lote&&saturdayXp>1/)
 })
