@@ -101,9 +101,9 @@ import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
-import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
+import {handlePocoCommand,handlePocoPreviewNumericChoice,startPocoPreviewScheduler} from './poco-abismo-preview.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
-import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
+import {handlePocoLiveCommand,handlePocoLiveNumericChoice,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {startBingoNov16Scheduler,handleBingoNov16Command} from './bingo-20261116.js'
@@ -10473,6 +10473,14 @@ continue
 }catch(err){ console.error('[moderacao]',err?.message||err) }
 }
 timingMarks.preflight=Date.now()
+// O Poço ganha prioridade SÓ quando este jogador tem batalha ativa neste chat.
+// Os outros números continuam indo para quiz, inventário e menus rápidos.
+if(!body.startsWith(prefix) && /^[1-4]$/.test(body)){
+ const choiceContext={choice:body,sender,name:msg.pushName||'Jogador',chat,
+  messageId:String(msg?.key?.id||''),reply,sock}
+ if(await handlePocoLiveNumericChoice(choiceContext))continue
+ if(await handlePocoPreviewNumericChoice(choiceContext))continue
+}
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
 // A resposta pertence primeiro ao menu individual (inclusive recuperado do banco).
 // O quiz é um prompt global e só pode consumi-la quando não há menu do jogador.
