@@ -190,7 +190,10 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
   assert.ok(db.includes("qty:Math.min(Number(i.quantity)-1,"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Math.max(0,Number(i.sellable_quantity||0))"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,") && db.includes("equipmentSaleQuantityAllowed(sale,qty,owned)"),'market backend must preserve equipped copy')
+  assert.ok(db.includes('const bound=await boundItemQuantity(client,jid,itemId)') &&
+    db.includes('const available=Math.min(Math.max(0,owned-Math.max(equipped,bound)),Math.max(0,owned-Number(paid?.qty||0)))') &&
+    db.includes('if(qty>available)'),
+    'market backend must reject bound, equipped and upgraded copies')
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
