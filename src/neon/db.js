@@ -1618,9 +1618,9 @@ return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{le
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
-sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
-regular_sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
-can_sell_all:!r.equipped,
+sellable_quantity:sale.maxSellable,
+regular_sellable_quantity:sale.regularSellable,
+can_sell_all:sale.canSellAll,
 upgrade_refund:sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
 ? (upgradeRows.length?refundFromCopies:equipmentUpgradeSellRefund(r.rarity,r.equipment_level))
 : 0
