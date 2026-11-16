@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {pocoStart,pocoDecision} from '../src/neon/poco-abismo-rules.js'
-import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,POCO_ID_CACHE_LIMIT,pocoDispatchActionPrompt} from '../src/neon/poco-abismo-delivery.js'
+import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoPendingPromptToken,pocoMessageSeen,pocoRememberMessage,POCO_ID_CACHE_LIMIT,pocoDispatchActionPrompt} from '../src/neon/poco-abismo-delivery.js'
 
 test('não reduz os 120 segundos pelo tempo de processamento ou fila de envio',()=>{
  const {state}=pocoStart({now:1000,seed:123,profile:{heroId:'pecado_ban'}})
@@ -128,4 +128,20 @@ test('transporte resolve sem chave do Baileys: não inicia o relógio',async()=>
  assert.equal(calls,0)
  assert.equal(state.deliveryPending,true)
  assert.equal(state.deadline,POCO_PENDING_DEADLINE)
+})
+
+test('reenvio da mesma decisão após reinício aceita a primeira confirmação e mantém o prazo',async()=>{
+ const original=pocoStart({now:1000,seed:11}).state
+ const first=pocoStagePrompt(original)
+ const state=JSON.parse(JSON.stringify(original))
+ const retry=pocoPendingPromptToken(state)
+ assert.deepEqual(retry,first)
+ const confirm=(token,at)=>pocoConfirmPrompt(state,token,at)
+ const unsuccessful=await pocoDispatchActionPrompt({reply:async()=>null,message:'reenvio',token:retry,confirm})
+ assert.equal(unsuccessful.confirmed,false)
+ assert.equal(state.deadline,POCO_PENDING_DEADLINE)
+ assert.equal(confirm(first,130000),true)
+ assert.equal(state.deadline,250000)
+ assert.equal(confirm(retry,140000),false)
+ assert.equal(state.deadline,250000)
 })

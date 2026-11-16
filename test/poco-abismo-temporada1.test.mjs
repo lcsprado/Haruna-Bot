@@ -105,3 +105,15 @@ test('todas as identidades podem terminar até o andar 30 com tática adequada',
     assert.ok(wins>=20,'Uma classe não consegue terminar: '+heroId+'; '+wins+'/60')
   }
 })
+
+test('derrota em andar comum após Guardião preserva o último andar de fato concluído',()=>{
+ const {state}=pocoStart({seed:1,now:1000})
+ state.hp=1
+ state.boss.hp=1
+ const result=pocoDecision(state,1,{now:1100})
+ assert.equal(result.bossDefeated,5)
+ assert.deepEqual(result.cleared,[5])
+ assert.equal(result.state.report.reason,'death')
+ assert.equal(result.state.floor,5)
+ assert.equal(result.state.turns,6)
+})

@@ -95,10 +95,11 @@ function advance(state,now){
     const f=state.floor+1;
     const loss=Math.max(10,Math.round((45+f*2)*state.stats.mitigation));
     state.hp=Math.max(0,state.hp-loss);
-    state.turns++;state.floor=f;state.reachedAt=now;cleared.push(f);
+    state.turns++;
+    if(state.hp===0){finish(state,'death','Os inimigos comuns esgotaram seu HP antes do próximo Guardião.',now);return cleared;}
+    state.floor=f;state.reachedAt=now;cleared.push(f);
     // Sorte de encontrar poção não interfere nos drops econômicos diários.
     if([7,14,22,28].includes(f)&&nextRandom(state)<.55)state.potions=Math.min(3,state.potions+1);
-    if(state.hp===0){finish(state,'death','Os inimigos comuns esgotaram seu HP antes do próximo Guardião.',now);return cleared;}
     next=pocoNextBoss(state.floor);
   }
   if(next!==null){
@@ -178,7 +179,7 @@ export function pocoBetter(a,b){
 }
 export function pocoRankingCompare(a,b){
   return b.floor-a.floor || a.turns-b.turns ||
-    b.hp-a.hp || b.potions-a.potions || a.endedAt-b.endedAt ||
+    b.hp-a.hp || b.potions-a.potions ||
     String(a.jid||'').localeCompare(String(b.jid||''));
 }
 export function pocoSeasonActive(now=Date.now()){return now>=POCO_SEASON.startAt&&now<POCO_SEASON.endAt;}

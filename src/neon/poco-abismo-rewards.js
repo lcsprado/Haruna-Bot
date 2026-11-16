@@ -24,11 +24,19 @@ export const pocoXpForFloor=floor=>{
  if(!Number.isInteger(floor)||floor<1||floor>30)return 0
  return [500,750,1100,1500,2000,2800][Math.floor((floor-1)/5)]
 }
-async function claim(c,jid,key,perform){
+async function insertClaim(c,jid,key){
  if(!jid || !/^[a-zA-Z0-9_:-]{1,80}$/.test(key))throw new Error('Claim inválido')
  const marker=await c.query(`INSERT INTO poco_abismo_claims(season,jid,claim_key)
  VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING claim_key`,[POCO_SEASON.id,jid,key])
- if(!marker.rowCount){
+ return marker.rowCount===1
+}
+export async function pocoClaimCommandInTx(c,jid,messageId){
+ if(typeof messageId!=='string'||!messageId||messageId.length>180)throw new Error('ID de comando inválido')
+ const digest=createHash('sha256').update(messageId).digest('hex')
+ return insertClaim(c,jid,'command:'+digest)
+}
+async function claim(c,jid,key,perform){
+ if(!await insertClaim(c,jid,key)){
   const previous=await c.query('SELECT result FROM poco_abismo_claims WHERE season=$1 AND jid=$2 AND claim_key=$3',[POCO_SEASON.id,jid,key])
   if(!previous.rows[0])throw new Error('Claim ausente após conflito')
   return {...previous.rows[0].result,alreadyClaimed:true}

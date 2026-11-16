@@ -9,8 +9,12 @@ export function pocoStagePrompt(state){
  state.promptSeq=seq
  state.deliveryPending=true
  state.deadline=POCO_PENDING_DEADLINE
+ return pocoPendingPromptToken(state)
+}
+export function pocoPendingPromptToken(state){
+ if(!state?.deliveryPending||state.status!=='active'||!state.boss)return null
  return Object.freeze({
-  attempt:state.attempt,seq,floor:state.boss.floor,turn:state.boss.turn
+  attempt:state.attempt,seq:state.promptSeq,floor:state.boss.floor,turn:state.boss.turn
  })
 }
 export function pocoConfirmPrompt(state,token,sentAt=Date.now()){

@@ -19,11 +19,11 @@ test('desempate prioriza andar, depois rodadas virtuais, não a leitura no Whats
  assert.deepEqual(ranked.map(x=>x.jid),['augusto','joao','kaique'])
  assert.equal(ranked[0].turns,65)
 })
-test('igualdade de tempo virtual usa HP, poções e timestamp, com JID como último recurso determinístico',()=>{
+test('igualdade de tempo virtual usa HP, poções e JID, independentemente do horário real',()=>{
  const same=POCO_SEASON.startAt+60000
  const ranked=pocoFinalLeaderboard([
   entry('a',{floor:30,turns:63,hp:100,potions:0,endedAt:same}),
-  entry('c',{floor:30,turns:63,hp:400,potions:1,endedAt:same}),
+  entry('c',{floor:30,turns:63,hp:400,potions:1,endedAt:same-10_000}),
   entry('b',{floor:30,turns:63,hp:400,potions:1,endedAt:same}),
   entry('d',{floor:30,turns:63,hp:400,potions:0,endedAt:same})
  ])

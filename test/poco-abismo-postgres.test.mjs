@@ -2,10 +2,9 @@
 // Nunca recebe URL de bancos produtivos do Alpha Bot.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import pg from 'pg'
 import {pocoRunPlayerTransaction} from '../src/neon/poco-abismo-transaction.js'
 import {
- pocoInitRewardLedger,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx,
+ pocoInitRewardLedger,pocoClaimCommandInTx,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx,
  POCO_BOX_LEGEND_ID
 } from '../src/neon/poco-abismo-rewards.js'
 import {
@@ -24,6 +23,7 @@ if(!['127.0.0.1','localhost','::1'].includes(parsed.hostname))
  throw new Error('Teste PostgreSQL bloqueado fora de localhost (nunca usar produção)')
 if(parsed.pathname!=='/poco_ci')
  throw new Error('Nome obrigatório do DB temporário: poco_ci')
+const {default:pg}=await import('pg')
 const pool=new pg.Pool({connectionString,max:3})
 const user='poco@ci',key=POCO_LIVE_PLAYER_PREFIX+user
 const grantExp=async(c,jid,gain)=>{
@@ -144,6 +144,20 @@ test('liquidação só depois do prazo e uma vez, sem jamais usar prévia',async
  assert.equal(values.get('outro@ci'),25000000)
  assert.equal(values.get('terceiro@ci'),10000000)
 })
+test('IDs de ação permanecem únicos em novas conexões, concorrência e rollback',async()=>{
+ const run=messageId=>pocoRunPlayerTransaction(pool,stateParams,c=>pocoClaimCommandInTx(c,user,messageId))
+ await assert.rejects(()=>pocoRunPlayerTransaction(pool,stateParams,async c=>{
+  assert.equal(await pocoClaimCommandInTx(c,user,'id-rollback'),true)
+  throw new Error('falha após marcar o comando')
+ }),/falha após marcar/)
+ assert.equal(await run('id-rollback'),true)
+ assert.equal(await run('id-rollback'),false)
+ const concurrent=await Promise.all([run('id-concorrente'),run('id-concorrente')])
+ assert.deepEqual(concurrent.sort(),[false,true])
+ for(let i=0;i<85;i++) assert.equal(await run('id-sequencia-'+i),true)
+ assert.equal(await run('id-concorrente'),false)
+})
+
 test.after(async()=>{await pool.end()})
 
 test('WhatsApp simulado + PostgreSQL: queda, reconexão, ACK e comando duplicado',async()=>{

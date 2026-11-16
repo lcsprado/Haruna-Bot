@@ -9,8 +9,8 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
-import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
-import {pocoInitRewardLedger,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoPendingPromptToken,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
+import {pocoInitRewardLedger,pocoClaimCommandInTx,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
 import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
 import {pocoFinalLeaderboard,pocoSettleFinalRanking,POCO_LIVE_PLAYER_PREFIX,POCO_LIVE_SETTLEMENT_KEY} from './poco-abismo-settlement.js'
@@ -52,6 +52,9 @@ async function mutate(jid,name,fn){
   jid,name,key:keyFor(jid),settlementKey:POCO_LIVE_SETTLEMENT_KEY,
   season:POCO_SEASON.id,empty
  },fn)
+}
+async function acceptCommand(c,s,jid,messageId){
+ return !pocoMessageSeen(s,messageId)&&await pocoClaimCommandInTx(c,jid,messageId)
 }
 function updateBest(s,jid){
  if(!s.active)return
@@ -147,7 +150,7 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
   const prepared={...profile,heroId:hero||'',classId:profile.class_id,
    petIds:(petTeam||[]).map(p=>p.id).filter(Boolean)}
   const result=await mutate(sender,name,async(c,s,at)=>{
-   if(pocoMessageSeen(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
+   if(!await acceptCommand(c,s,sender,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    if(!pocoSeasonActive(at))return {message:'⛔ A temporada não está aberta.'}
    expire(s,sender,at)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
@@ -156,18 +159,16 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
    const gain=await recordRewards(c,s,sender,start,at)
    updateBest(s,sender)
    const promptToken=pocoStagePrompt(s.active)
-   pocoRememberMessage(s,messageId)
    return {message:'⚔️ Tentativa '+s.attempts+' iniciada!\n💰 Andares iniciais: R$ '+label(gain.cash)+' e '+label(gain.xp)+' EXP.\n'+prompt(s.active),promptToken}
   })
   await sendActionPrompt(sender,name,reply,result);return true
  }
  if(option==='sair'){
-  const result=await mutate(sender,name,(_c,s,at)=>{
-   if(pocoMessageSeen(s,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
+  const result=await mutate(sender,name,async(c,s,at)=>{
+   if(!await acceptCommand(c,s,sender,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
    expire(s,sender,at)
    if(!s.active)return {message:report(s)}
    s.active=pocoEnd(s.active,at>=POCO_SEASON.endAt?'season_closed':'abandoned',at).state;finish(s,sender)
-   pocoRememberMessage(s,messageId)
    return {message:'🚪 Você encerrou a tentativa.\n'+report(s)}
   })
   await reply(result.message);return true
@@ -180,7 +181,6 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
   const result=await mutate(sender,name,async(c,s)=>{
    const opened=await pocoOpenBoxInTx(c,sender,tier,messageId);
    if(!opened.alreadyClaimed)s.cashEarned+=Number(opened.cash||0);
-   pocoRememberMessage(s,messageId);
    return opened.alreadyClaimed
     ?{message:'↩️ Esta mensagem já abriu a caixa; nenhum prêmio duplicado.'}
     :{message:'🎁 *CAIXA ABISSAL*\n💰 R$ '+label(opened.cash)+'\n📦 '+opened.itemId+' ×'+opened.quantity};
@@ -193,7 +193,7 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
  }
  if(/^[1-4]$/.test(option)){
   const result=await mutate(sender,name,async(c,s,at)=>{
-   if(pocoMessageSeen(s,messageId))return {message:'↩️ Esta ação já foi processada. Consulte !poco para ver a situação atual.'}
+   if(!await acceptCommand(c,s,sender,messageId))return {message:'↩️ Esta ação já foi processada. Consulte !poco para ver a situação atual.'}
    if(at>=POCO_SEASON.endAt){
     if(s.active){s.active=pocoEnd(s.active,'season_closed',at).state;finish(s,sender)}
     return {message:'🏁 Encerrado o prazo competitivo de sexta às 21h.\n'+report(s)}
@@ -205,7 +205,6 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
    try{progress=pocoDecision(s.active,Number(option),{now:at})}
    catch(e){return {message:'⚠️ '+e.message+'\n'+prompt(s.active)}}
    s.active=progress.state
-   pocoRememberMessage(s,messageId)
    const gains=await recordRewards(c,s,sender,progress,at)
    const drop=gains.drop
    updateBest(s,sender)
@@ -226,8 +225,8 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
   else expire(s,sender,at)
   if(!s.active)return {message:status(s)}
   if(!s.active.deliveryPending)return {message:status(s)+'\n\n'+prompt(s.active)}
-  // !poco reenvia exatamente a escolha pendente sem avançar nenhum turno.
-  const promptToken=pocoStagePrompt(s.active)
+  // Reutilizar o token permite confirmar a primeira entrega bem-sucedida.
+  const promptToken=pocoPendingPromptToken(s.active)
   return {message:'📨 Reenviando a decisão sem penalidade de tempo.\n'+prompt(s.active),promptToken}
  })
  await sendActionPrompt(sender,name,reply,result)
@@ -242,7 +241,7 @@ export function startPocoLiveScheduler(sock){
   try{
    await ensureReady()
    const now=Date.now()
-   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE LEFT(key,LENGTH($1))=$1 AND value->'active' IS NOT NULL AND ((value->'active'->>'deadline')::bigint < $2 OR $2 >= $3) LIMIT 50",[PREFIX,now,POCO_SEASON.endAt])
+   const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE LEFT(key,LENGTH($1))=$1 AND value->>'active' IS NOT NULL AND ((value->'active'->>'deadline')::bigint < $2 OR $2 >= $3) LIMIT 50",[PREFIX,now,POCO_SEASON.endAt])
    for(const row of rows){
     const jid=row.key.slice(PREFIX.length)
     const result=await mutate(jid,row.value?.name,(_c,s,at)=>{
