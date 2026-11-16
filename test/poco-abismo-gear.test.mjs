@@ -44,3 +44,18 @@ test('peça isolada não libera forja manual gratuita ou cópias doadoras',()=>{
  assert.ok(!source.includes('POCO_ABISMO_GEAR_IDS.map(id=>[id,Object.freeze({raidLevel:'))
  assert.equal(POCO_ABISMO_GEAR_IDS.length,new Set(POCO_ABISMO_GEAR_IDS).size)
 })
+
+test('nomes exclusivos não reciclam temas genéricos dos equipamentos antigos',()=>{
+ assert.deepEqual(POCO_ABISMO_GEAR.map(x=>x.name),[
+  'Cortajuramentos',
+  'Couraça das Cem Cicatrizes',
+  'Elmo do Vigia Sem Olhos',
+  'Escudo das Correntes Partidas',
+  'Botas do Retorno Impossível'
+ ])
+ const used=POCO_ABISMO_GEAR.map(x=>x.name.toLowerCase())
+ for(const name of used){
+  assert.doesNotMatch(name,/abismo|eclipse|eternidade|vazio|soberano/)
+ }
+ assert.equal(new Set(used).size,5)
+})
