@@ -33,6 +33,21 @@ export function gtClimateMultiplier(car,weather='seco'){
 }
 export const GT_PLACE_POINTS=Object.freeze([10,7,5,3])
 export const GT_WEEKLY_PRIZES=Object.freeze([15000000,8000000,5000000,1000000])
+// Posição da prova (não ranking diário/semanal): XP do personagem escala
+// com o nível fixado no momento da largada, mesmo que suba durante a etapa.
+export const GT_RACE_XP_PERCENTS=Object.freeze([60,50,40,35,30])
+export const GT_RACE_CASH_PRIZES=Object.freeze([300000,200000,120000,70000,30000])
+export const GT_RACE_PILOT_XP=Object.freeze([750,550,400,300,200])
+export function gtRaceReward(place,startingLevel){
+ const rank=Math.max(1,Number(place)||1)
+ const lv=Number(startingLevel)
+ if(!Number.isSafeInteger(rank)||!Number.isSafeInteger(lv)||lv<1)throw Error('Colocação ou nível inicial inválido para XP do GT')
+ const idx=Math.min(rank,5)-1
+ const need=Math.max(100,lv*100)
+ const playerXp=Math.floor(need*GT_RACE_XP_PERCENTS[idx]/100)
+ if(!Number.isSafeInteger(playerXp))throw Error('XP fora do limite')
+ return {cash:GT_RACE_CASH_PRIZES[idx],pilotXp:GT_RACE_PILOT_XP[idx],playerXp,percent:GT_RACE_XP_PERCENTS[idx]}
+}
 export const GT_MIN_DRIVERS=2
 export const GT_DAILY_WEAR=9
 export const GT_TIME='20:30'
