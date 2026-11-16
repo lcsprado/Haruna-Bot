@@ -95,6 +95,12 @@ export async function raidPassText(jid){
  const n=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,s.activatedAt,s.expiresAt])).rows[0]?.n||0
  return '🎟️ *PASSE RAIDLOTE — SUPREMO ATIVO*\n📦 Pacotes utilizados: '+n+'/'+s.maxPackages+'\n⌛ Até '+localTime(s.expiresAt)+'\n🏆 Pacotes especiais: 100% das recompensas-base da Raid manual (EXP, dinheiro, maestria, pets, fragmentos, caixas e equipamentos).\n💰 Compra, chaves e taxas normais.\n⚔️ !raidlote 75 10 para consultar um pacote.'
 }
+export async function isNextRaidLotePassPackage(jid,at=Date.now()){
+ const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(jid)])).rows[0]?.value
+ if(!(Number(state?.activatedAt)>0&&Number(state?.expiresAt)>at&&Number(state?.maxPackages)===3))return false
+ const used=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,state.activatedAt,state.expiresAt])).rows[0]?.n||0
+ return Number(used)<3
+}
 export async function handleAuction15RewardCommand({cmd,args=[],sender,reply}){
  if(!['itensraid','usardecreto','usarperfeicao','passeraidlote','usarpasse','meupasse'].includes(cmd))return false
  try{
