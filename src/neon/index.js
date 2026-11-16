@@ -115,7 +115,7 @@ import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-bonus-20261101.js'
 import {startAuctionAlphaScheduler as startAuctionAlphaScheduler1500,handleAuctionAlphaCommand as handleAuctionAlphaCommand1500} from './auction-bonus-20261101-1500.js'
-import {handleAuction15RewardCommand} from './auction-20261115-rewards.js'
+import {handleAuction15RewardCommand,isNextRaidLotePassPackage} from './auction-20261115-rewards.js'
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
@@ -13241,7 +13241,7 @@ if(action==='historico'){
   if(!rows.length)return await reply('📜 Nenhum pacote registrado.')
   return await reply('📜 *RAIDLOTE — HISTÓRICO*\n\n'+rows.map((x,i)=>(
     (i+1)+'. Lv.'+x.level+' • '+x.status+'\n'
-    +'🏆 '+x.won_count+'/'+x.requested+' • 💳 R$ '+Number(x.total_paid).toLocaleString('pt-BR')
+    +'🏆 '+x.won_count+'/'+x.requested+' • 💳 R$ '+Number(x.total_paid).toLocaleString('pt-BR')+(x.auction_pass_manual_rewards===true?' • 🎟️ Supremo':'')
   )).join('\n\n'))
 }
 if(action==='cancelar'){
@@ -13267,11 +13267,13 @@ if(confirmation){
     +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
     +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
     +'\n🏛️ Taxa Prefeitura: R$ '+bought.quote.serviceTotal.toLocaleString('pt-BR')
+    +(bought.job?.auction_pass_manual_rewards===true?'\n🎟️ *PASSE SUPREMO:* 100% das recompensas-base de Raid manual e chances normais de drop.':'\n🏆 Recompensas reduzidas do Raid Lote comum.')
     +'\n⚠️ Se morrer/perder, o pacote acaba sem reembolso.'
     +'\n📊 Acompanhe: !raidlote status ou !raidlote painel')
 }
 const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
 const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
+const nextPassPackage=await isNextRaidLotePassPackage(sender)
 return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
   +'\n👹 '+cfg.name+' • '+count+' tentativas'
   +'\n🔑 Chaves próprias: '+quote.ownedKeysUsed+' (serão consumidas na compra)'
@@ -13279,7 +13281,7 @@ return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
   +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
   +'\n🏛️ Automação 10%: R$ '+quote.serviceTotal.toLocaleString('pt-BR')
   +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
-  +'\n\n🏆 80% dinheiro • 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos'
+  +'\n\n'+(nextPassPackage?'🎟️ *PASSE SUPREMO:* 100% das recompensas-base da Raid manual: dinheiro, EXP, maestria, pets, fragmentos e chances normais de equipamentos e caixas.':'🏆 80% dinheiro • 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos')
   +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
   +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+count+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
