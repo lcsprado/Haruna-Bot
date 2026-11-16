@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {pocoStart,pocoDecision} from '../src/neon/poco-abismo-rules.js'
-import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady} from '../src/neon/poco-abismo-delivery.js'
+import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,POCO_ID_CACHE_LIMIT} from '../src/neon/poco-abismo-delivery.js'
 
 test('não reduz os 120 segundos pelo tempo de processamento ou fila de envio',()=>{
  const {state}=pocoStart({now:1000,seed:123,profile:{heroId:'pecado_ban'}})
@@ -53,4 +53,18 @@ test('após uma ação, o turno seguinte precisa de confirmação própria',()=>
  assert.equal(pocoConfirmPrompt(progressed.state,first,4010),false)
  assert.equal(pocoConfirmPrompt(progressed.state,second,5010),true)
  assert.equal(progressed.state.deadline,125010)
+})
+
+test('comando retransmitido não modifica estado e cache continua limitado',()=>{
+ const session={processedMessageIds:[]}
+ assert.equal(pocoMessageSeen(session,'id-a'),false)
+ assert.equal(pocoRememberMessage(session,'id-a'),true)
+ assert.equal(pocoRememberMessage(session,'id-a'),false)
+ assert.equal(pocoMessageSeen(session,'id-a'),true)
+ for(let i=0;i<POCO_ID_CACHE_LIMIT+50;i++)
+  assert.equal(pocoRememberMessage(session,'id-'+i),true)
+ assert.equal(session.processedMessageIds.length,POCO_ID_CACHE_LIMIT)
+ assert.equal(pocoMessageSeen(session,'id-a'),false)
+ assert.equal(pocoMessageSeen(session,'id-129'),true)
+ assert.equal(pocoRememberMessage(session,'x'.repeat(181)),false)
 })
