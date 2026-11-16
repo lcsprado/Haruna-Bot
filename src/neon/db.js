@@ -3086,7 +3086,7 @@ export async function getCombatProfile(jid) {
 const p=await getProfile(jid)
 if(!p) return null
 const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
-const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id,p.helmet_id,p.shield_id])
+const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
 const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
 const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
 const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1,stars[p.boot_id]||1):null
