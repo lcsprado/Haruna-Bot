@@ -1,0 +1,41 @@
+name: Alpha NPC merchants - schema bootstrap
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/city.js'
+      - 'src/neon/npc-shops.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/npc-web-schema-bootstrap-20261116.test.mjs'
+      - '.github/workflows/alpha-npc-web-schema.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/city.js'
+      - 'src/neon/npc-shops.js'
+      - 'test/npc-web-schema-bootstrap-20261116.test.mjs'
+permissions:
+  contents: read
+jobs:
+  npc-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/npc-shops.js
+          node --check src/neon/city.js
+      - name: Validate NPC boot and Web API
+        run: |
+          node --test test/npc-web-schema-bootstrap-20261116.test.mjs
+          node --test test/web-catalog-npc-ui.test.mjs
