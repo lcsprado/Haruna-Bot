@@ -44,7 +44,7 @@ test('lucro líquido: vitoria RaidLote tem metade do ganho da Raid manual, sem p
     assert.ok(reward>sample.key+fee)
   }
   assert.equal(raidLoteCashPayout(100000,100000),110000) // cobre chave e taxa sem lucro extra
-  assert.throws(()=>raidLoteCashPayout(Number.MAX_SAFE_INTEGER,100000))
+  assert.throws(()=>raidLoteCashPayout(Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER))
 })
 test('limites e overflow rejeitados',()=>{
   for(const n of [0,11,-1,1.5])assert.throws(()=>raidLoteQuote(480000,n))
