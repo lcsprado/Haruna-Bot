@@ -1247,7 +1247,7 @@ export async function startRaid(chat,host,level=null,options={}){
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
     const partyHpMultiplier=1+Math.max(0,ids.length-1)*.12
     const raidMaxHp=Math.round(cfg.hp*partyHpMultiplier)
-    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.phaseIndex=cfg.slug?1:null;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;if(cfg.slug)s.phaseIndex=1;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
     if(loteAttemptId){
       await c.query(`
