@@ -66,7 +66,7 @@ test('retries announcements per group and deduplicates payout transaction',()=>{
   assert.match(src,/queueNotice\(s,'registration'/)
   assert.match(src,/queueNotice\(s,'start'/)
   assert.match(src,/queueNotice\(s,isFinal\?'final'/)
-  assert.match(src,/\[BINGO 15\/11\] aviso aceito/)
+  assert.match(src,/\[BINGO 16\/11\] aviso aceito/)
 })
 test('WhatsApp scheduler and commands are connected',()=>{
   assert.match(index,/startBingoNov16Scheduler\(sock\)/)
