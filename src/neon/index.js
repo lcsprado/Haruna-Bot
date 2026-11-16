@@ -103,6 +103,7 @@ import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
+import {pocoNumericRoute} from './poco-abismo-numeric-choice.js'
 import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
@@ -10476,8 +10477,26 @@ timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
 // A resposta pertence primeiro ao menu individual (inclusive recuperado do banco).
 // O quiz é um prompt global e só pode consumi-la quando não há menu do jogador.
-const activeNumericMenu=possibleQuizChoice
+const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
   ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+// O número sozinho é uma resposta do Poço somente durante uma decisão
+// ativa deste jogador, neste chat, sem outro menu individual aberto.
+// Deve vir ANTES dos quizzes e do fallback do inventário.
+if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)&&!activeNumericMenu){
+  const route=await pocoNumericRoute({db,sender,chat,body})
+  if(route){
+    const betaMeta=route==='beta'&&isGroup
+      ? await sock.groupMetadata(chat).catch(()=>null) : null
+    const betaAllowed=route==='beta'
+      ? pocoBetaGroupAllowed({chat,subject:betaMeta?.subject}) : false
+    if(route==='beta'&&!betaAllowed)continue
+    const params={cmd:'poco',args:[body],sender,name:msg.pushName||'Jogador',
+      reply,chat,messageId:String(msg?.key?.id||''),betaAllowed}
+    const handled=route==='live'
+      ? await handlePocoLiveCommand(params) : await handlePocoCommand(params)
+    if(handled)continue
+  }
+}
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
   if(await quizHandleChoice(chat,body,reply))continue
 }

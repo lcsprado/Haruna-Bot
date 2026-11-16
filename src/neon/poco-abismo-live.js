@@ -100,7 +100,7 @@ function prompt(state){
   ' • 🧪 '+state.potions+' poção(ões) • ✨ '+state.skillCharges+' técnicas'+
   '\n👹 Guardião: '+label(boss.hp)+'/'+label(boss.maxHp)+' HP'+
   '\n⚠️ Próxima skill: *'+skill.name+'*'+OPTIONS+
-  '\n⏳ Responda em *120 segundos* com *!poco 1*, 2, 3 ou 4.'+
+  '\n⏳ Responda em *120 segundos* só com *1, 2, 3 ou 4* (ou *!poco 1*).'+
   '\n🔄 Sem resposta, termina a tentativa e a próxima começa do andar zero.'
 }
 function report(s){
