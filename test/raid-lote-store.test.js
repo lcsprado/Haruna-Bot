@@ -18,7 +18,8 @@ function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3
       if(sql==='ROLLBACK'){tx=false;events.push('ROLLBACK');return {rows:[]}}
       if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]}
       if(sql.includes('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2'))return {rows:prior?[prior]:[]}
-      if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:active?[{exists:1}]:[]}
+      if(sql.includes('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE'))return {rows:[]}
+       if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:active?[{exists:1}]:[]}
       if(sql.includes('COALESCE(SUM(requested),0)'))return {rows:[{purchased}]}
       if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:publicRaid?[{}]:[]}
       if(sql.includes('SELECT level FROM users'))return {rows:[{level:500}]}
