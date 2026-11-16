@@ -27,6 +27,25 @@ test('recompensas menores com truncamento',()=>{
   assert.equal(raidLoteReward(29000,'heroXp'),17400)
   assert.equal(raidLoteGearChance(.003),.00075)
 })
+test('lucro líquido: vitoria RaidLote tem metade do ganho da Raid manual, sem perda',()=>{
+  assert.equal(RAID_LOTE_V1.cashNetProfitBasisPoints,5000)
+  const samples=[
+    {level:60,key:230000,manual:318800,automatic:297400,net:44400},
+    {level:70,key:390000,manual:534800,automatic:501400,net:72400},
+    {level:75,key:480000,manual:633600,automatic:604800,net:76800}
+  ]
+  for(const sample of samples){
+    const fee=Math.ceil(sample.key*.1)
+    const reward=raidLoteCashPayout(sample.manual,sample.key)
+    const manualNet=sample.manual-sample.key
+    assert.equal(reward,sample.automatic,'Raid '+sample.level)
+    assert.equal(reward-sample.key-fee,sample.net,'lucro de vitória Raid '+sample.level)
+    assert.equal(sample.net,Math.floor(manualNet*.5),'metade do lucro manual Raid '+sample.level)
+    assert.ok(reward>sample.key+fee)
+  }
+  assert.equal(raidLoteCashPayout(100000,100000),110000) // cobre chave e taxa sem lucro extra
+  assert.throws(()=>raidLoteCashPayout(Number.MAX_SAFE_INTEGER,100000))
+})
 test('limites e overflow rejeitados',()=>{
   for(const n of [0,11,-1,1.5])assert.throws(()=>raidLoteQuote(480000,n))
   assert.throws(()=>raidLoteQuote(-1,1))
