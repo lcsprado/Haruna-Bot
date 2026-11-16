@@ -110,7 +110,7 @@ jobs:
 
   web-browser-staging:
     name: Chrome Web UI + actual auth API - isolated local DB
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
