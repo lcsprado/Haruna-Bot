@@ -1,0 +1,43 @@
+name: Passe Supremo RaidLote - Premio Manual (3 Pacotes)
+on:
+  pull_request:
+    paths:
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/raid-lote-policy.js'
+      - 'src/neon/raid-lote-notice-outbox.js'
+      - 'src/neon/auction-20261115-rewards.js'
+      - 'src/neon/games.js'
+      - 'src/neon/index.js'
+      - 'test/auction-pass-manual-rewards-20261116.test.mjs'
+      - 'test/raid-lote-store.test.js'
+      - 'test/raid-lote-policy.test.js'
+      - 'test/auction-20261115.test.mjs'
+      - '.github/workflows/auction-pass-manual-rewards.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/auction-20261115-rewards.js'
+      - 'src/neon/games.js'
+      - 'test/auction-pass-manual-rewards-20261116.test.mjs'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check src/neon/raid-lote-store.js
+          node --check src/neon/raid-lote-notice-outbox.js
+          node --check src/neon/auction-20261115-rewards.js
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+      - name: Payment, reward and command regressions
+        run: |
+          node --test test/auction-pass-manual-rewards-20261116.test.mjs test/raid-lote-store.test.js test/raid-lote-policy.test.js test/auction-20261115.test.mjs test/raid-lote-private-receipt-20261112.test.mjs
