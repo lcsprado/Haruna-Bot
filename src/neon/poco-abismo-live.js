@@ -157,7 +157,7 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
   const result=await mutate(sender,name,async(c,s,at)=>{
    if(pocoMessageSeen(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    if(!pocoSeasonActive(at))return {message:'⛔ A temporada não está aberta.'}
-   expire(s,sender,now)
+   expire(s,sender,at)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
    const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now:at})
    s.attempts++;s.active=start.state;s.chat=chat
@@ -172,7 +172,7 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
  if(option==='sair'){
   const result=await mutate(sender,name,(_c,s,at)=>{
    if(pocoMessageSeen(s,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
-   expire(s,sender,now)
+   expire(s,sender,at)
    if(!s.active)return {message:report(s)}
    s.active=pocoEnd(s.active,at>=POCO_SEASON.endAt?'season_closed':'abandoned',at).state;finish(s,sender)
    pocoRememberMessage(s,messageId)
