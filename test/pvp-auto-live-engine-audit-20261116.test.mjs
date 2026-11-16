@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildFairFighter} from '../src/neon/pvp-balance-simulator.js';
+import {buildFairFighter,PVP_COMBATANTS} from '../src/neon/pvp-balance-simulator.js';
 import {heroPvpAttack,heroPvpDefense} from '../src/neon/playable-heroes-core.js';
 import {classPvpAttack,classPvpDefense} from '../src/neon/pvp-class-powers.js';
 import {effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
@@ -161,4 +161,57 @@ test('complete 5x5 posture matrix with mirrored sides: detect a universally domi
  assert.equal(battles,pairs.length*75*2*25);
  // A large aggregate advantage would be a release blocker even when one match-up looks fine.
  assert.ok(Math.max(...Object.values(shift))<=20,'posture advantage exceeds 20pp');
+});
+
+
+test('full roster 136-pair automatic posture balance audit, both sides and every combination',()=>{
+ const stances=['equilibrada','agressiva','defensiva','tatica','adaptativa'];
+ const counts=Object.fromEntries(stances.map(p=>[p,Object.fromEntries(stances.map(q=>[q,0]))]));
+ const samples=Object.fromEntries(stances.map(p=>[p,Object.fromEntries(stances.map(q=>[q,0]))]));
+ const adverse=[];
+ let total=0;
+ const roles=[...PVP_COMBATANTS];
+ assert.equal(roles.length,17);
+ for(let i=0;i<roles.length;i++)for(let j=i+1;j<roles.length;j++){
+  const a=roles[i],b=roles[j];
+  const winWhenBNeutral=Object.fromEntries(stances.map(p=>[p,0]));
+  for(let seed=1;seed<=50;seed++){
+   const s=20261116+i*100003+j*313+seed*17;
+   for(const p of stances)for(const q of stances){
+    const normal=run(a,b,s,{postureA:p,postureB:q});
+    const reversed=run(b,a,s,{postureA:q,postureB:p});
+    const n=Number(pvpWinnerByHealth(normal.A,normal.B,.5).jid==='A');
+    const r=Number(pvpWinnerByHealth(reversed.A,reversed.B,.5).jid==='B');
+    counts[p][q]+=n+r;
+    samples[p][q]+=2;
+    if(q==='equilibrada')winWhenBNeutral[p]+=n+r;
+    total+=2;
+   }
+  }
+  const base=winWhenBNeutral.equilibrada;
+  const best=Math.max(...stances.map(p=>winWhenBNeutral[p]));
+  const worst=Math.min(...stances.map(p=>winWhenBNeutral[p]));
+  const maxSwing=Math.round((best-worst));
+  if(maxSwing>=20)adverse.push({a,b,maxSwingPp:maxSwing,
+   rates:Object.fromEntries(stances.map(p=>[p,winWhenBNeutral[p]]))});
+ }
+ const matrix=Object.fromEntries(stances.map(p=>[p,
+  Object.fromEntries(stances.map(q=>[q,Math.round(counts[p][q]/samples[p][q]*1000)/10]))
+ ]));
+ const average=Object.fromEntries(stances.map(p=>[p,
+  Math.round(stances.reduce((sum,q)=>sum+counts[p][q],0)/
+    stances.reduce((sum,q)=>sum+samples[p][q],0)*1000)/10
+ ]));
+ const shifts=Object.fromEntries(stances.map(p=>[p,
+  Math.round((average[p]-average.equilibrada)*10)/10
+ ]));
+ const summary={total,roles:17,pairs:136,matrix,average,shifts,
+  largestPerPairSwings:adverse.sort((a,b)=>b.maxSwingPp-a.maxSwingPp).slice(0,12),
+  flaggedMatchups:adverse.length};
+ console.log('PVP_AUTO_ALL_17_AUDIT '+JSON.stringify(summary));
+ assert.equal(total,136*25*50*2);
+ const maxPositive=Math.max(...Object.values(shifts));
+ assert.ok(maxPositive<=12,'aggregate automatic stance buff exceeds +12pp');
+ // Build-specific swing over 35pp warrants stopping the release.
+ assert.ok(adverse.every(x=>x.maxSwingPp<=35),'individual pairing changed by over 35pp');
 });
