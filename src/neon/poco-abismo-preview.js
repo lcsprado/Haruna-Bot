@@ -79,7 +79,7 @@ function recordRewards(s,progress,now){
   }
  }
  const boss=progress.bossDefeated
- if(!boss)return null
+ if(!boss || !POCO_SEASON.dropBossFloors.includes(boss))return null
  const claimKey=dayInBrazil(now)+':'+boss
  if(s.dailyRolls[claimKey])return {kind:'already_rolled'}
  const drop=pocoRollDrop(()=>randomInt(0,10000)/10000)
