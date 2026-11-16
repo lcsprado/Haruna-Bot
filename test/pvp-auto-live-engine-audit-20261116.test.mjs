@@ -130,3 +130,35 @@ test('mirrored live PvP audit: five stances vs equilibrium across 12 matchups',(
  assert.equal(total,pairs.length*110*2*5);
  assert.ok(report.every(x=>Object.values(x.rates).every(v=>v>=0&&v<=100)));
 });
+
+
+test('complete 5x5 posture matrix with mirrored sides: detect a universally dominant posture',()=>{
+ const stances=['equilibrada','agressiva','defensiva','tatica','adaptativa'];
+ const matrix=Object.fromEntries(stances.map(a=>[a,Object.fromEntries(stances.map(b=>[b,0]))]));
+ let battles=0;
+ for(const [a,b] of pairs){
+  for(let seed=1;seed<=75;seed++){
+   const n=1200116+seed*47;
+   for(const p of stances)for(const q of stances){
+    const direct=run(a,b,n,{postureA:p,postureB:q});
+    const reverse=run(b,a,n,{postureA:q,postureB:p});
+    matrix[p][q]+=Number(pvpWinnerByHealth(direct.A,direct.B,.5).jid==='A');
+    matrix[p][q]+=Number(pvpWinnerByHealth(reverse.A,reverse.B,.5).jid==='B');
+    battles+=2;
+   }
+  }
+ }
+ const each=pairs.length*75*2;
+ const pct=Object.fromEntries(stances.map(p=>[p,Object.fromEntries(stances.map(q=>[
+  q,Math.round(matrix[p][q]/each*1000)/10
+ ]))]));
+ const averaged=Object.fromEntries(stances.map(p=>[p,
+  Math.round(stances.reduce((sum,q)=>sum+matrix[p][q],0)/(each*5)*1000)/10
+ ]));
+ const overallBase=averaged.equilibrada;
+ const shift=Object.fromEntries(stances.map(p=>[p,Math.round((averaged[p]-overallBase)*10)/10]));
+ console.log('PVP_AUTO_POSTURE_MATRIX '+JSON.stringify({battles,percent:pct,average:averaged,shift}));
+ assert.equal(battles,pairs.length*75*2*25);
+ // A large aggregate advantage would be a release blocker even when one match-up looks fine.
+ assert.ok(Math.max(...Object.values(shift))<=20,'posture advantage exceeds 20pp');
+});
