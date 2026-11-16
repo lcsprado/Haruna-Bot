@@ -3,7 +3,7 @@
 export const POCO_SEASON=Object.freeze({
   id:'poco-abismo-2026-11-16',startAt:Date.parse('2026-11-16T00:00:00-03:00'),
   endAt:Date.parse('2026-11-20T21:00:00-03:00'),floorLimit:30,
-  responseMs:120_000,bossFloors:[5,10,15,20,25,30],
+  responseMs:120_000,bossFloors:[5,10,15,20,25,30],dropBossFloors:[10,15,20,25,30],
   prizes:[25_000_000,15_000_000,10_000_000],
 });
 export const POCO_GEAR=Object.freeze([
