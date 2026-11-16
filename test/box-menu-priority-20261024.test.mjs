@@ -18,10 +18,12 @@ test('caixa do jogador não é interceptada pelo quiz global',()=>{
   assert.equal(shouldRouteQuizContinuation({body:'3',hasPlayerMenu:false,quizPending:true}),false)
 })
 test('menu persistido é recuperado antes de aceitar um atalho de quiz',()=>{
-  const index=source.indexOf('const activeNumericMenu=possibleQuizChoice')
-  const quiz=source.indexOf('if(shouldRouteQuizContinuation(')
-  assert.ok(index>=0&&quiz>index)
+  const index=source.indexOf('const activeNumericMenu=!body.startsWith(prefix)')
+  const poco=source.indexOf('const route=await pocoNumericRoute(',index)
+  const quiz=source.indexOf('if(shouldRouteQuizContinuation(',index)
+  assert.ok(index>=0&&poco>index&&quiz>poco,'menu individual deve ter prioridade ao Poço e ao quiz')
   assert.match(source.slice(index,quiz),/recoverQuickFlow\(chat,sender\)/)
+  assert.match(source.slice(index,quiz),/!activeNumericMenu\)/)
   assert.match(source,/let flow=activeNumericMenu\|\|getQuickFlow\(chat,sender\)/)
 })
 test('LID e PN simultâneos do mesmo jogador preservam a mesma fila',async()=>{
