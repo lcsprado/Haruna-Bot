@@ -16,6 +16,7 @@ test('actual Bleach and 75 raids run isolated on disposable PG16',{skip:!safe},a
   cancelRaid}=await import('../src/neon/games.js')
  const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
  const {initAwakening}=await import('../src/neon/awakening.js')
+ const {initRelics}=await import('../src/neon/relics.js')
  const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
  const chat='__bleach_e2e_group__@g.us'
  const a='5511999911101@s.whatsapp.net',b='5511999911102@s.whatsapp.net'
@@ -43,6 +44,7 @@ test('actual Bleach and 75 raids run isolated on disposable PG16',{skip:!safe},a
    await initCommunityPack()
    await initPlayableHeroes()
    await initAwakening()
+   await initRelics()
    await initEnchantments()
    await initGames()
    const items=(await db.query(
