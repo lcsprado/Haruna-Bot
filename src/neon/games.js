@@ -22,6 +22,7 @@ import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyG
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
+import {NAMED_COLLAB_RAIDS,raidPhase,bleachRaidDailyKey,bleachRaidFragmentCredit} from './named-collab-raids.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {chooseEconomicPetPotion} from './pet-potion-economy.js'
 import {mitigateRaidPetDamage,estimatedRaidPetHit} from './raid-pet-mitigation.js'
@@ -773,10 +774,11 @@ const RAID_CONFIGS=[
   {level:60,name:'Titã do Caos',hp:410000,atk:135,keyId:'chave_raid_60',keyPrice:230000,cashPool:440000,xpPool:14500,petXpPool:1450,material:{id:'fragmento_caos',name:'Fragmento do Caos'},box:'caixa_epica',gear:['lamina_caos','machado_tita','couraca_caos','armadura_tita_ancestral'],gearChance:.005},
   {level:65,name:'Imperador Abissal',hp:540000,atk:165,keyId:'chave_raid_65',keyPrice:300000,cashPool:550000,xpPool:18500,petXpPool:1850,material:{id:'coroa_abissal',name:'Coroa Abissal'},box:'caixa_epica',gear:['foice_abismo','espada_aurora','manto_abismo_eterno','armadura_aurora'],gearChance:.004},
   {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse','egide_celestial'],gearChance:.003},
-  {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
+  {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0},
+  ...NAMED_COLLAB_RAIDS
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
-const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||raidConfig(level)?.durationMinutes||15)
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
@@ -874,7 +876,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
         VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[host,cfg.keyPrice,`Compra automática — Raid Lv.${cfg.level}`])
       autoKeyPurchased=true
     }
-    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+RAID_LOBBY_TTL_MS}
+    const state={status:'lobby',level:cfg.level,slug:cfg.slug||null,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+RAID_LOBBY_TTL_MS}
     await saveGame(c,chat,gameType,state)
     return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
@@ -1116,6 +1118,7 @@ function raidPetPotion(rows,missingHp,context={}){
 export async function startRaid(chat,host,level=null,options={}){
   return tx(async c=>{
     const loteAttemptId=options?.loteAttemptId||null
+    if(loteAttemptId&&raidConfig(level)?.slug)throw new Error('Raid de collab por nome não permite raidlote.')
     let s,gameType
     if(loteAttemptId){
       if(!/^__alpha_raid_lote__:[0-9a-f-]{36}$/i.test(chat))throw new Error('Sala interna de lote invalida')
@@ -1247,7 +1250,7 @@ export async function startRaid(chat,host,level=null,options={}){
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
     const partyHpMultiplier=1+Math.max(0,ids.length-1)*.12
     const raidMaxHp=Math.round(cfg.hp*partyHpMultiplier)
-    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;if(cfg.slug)s.phaseIndex=1;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
     if(loteAttemptId){
       await c.query(`
@@ -1341,7 +1344,31 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Fragmentos variam por colocação e escalam com a dificuldade/tempo da Raid.
     // Top 3 precisa ter participação real (>= 2% do dano total); evita carona de 1 ataque.
     // O teto da faixa é propositalmente raro via pesos decrescentes.
-    if(cfg.collab){
+    if(cfg.slug==='bleach'){
+      // Bleach has its own currency and daily cap. Never uses 7 Pecados material.
+      // Each winner is credited inside the same victory transaction as money/XP.
+      if(collabRaidEligible(p.damage,share)){
+        const dailyKey=bleachRaidDailyKey(p.jid,now)
+        await c.query(
+          "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING",
+          [dailyKey,JSON.stringify({earned:0})]
+        )
+        const saved=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
+        const current=Math.max(0,Math.floor(Number(saved.earned||0)))
+        const qty=bleachRaidFragmentCredit({dayEarned:current,damage:p.damage,share})
+        if(qty>0){
+          await c.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [dailyKey,JSON.stringify({...saved,earned:current+qty})]
+          )
+          await c.query(
+            'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+            [p.jid,cfg.material.id,qty]
+          )
+          material={...cfg.material,qty}
+        }
+      }
+    }else if(cfg.collab){
       // O material da collab é universal para todos os equipamentos/personagens.
       // Vitória e pagamento usam a mesma transação; não há saque em derrota.
       // O mínimo de dano impede receber fragmentos sem participar realmente.
@@ -1778,6 +1805,15 @@ export async function raidRound(chat,level){
       if(Number(s.hp)<=0) break
     }
 
+    // The battle retains one HP bar, room, ranking and reward transaction.
+    // Phase transitions persist in the JSONB room and are announced once by the runner.
+    const nextPhase=raidPhase(cfg,s.hp,s.maxHp)
+    const lastPhase=Number(s.phaseIndex||1)
+    const phaseTransition=nextPhase&&Number(s.hp)>0&&nextPhase.index>lastPhase
+      ?{index:nextPhase.index,name:nextPhase.name,total:cfg.phases.length}
+      :null
+    if(nextPhase)s.phaseIndex=nextPhase.index
+
     if(Number(s.hp)<=0){
       // Finalização antes da fase defensiva: persistir cura do último ataque
       // e não perder a diferença fracionária quando o herói dá o golpe final.
@@ -1832,8 +1868,9 @@ export async function raidRound(chat,level){
       return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
 
-    const special=Math.random()<.22
-    const specialName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):null
+    const special=Math.random()<(nextPhase?nextPhase.specialChance:.22)
+    const specialName=special?(nextPhase?nextPhase.specialName:(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador')):null
+    const bossEffectiveAtk=Math.round(cfg.atk*(nextPhase?.attackMultiplier||1))
     const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']])).rows
     for(const p of alive.filter(x=>x.alive)){
@@ -1843,7 +1880,7 @@ export async function raidRound(chat,level){
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
-      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
+      const raw=Math.max(1,Math.round((bossEffectiveAtk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
@@ -1876,7 +1913,7 @@ export async function raidRound(chat,level){
       let petDamage=0,petFainted=false,autoPetHeal=preRoundPetHeals.get(p.jid)||null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
-        petDamage=mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))))
+        petDamage=mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(bossEffectiveAtk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))))
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
         // Autocura preventiva da Raid, igual ao Boss: abaixo de 35% do HP,
@@ -2024,7 +2061,7 @@ export async function raidRound(chat,level){
       return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
     }
     await saveGame(c,chat,gameType,s)
-    return {config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
+    return {config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,phase:nextPhase,phaseTransition,events}
   })
 }
 

@@ -1,0 +1,81 @@
+name: Alpha Bot - Raid Bleach named collab (isolated, no deploy)
+on:
+  push:
+    branches: [feat/raid-bleach-named-collab-20261116]
+    paths:
+      - 'src/neon/named-collab-raids.js'
+      - 'src/neon/games.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/raid-bleach-named-collab-20261116.test.mjs'
+      - 'test/raid-bleach-postgres-e2e-20261116.test.mjs'
+      - 'src/neon/raid-go-diagnostics.js'
+      - 'test/raid-go-host-clarity-20261111.test.mjs'
+      - 'test/raid-lobby-diagnostics-20261111.test.mjs'
+      - '.github/workflows/raid-bleach-named-20261116.yml'
+  pull_request:
+    paths:
+      - 'src/neon/named-collab-raids.js'
+      - 'src/neon/games.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/raid-bleach-named-collab-20261116.test.mjs'
+      - 'test/raid-bleach-postgres-e2e-20261116.test.mjs'
+      - 'src/neon/raid-go-diagnostics.js'
+      - 'test/raid-go-host-clarity-20261111.test.mjs'
+      - 'test/raid-lobby-diagnostics-20261111.test.mjs'
+      - '.github/workflows/raid-bleach-named-20261116.yml'
+permissions:
+  contents: read
+jobs:
+  raid-bleach:
+    name: Named Bleach / 75 safety and legacy Raid regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/neon/named-collab-raids.js
+      - run: node --check src/neon/games.js
+      - run: node --check src/neon/db.js
+      - run: node --check src/neon/index.js
+      - run: node --test test/raid-bleach-named-collab-20261116.test.mjs test/collab-raid-20261024-shard-economy.test.mjs test/raid-go-host-clarity-20261111.test.mjs test/raid-lobby-diagnostics-20261111.test.mjs test/raid-late-join-hp-20261017.test.mjs test/raid-lote-policy.test.js test/raid-lote-real-combat.test.js
+
+  bleach-postgres:
+    name: Real Bleach and classic 75 raid - PostgreSQL16 disposable
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_bleach_raid_e2e
+          POSTGRES_USER: alpha_test
+          POSTGRES_PASSWORD: alpha_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_test -d alpha_bleach_raid_e2e"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://alpha_test:alpha_test@127.0.0.1:5432/alpha_bleach_raid_e2e
+      ALPHA_RAID_BLEACH_E2E: '1'
+      ALPHA_RUNTIME: testing
+      NODE_ENV: test
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund
+      - run: node --check test/raid-bleach-postgres-e2e-20261116.test.mjs
+      - run: node --test test/raid-bleach-postgres-e2e-20261116.test.mjs
