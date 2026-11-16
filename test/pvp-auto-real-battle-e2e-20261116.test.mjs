@@ -74,6 +74,25 @@ if(!safe){
   assert.equal(tx.rowCount,1);
   assert.equal(tx.rows[0].to_jid,result.winner.jid);
   assert.equal(Number(tx.rows[0].amount),result.reward);
+  const experience=(await db.query('SELECT jid,level,exp FROM users WHERE jid=ANY($1::text[])',[[a,b]])).rows;
+  const xpWinner=experience.find(x=>x.jid===result.winner.jid);
+  const xpLoser=experience.find(x=>x.jid===result.loser.jid);
+  assert.equal(Number(xpWinner.level),Number(result.winExp.level));
+  assert.equal(Number(xpWinner.exp),Number(result.winExp.exp));
+  assert.equal(Number(xpLoser.level),Number(result.loseExp.level));
+  assert.equal(Number(xpLoser.exp),Number(result.loseExp.exp));
+  for(const jid of [a,b]){
+   const equipped=(await db.query("SELECT item_id,stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=ANY($2::text[])",[jid,['katana_divina','armadura_divina','escudo_runico']])).rows;
+   assert.equal(equipped.length,3);
+   assert.ok(equipped.every(x=>Number(x.stars)===5&&Number(x.level)===10));
+   const owned=(await db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])",[jid,['katana_divina','armadura_divina','escudo_runico']])).rows;
+   assert.equal(owned.length,3);
+   assert.ok(owned.every(x=>Number(x.quantity)===1));
+   const pet=(await db.query('SELECT level,hp,energy FROM pets WHERE jid=$1',[jid])).rows[0];
+   assert.equal(Number(pet.level),100);
+   assert.equal(Number(pet.hp),1600);
+   assert.equal(Number(pet.energy),100);
+  }
   const formatted=formatPvpBattleReport(result);
   assert.match(formatted,/BATALHA DO ALPHA BOT/);
   const second=await battle(a,b);
