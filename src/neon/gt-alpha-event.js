@@ -1,10 +1,10 @@
 // GT Alpha Bot: somente o carro equipado às 20h30 entra nas três provas automáticas.
-import {db} from './db.js'
+import {db,grantExpInTransaction} from './db.js'
 import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from './racing-rules.js'
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
- gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings
+ gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings,gtRaceReward
 } from './gt-alpha-rules.js'
 import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 
@@ -35,9 +35,9 @@ async function mutate(key,fn){
 async function read(key){return (await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value||null}
 async function eligible(c){
  await c.query("UPDATE racing_cars_alpha SET upgrades=jsonb_set(upgrades,ARRAY[pending_part],to_jsonb(pending_level),TRUE), pending_part=NULL,pending_level=NULL,pending_until=0 WHERE equipped=TRUE AND pending_part IS NOT NULL AND pending_until>0 AND pending_until<=$1",[nowSec()])
- const rows=(await c.query("SELECT c.id AS car_id,c.jid,c.model_id,c.condition,c.upgrades,c.pending_part,p.xp,u.push_name FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid JOIN users u ON u.jid=c.jid WHERE c.equipped=TRUE ORDER BY c.jid FOR UPDATE OF c")).rows
+ const rows=(await c.query("SELECT c.id AS car_id,c.jid,c.model_id,c.condition,c.upgrades,c.pending_part,p.xp,u.push_name,u.level AS player_level FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid JOIN users u ON u.jid=c.jid WHERE c.equipped=TRUE ORDER BY c.jid FOR UPDATE OF c")).rows
  return rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
-  .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp)}))
+  .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp),playerLevel:Number(r.player_level)}))
 }
 function rankText(rows,title){
  return title+'\n\n'+(rows.length?rows.map((r,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.')+' *'+gtCleanName(r.name)+'* — *'+r.points+' pts* • '+r.wins+' vitória(s)').join('\n'):'Nenhum resultado registrado.')
@@ -47,7 +47,10 @@ function heatText(heat,n,s){
  return '🏁 *GT ALPHA BOT — '+n+'ª PROVA*\n'+heat.name+
   '\n🌦️ Condições: '+(GT_WEATHER_LABELS[heat.weather]||'☀️ Pista seca')+'\n\n'+
   heat.positions.map(p=>(p.place===1?'🥇':p.place===2?'🥈':p.place===3?'🥉':p.place+'.')+
-   ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts').join('\n')+
+   ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts'+
+   (p.reward?'\n💰 +'+money(p.reward.cash)+' • ✨ +'+p.reward.playerXp.toLocaleString('pt-BR')+
+    ' XP personagem • 👨‍✈️ +'+p.reward.pilotXp+' XP piloto'+
+    (p.reward.levelUps?' • ⬆️ +'+p.reward.levelUps+' nível(is)':''):'')).join('\n')+
   '\n\n'+rankText(gtPartialStandings(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
 }
 async function prepNotice(day){
@@ -65,6 +68,7 @@ async function prepNotice(day){
    '🔧 Prepare agora: *!garagemcorrida* • *!oficina* • *!equiparcorrida ID* • *!repararcarro*.\n'+
    '⚙️ Quanto mais preparado o carro, maior a vantagem.\n'+
    '📊 Pontuação: 1º 10 | 2º 7 | 3º 5 | 4º 3 | demais 1.\n'+
+   '🎁 Cada prova: dinheiro, XP do piloto e XP do personagem (60% a 30% do necessário ao próximo nível, conforme posição).\n'+
    '🏆 Prêmios semanais: 1º R$ 15M, 2º R$ 8M, 3º R$ 5M, 4º R$ 1M.\n'+
    '✅ Não precisa se inscrever. Tudo é automático.\n'+
    '📋 Use *!gttabela* e *!gttabela semana*.')
@@ -75,6 +79,8 @@ async function runDay(day){
  // A oficina pode terminar segundos após 20h30; capturar o carro às 20:30:10.
  if(Date.now()<start+10000)return
  await mutate(dayKey(day),async(s,c)=>{
+  // Pode recuperar até três provas na mesma transação; XP exige mais consultas.
+  await c.query("SET LOCAL statement_timeout='90000ms'")
   if(['completed','cancelled'].includes(s.phase))return
   if(!s.phase){
    if(Date.now()>start+(day==='2026-11-15'?15:10)*60000){
@@ -84,7 +90,7 @@ async function runDay(day){
    }
    const participants=await eligible(c)
    s.day=day;s.startedAt=Date.now()
-   s.participants=participants.map(p=>({jid:p.jid,name:p.name,carId:p.carId,modelId:p.modelId}))
+   s.participants=participants.map(p=>({jid:p.jid,name:p.name,carId:p.carId,modelId:p.modelId,playerLevel:p.playerLevel}))
    if(participants.length<GT_MIN_DRIVERS){
     s.phase='cancelled'
     addNotice(s,'cancel','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\n\nMenos de dois carros equipados e aptos às 20h30. Nenhum ponto distribuído.')
@@ -96,11 +102,30 @@ async function runDay(day){
     ' pilotos inscritos automaticamente com seus carros principais às *20h30*.\n'+
     '🛣️ '+s.results.heats.map(h=>h.name+' ('+GT_WEATHER_LABELS[h.weather]+')').join(' → ')+'.\n'+
     '⚙️ Melhorias e condições registradas na largada.\n'+
-    '🤖 Corridas automáticas. Consulte *!gttabela*.')
+    '🤖 Corridas automáticas, com dinheiro e XP a cada prova. Consulte *!gttabela*.')
   }
   if(s.phase!=='running')return
   while(s.stage<3&&Date.now()>=Number(s.nextAt)){
-   const heat=s.results.heats[s.stage];s.stage++;s.nextAt+=3*60000
+   const heat=s.results.heats[s.stage]
+   // Pagar a prova inteira e avançar s.stage no mesmo commit do estado GT.
+   // Uma falha em qualquer jogador desfaz carteira, perfil, XP e etapa.
+   for(const position of heat.positions){
+    const participant=s.participants.find(p=>p.jid===position.jid)
+    if(!participant||!Number.isSafeInteger(participant.playerLevel)||participant.playerLevel<1)
+     throw Error('GT sem nivel do jogador registrado na largada')
+    const reward=gtRaceReward(position.place,participant.playerLevel)
+    const pilot=await c.query('UPDATE racing_profiles_alpha SET xp=xp+$1 WHERE jid=$2 RETURNING xp',[reward.pilotXp,position.jid])
+    if(pilot.rowCount!==1)throw Error('Piloto ausente na premiação da prova do GT')
+    const wallet=await c.query('UPDATE wallets SET cash=cash+$1,updated_at=$2 WHERE jid=$3',[reward.cash,nowSec(),position.jid])
+    if(wallet.rowCount!==1)throw Error('Carteira ausente na premiação da prova do GT')
+    const exp=await grantExpInTransaction(c,position.jid,reward.playerXp,{
+     ignoreXpBoost:true,ignoreGroupProgressionEvent:true
+    })
+    await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'gt_alpha_heat',$3)",
+     [position.jid,reward.cash,dayKey(day)+':heat:'+(s.stage+1)+':place:'+position.place])
+    position.reward={...reward,levelUps:exp.levels||0}
+   }
+   s.stage++;s.nextAt+=3*60000
    addNotice(s,'heat:'+s.stage,heatText(heat,s.stage,s))
   }
   if(s.stage===3){

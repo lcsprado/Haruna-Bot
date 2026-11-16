@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs'
 import {
  GT_TRACK_IDS,GT_TIME,GT_GROUP,GT_WEEKLY_PRIZES,GT_MIN_DRIVERS,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,
- gtPoints,gtLeaderboard,gtRunHeats,gtPartialStandings
+ gtPoints,gtLeaderboard,gtRunHeats,gtPartialStandings,gtRaceReward,
+ GT_RACE_XP_PERCENTS,GT_RACE_CASH_PRIZES,GT_RACE_PILOT_XP
 } from '../src/neon/gt-alpha-rules.js'
 
 const source=path=>readFileSync(new URL('../src/neon/'+path,import.meta.url),'utf8')
@@ -52,6 +53,44 @@ test('tres pistas, pontos por colocacao e prêmios acordados',()=>{
  assert.deepEqual([0,1,2,3,4].map(gtPoints),[10,7,5,3,1])
  assert.deepEqual(GT_WEEKLY_PRIZES,[15000000,8000000,5000000,1000000])
  assert.equal(GT_MIN_DRIVERS,2)
+})
+test('XP do personagem e premios por prova seguem a colocacao com nivel congelado na largada',()=>{
+ assert.deepEqual(GT_RACE_XP_PERCENTS,[60,50,40,35,30])
+ assert.deepEqual(GT_RACE_CASH_PRIZES,[300000,200000,120000,70000,30000])
+ assert.deepEqual(GT_RACE_PILOT_XP,[750,550,400,300,200])
+ const expected=[
+  {cash:300000,pilotXp:750,playerXp:30000,percent:60},
+  {cash:200000,pilotXp:550,playerXp:25000,percent:50},
+  {cash:120000,pilotXp:400,playerXp:20000,percent:40},
+  {cash:70000,pilotXp:300,playerXp:17500,percent:35},
+  {cash:30000,pilotXp:200,playerXp:15000,percent:30}
+ ]
+ for(let i=1;i<=6;i++)assert.deepEqual(gtRaceReward(i,500),expected[Math.min(i,5)-1])
+ assert.deepEqual(gtRaceReward(1,700),{cash:300000,pilotXp:750,playerXp:42000,percent:60})
+ assert.equal(gtRaceReward(1,500).playerXp*3,90000)
+ assert.equal(gtRaceReward(2,500).playerXp+gtRaceReward(3,500).playerXp+gtRaceReward(4,500).playerXp,62500)
+ assert.throws(()=>gtRaceReward(0,500),/inválido/)
+ assert.throws(()=>gtRaceReward(1,null),/inválido/)
+ assert.throws(()=>gtRaceReward(1,500.5),/inválido/)
+})
+test('premios do GT sao atomicos por prova; sem alterar semanal ou carros historicos',()=>{
+ const src=source('gt-alpha-event.js')
+ assert.match(src,/u\.level AS player_level/)
+ assert.match(src,/playerLevel:Number\(r\.player_level\)/)
+ assert.match(src,/playerLevel:p\.playerLevel/)
+ assert.match(src,/const reward=gtRaceReward\(position\.place,participant\.playerLevel\)/)
+ assert.match(src,/UPDATE racing_profiles_alpha SET xp=xp\+\$1/)
+ assert.match(src,/UPDATE wallets SET cash=cash\+\$1,updated_at=\$2/)
+ assert.match(src,/grantExpInTransaction\(c,position\.jid,reward\.playerXp/)
+ assert.match(src,/ignoreXpBoost:true,ignoreGroupProgressionEvent:true/)
+ assert.match(src,/gt_alpha_heat/)
+ assert.match(src,/s\.stage\+\+;s\.nextAt/)
+ assert.match(src,/position\.reward=\{\.\.\.reward/)
+ assert.match(src,/if\(\['completed','cancelled'\]\.includes\(s\.phase\)\)return/)
+ assert.match(src,/await c\.query\('COMMIT'\)/)
+ assert.match(src,/await c\.query\('ROLLBACK'\)/)
+ assert.match(src,/GT_WEEKLY_PRIZES\[i\]/)
+ assert.ok(!src.includes('gt_alpha_heat_retroactive'))
 })
 test('upgrade completo vence carros sem preparação em todas pistas',()=>{
  const result=gtRunHeats([

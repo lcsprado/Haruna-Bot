@@ -8,9 +8,9 @@ const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8');
 const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
 const manifest=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
 
-test('Garage, events, NPCs, clan preview and live Boss survive the password release',()=>{
-  for(const needle of ["['racing','🏎️','Garagem Alpha']","['events','🎉','Eventos']","['npcs','🏘️','NPCs / Comerciantes']",
-    "racing:()=>renderRacing(ui)","events:renderEvents","npcs:renderNpcs","loadRacing(false)","loadEventCenter(false)"])
+test('Garage, events, clan preview and live Boss survive the password release without retired NPCs',()=>{
+  for(const needle of ["['racing','🏎️','Garagem Alpha']","['events','🎉','Eventos']",
+    "racing:()=>renderRacing(ui)","events:renderEvents","loadRacing(false)","loadEventCenter(false)"])
     assert.ok(ui.includes(needle),'UI is missing: '+needle);
   for(const file of ['racing-ui.js','clan-siege-ui.js','version.json'])
     assert.ok(existsSync(new URL('../web/'+file,import.meta.url)),'Missing rich UI module: '+file);
@@ -21,6 +21,34 @@ test('Garage, events, NPCs, clan preview and live Boss survive the password rele
   assert.ok(css.includes('.race'),'Garage visual CSS not restored');
   assert.ok(manifest.includes('/racing-ui.js'),'PWA not caching garage assets');
 });
+test('NPCs removidos não retornam na navegação nem em compras Web',()=>{
+  assert.ok(!ui.includes("['npcs','🏘️','NPCs / Comerciantes']"));
+  assert.ok(!ui.includes('npcs:renderNpcs'));
+  assert.ok(!ui.includes("data-npc-buy"));
+  assert.ok(!ui.includes("api('/api/v1/me/npcs')"));
+  assert.ok(!ui.includes("doAction('npc.buy'"));
+  assert.ok(ui.includes("if(page==='npcs')page='shop'"),'Links antigos devem abrir Loja Alpha');
+  for(const key of ['renderClanSiegePreview(ui)','loadSiege(true)','checkWebBuild()'])
+    assert.ok(ui.includes(key),'Não mexer na interface do Cerco: '+key);
+});
+
+
+test('uma única interface oficial: versão de assets sincronizada e NPC aposentado',()=>{
+  const metadata=JSON.parse(readFileSync(new URL('../web/version.json',import.meta.url),'utf8'));
+  const version=metadata.assetVersion;
+  assert.equal(version,'alpha-web-canonical-20261116-no-npcs-v1');
+  assert.ok(ui.includes("const WEB_ASSET_ID='"+version+"'"),'App e metadados precisam ser a mesma versão');
+  assert.ok(html.includes('src="/app.js?v=20261116-no-npcs-v1"'),'HTML deve invalidar JS antigo');
+  assert.ok(html.includes('href="/styles.css?v=20261116-no-npcs-v1"'),'HTML deve invalidar CSS antigo');
+  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-20261116-no-npcs-v1'"),'PWA deve invalidar cache antigo');
+  const nav=ui.slice(ui.indexOf('const navItems = ['),ui.indexOf('];',ui.indexOf('const navItems = [')));
+  assert.ok(nav.includes("['clan','🛡️','Clã']"),'Clã precisa continuar disponível');
+  assert.ok(nav.includes("['racing','🏎️','Garagem Alpha']"),'Garagem precisa continuar disponível');
+  assert.doesNotMatch(nav,/npcs|NPC|Comerciantes/,'Funcionalidade aposentada não pode voltar pela navegação');
+  assert.doesNotMatch(ui,/function renderNpcs\(/);
+  assert.doesNotMatch(ui,/async function loadNpcShops\(/);
+});
+
 test('restoring richer interface does not bypass phone/password authentication',()=>{
   for(const id of ['passwordLoginForm','loginPhone','verifiedPhoneHint','registerForm','recoverForm','linkForm'])
     assert.ok(html.includes('id="'+id+'"'),'Login form missing: '+id);
@@ -58,7 +86,7 @@ test('login and game stay styled when a mobile WebView cannot load external CSS'
   for(const marker of ['.hidden{display:none!important}', '.login-overlay{', '.login-card{', '.app{', '@media(max-width:820px)']){
     assert.ok(match[1].includes(marker),'Lost login/layout fallback: '+marker);
   }
-  assert.ok(html.includes('href="/styles.css?v=20261114-art-v6"'));
+  assert.ok(html.includes('href="/styles.css?v=20261116-no-npcs-v1"'));
 });
 
 test('new !web link cannot restore a previous cached session without a password',()=>{
@@ -71,7 +99,7 @@ test('new !web link cannot restore a previous cached session without a password'
   }
   assert.ok(linkedBranch.indexOf("ui.token='';")<linkedBranch.indexOf('await openWebCode(linked)'),
     'Cached session must be removed BEFORE the code-status request')
-  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-rich-phone-20261114-v6'"),
+  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1'"),
     'Version must invalidate old cached PWA Javascript')
 })
 
