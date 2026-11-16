@@ -102,6 +102,7 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {handlePocoCommand,startPocoPreviewScheduler} from './poco-abismo-preview.js'
+import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
@@ -9869,6 +9870,7 @@ scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGtAlphaScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startPocoPreviewScheduler(sock)
+startPocoLiveScheduler(sock)
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
 pokemonQuizEngine=createPokemonQuizEngine({db,
@@ -10529,6 +10531,7 @@ if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
   await openRaidPetVoucherMenu(chat,sender,reply,args[0]??null)
   continue
 }
+if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
