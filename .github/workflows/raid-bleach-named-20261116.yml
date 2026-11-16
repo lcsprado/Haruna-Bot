@@ -8,6 +8,9 @@ on:
       - 'src/neon/db.js'
       - 'src/neon/index.js'
       - 'test/raid-bleach-named-collab-20261116.test.mjs'
+      - 'src/neon/raid-go-diagnostics.js'
+      - 'test/raid-go-host-clarity-20261111.test.mjs'
+      - 'test/raid-lobby-diagnostics-20261111.test.mjs'
       - '.github/workflows/raid-bleach-named-20261116.yml'
   pull_request:
     paths:
@@ -16,6 +19,9 @@ on:
       - 'src/neon/db.js'
       - 'src/neon/index.js'
       - 'test/raid-bleach-named-collab-20261116.test.mjs'
+      - 'src/neon/raid-go-diagnostics.js'
+      - 'test/raid-go-host-clarity-20261111.test.mjs'
+      - 'test/raid-lobby-diagnostics-20261111.test.mjs'
       - '.github/workflows/raid-bleach-named-20261116.yml'
 permissions:
   contents: read
