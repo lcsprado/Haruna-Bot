@@ -1,0 +1,25 @@
+name: poco-abismo-homologacao
+on:
+  push:
+    branches:
+      - feat/poco-abismo-temporada1-20261116
+  pull_request:
+    paths:
+      - 'src/neon/poco-abismo-*.js'
+      - 'test/poco-abismo-*.test.mjs'
+      - '.github/workflows/poco-abismo-homologacao.yml'
+jobs:
+  motor-regras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Checar sintaxe do motor e preview
+        run: |
+          node --check src/neon/poco-abismo-rules.js
+          node --check src/neon/poco-abismo-preview.js
+      - name: Rodar regras isoladas (sem banco nem prêmios)
+        run: node --test test/poco-abismo-temporada1.test.mjs
