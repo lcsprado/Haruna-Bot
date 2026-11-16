@@ -40,3 +40,18 @@ export function pocoRememberMessage(session,messageId){
  ]
  return true
 }
+
+/**
+ * Fluxo de envio testável com WhatsApp simulado. O relógio só começa
+ * depois do retorno bem-sucedido do transporte. A confirmação é feita
+ * sob a transação do jogador pelo callback fornecido pelo controlador.
+ * Em caso de falha de envio, nenhuma confirmação é persistida.
+ */
+export async function pocoDispatchActionPrompt({reply,message,token,confirm,clock=Date.now}){
+ if(typeof reply!=='function'||typeof confirm!=='function'||typeof clock!=='function')
+  throw new TypeError('Envio precisa de transporte e confirmação transacional')
+ await reply(message)
+ if(!token)return {sent:true,confirmed:false}
+ const sentAt=clock()
+ return {sent:true,confirmed:Boolean(await confirm(token,sentAt))}
+}
