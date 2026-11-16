@@ -9,19 +9,13 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
-import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady} from './poco-abismo-delivery.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage} from './poco-abismo-delivery.js'
 
 const ENABLED=process.env.POCO_ABISMO_PREVIEW==='true'
 const PREFIX='poco_abismo_preview_20261116:player:'
 const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
 const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
-const MAX_SAVED_MESSAGE_IDS=80
-function seenMessage(s,messageId){return Boolean(messageId&&s.processedMessageIds?.includes(messageId))}
-function markMessage(s,messageId){
- if(!messageId)return
- s.processedMessageIds=[...(s.processedMessageIds||[]).slice(-(MAX_SAVED_MESSAGE_IDS-1)),messageId]
-}
 async function sendActionPrompt(jid,name,reply,result){
  // O estado foi gravado antes do envio. Não começar a contagem por tempo de
  // processamento, nem consumir janela quando Baileys não confirmar o envio.
@@ -146,7 +140,7 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
   const prepared={...profile,heroId:hero||'',classId:profile.class_id,
    petIds:(petTeam||[]).map(p=>p.id).filter(Boolean)}
   const result=await mutate(sender,name,s=>{
-   if(seenMessage(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
+   if(pocoMessageSeen(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    expire(s,sender,now)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
    const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now})
@@ -154,18 +148,18 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
    updateBest(s,sender)
    recordRewards(s,start,now)
    const promptToken=pocoStagePrompt(s.active)
-   markMessage(s,messageId)
+   pocoRememberMessage(s,messageId)
    return {message:'⚔️ Tentativa '+s.attempts+' iniciada!\n'+prompt(s.active),promptToken}
   })
   await sendActionPrompt(sender,name,reply,result);return true
  }
  if(option==='sair'){
   const result=await mutate(sender,name,s=>{
-   if(seenMessage(s,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
+   if(pocoMessageSeen(s,messageId))return {message:'↩️ Esse encerramento já foi processado.\n'+report(s)}
    expire(s,sender,now)
    if(!s.active)return {message:report(s)}
    s.active=pocoEnd(s.active,'abandoned',now).state;finish(s,sender)
-   markMessage(s,messageId)
+   pocoRememberMessage(s,messageId)
    return {message:'🚪 Você encerrou a tentativa.\n'+report(s)}
   })
   await reply(result.message);return true
@@ -176,7 +170,7 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
  }
  if(/^[1-4]$/.test(option)){
   const result=await mutate(sender,name,s=>{
-   if(seenMessage(s,messageId))return {message:'↩️ Esta ação já foi processada. Consulte !poco para ver a situação atual.'}
+   if(pocoMessageSeen(s,messageId))return {message:'↩️ Esta ação já foi processada. Consulte !poco para ver a situação atual.'}
    if(now>=POCO_SEASON.endAt){
     if(s.active){s.active=pocoEnd(s.active,'season_closed',now).state;finish(s,sender)}
     return {message:'🏁 Encerrado o prazo competitivo de sexta às 21h.\n'+report(s)}
@@ -188,7 +182,7 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
    try{progress=pocoDecision(s.active,Number(option),{now})}
    catch(e){return {message:'⚠️ '+e.message+'\n'+prompt(s.active)}}
    s.active=progress.state
-   markMessage(s,messageId)
+   pocoRememberMessage(s,messageId)
    const drop=recordRewards(s,progress,now)
    updateBest(s,sender)
    const recap=progress.message
