@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {raidLoteReward,raidLoteGearChance,RAID_LOTE_V1} from '../src/neon/raid-lote-policy.js'
+import {raidLoteReward,raidLoteGearChance,RAID_LOTE_V1,raidLoteCashPayout} from '../src/neon/raid-lote-policy.js'
 
 const read=p=>readFileSync(new URL('../src/neon/'+p,import.meta.url),'utf8')
 const store=read('raid-lote-store.js')
@@ -11,7 +11,7 @@ const bot=read('index.js')
 const receipt=read('raid-lote-notice-outbox.js')
 
 test('RaidLote comum conserva economia reduzida e chance padrão',()=>{
- assert.equal(raidLoteReward(10000,'cash'),8000)
+ assert.equal(raidLoteCashPayout(633600,480000),604800)
  assert.equal(raidLoteReward(10000,'playerXp'),6000)
  assert.equal(raidLoteReward(10000,'heroXp'),6000)
  assert.equal(raidLoteReward(10000,'petXp'),6000)
@@ -40,7 +40,7 @@ test('O modo especial vem do job validado na sala e nunca de opção do jogador'
  assert.match(games,/const loteReduced=lote&&s\.auctionPassManualRewards!==true/)
  assert.match(games,/if\(loteReduced\)levelAward\.xp=raidLoteReward/)
  assert.match(games,/xp:loteReduced\?raidLoteReward/)
- assert.match(games,/const cash=loteReduced\?raidLoteReward/)
+ assert.match(games,/const cash=loteReduced\?raidLoteCashPayout/)
  assert.match(games,/const exp=loteReduced\?raidLoteReward/)
  assert.match(games,/const petXp=loteReduced\?raidLoteReward/)
  assert.match(games,/const qty=loteReduced/)
