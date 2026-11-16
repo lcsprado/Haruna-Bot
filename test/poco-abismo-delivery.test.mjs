@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {pocoStart,pocoDecision} from '../src/neon/poco-abismo-rules.js'
-import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,POCO_ID_CACHE_LIMIT} from '../src/neon/poco-abismo-delivery.js'
+import {POCO_CHOICE_MS,POCO_PENDING_DEADLINE,pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,POCO_ID_CACHE_LIMIT,pocoDispatchActionPrompt} from '../src/neon/poco-abismo-delivery.js'
 
 test('não reduz os 120 segundos pelo tempo de processamento ou fila de envio',()=>{
  const {state}=pocoStart({now:1000,seed:123,profile:{heroId:'pecado_ban'}})
@@ -67,4 +67,50 @@ test('comando retransmitido não modifica estado e cache continua limitado',()=>
  assert.equal(pocoMessageSeen(session,'id-a'),false)
  assert.equal(pocoMessageSeen(session,'id-129'),true)
  assert.equal(pocoRememberMessage(session,'x'.repeat(181)),false)
+})
+
+test('WhatsApp desconectado: falha de envio nunca inicia contagem regressiva',async()=>{
+ const {state}=pocoStart({profile:{heroId:'pecado_ban'},seed:11,now:1200})
+ const token=pocoStagePrompt(state)
+ let confirmCalls=0
+ await assert.rejects(()=>pocoDispatchActionPrompt({
+  message:'Decisão pendente',token,
+  reply:async()=>{throw new Error('socket closed')},
+  confirm:async()=>{confirmCalls++;return true},
+  clock:()=>1600
+ }),/socket closed/)
+ assert.equal(confirmCalls,0)
+ assert.equal(state.deliveryPending,true)
+ assert.equal(state.deadline,POCO_PENDING_DEADLINE)
+})
+test('WhatsApp reconectado: reenviar com token novo e ignorar confirmação atrasada',async()=>{
+ const {state}=pocoStart({profile:{heroId:'pecado_ban'},seed:11,now:1200})
+ const stale=pocoStagePrompt(state),current=pocoStagePrompt(state)
+ const received=[],calls=[]
+ const sent=await pocoDispatchActionPrompt({
+  message:'Turno do Poço',token:current,
+  reply:async text=>{received.push(text);return {key:{id:'whatsapp-1'}}},
+  confirm:async(token,at)=>{calls.push([token.seq,at]);return pocoConfirmPrompt(state,token,at)},
+  clock:()=>6000
+ })
+ assert.deepEqual(received,['Turno do Poço'])
+ assert.deepEqual(calls,[[current.seq,6000]])
+ assert.deepEqual(sent,{sent:true,confirmed:true})
+ assert.equal(state.deadline,126000)
+ const previous=await pocoDispatchActionPrompt({
+  message:'Mensagem anterior chegou atrasada',token:stale,
+  reply:async()=>true,confirm:async(token,at)=>pocoConfirmPrompt(state,token,at),
+  clock:()=>10000
+ })
+ assert.deepEqual(previous,{sent:true,confirmed:false})
+ assert.equal(state.deadline,126000)
+})
+test('ACK de mensagem sem turno não tenta gravar decisão no banco',async()=>{
+ let calls=0
+ const done=await pocoDispatchActionPrompt({
+  message:'Informação sem escolha',token:null,
+  reply:async()=>{calls++},confirm:async()=>{throw Error('Não deveria confirmar')}
+ })
+ assert.deepEqual(done,{sent:true,confirmed:false})
+ assert.equal(calls,1)
 })
