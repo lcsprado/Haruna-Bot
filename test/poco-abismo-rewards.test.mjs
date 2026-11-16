@@ -95,8 +95,7 @@ test('5 equipamentos são recebidos forjados ★5 Lv10 e sem segunda concessão 
   assert.equal(result.itemId,gear.id)
   assert.equal(result.stars,5);assert.equal(result.level,10)
   assert.deepEqual(c.forged.get(gear.id),{stars:5,level:10})
-  assert.equal(c.effective.get(gear.id).level,10)
-  assert.equal(c.effective.get(gear.id).stars,5)
+  assert.equal(c.effective.get(gear.id),10) // effective upgrade stores the level; stars are in forge table
   assert.ok(c.bound.has(gear.id))
   const again=await pocoClaimBossDropInTx(c,'a@jid',floor,day,()=>.5)
   assert.equal(again.alreadyClaimed,true)
