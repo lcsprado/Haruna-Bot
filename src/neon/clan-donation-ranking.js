@@ -55,7 +55,7 @@ const donorLines=rows=>(Array.isArray(rows)?rows:[]).map((r,i)=>{
 // ainda não existam registros individualizados após a criação do livro-razão.
 export function formatClanDonationOverview(clans,donors,coverage=null){
   const clanRows=Array.isArray(clans)?clans:[];
-  const historicalTotal=clanRows.reduce((sum,row)=>sum+Math.max(0,Number(row.xp)||0),0);
+  const historicalTotal=coverage?Math.max(0,Number(coverage.historical_total)||0):clanRows.reduce((sum,row)=>sum+Math.max(0,Number(row.xp)||0),0);
   const lines=clanRows.map((c,i)=>
     podium(i)+' *'+safeName(c.name)+'* — R$ '+money(c.xp)+' doados');
   const people=donorLines(donors);
