@@ -393,7 +393,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   const baseSheet=hero.slice(hero.indexOf('export function formatPlayableHeroBaseSheet('),
     hero.indexOf('export async function listPlayableHeroes('));
   assert.match(baseSheet,/baseWithoutGear/);
-  for(const visible of ['PERSONAGEM ATIVO','Nível:','Maestria:','HP:','ATK:','DEF:','VEL:','Técnica:']){
+  assert.match(sheet,/profileHpLines\(\{normalHp:sheet\.hp,normalMaxHp:sheet\.maxHp/,'HP deve ser renderizado pelo formatador compartilhado com PvP')
+  for(const visible of ['PERSONAGEM ATIVO','Nível:','Maestria:','ATK:','DEF:','VEL:','Técnica:']){
     assert.ok(sheet.includes(visible),visible+' deve aparecer na ficha');
   }
   for(const verbose of ['BASE FIXA DO HERÓI','EVOLUÇÃO DO HERÓI','BÔNUS PRÓPRIO',
