@@ -40,11 +40,11 @@ export function pocoRollDrop(random=Math.random){
 function roleFor({heroId,classId}={}){
   const id=String(heroId||classId||'').toLowerCase();
   if(id.includes('diane')||id.includes('defens')||id.includes('paladino')||id.includes('guardiao'))
-    return {id:'tank',atk:.93,hp:1.10,mitigation:.90};
+    return {id:'tank',atk:.95,hp:1.06,mitigation:.94};
   if(id.includes('meliodas')||id.includes('samurai')||id.includes('atacante'))
-    return {id:'striker',atk:1.08,hp:.93,mitigation:1.05};
+    return {id:'striker',atk:1.07,hp:.98,mitigation:1.00};
   if(id.includes('ban')||id.includes('lutador'))
-    return {id:'fighter',atk:1.02,hp:1.02,mitigation:1.00};
+    return {id:'fighter',atk:1.02,hp:1.02,mitigation:.98};
   return {id:'balanced',atk:1,hp:1,mitigation:1};
 }
 export function pocoNormalize(profile={}){
@@ -128,7 +128,7 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   const variance=.90+nextRandom(s)*.20;
   if(action===1||action===4){
     critical=nextRandom(s)<s.stats.critChance;
-    damage=Math.max(1,Math.round(s.stats.atk*variance*(action===4?.70:1)*(critical?1.40:1)*(skill.type==='barrier'?.65:1)));
+    damage=Math.max(1,Math.round(s.stats.atk*variance*(action===4 ? .70 : 1)*(critical?1.40:1)*(skill.type==='barrier' ? .65 : 1)));
     s.boss.hp=Math.max(0,s.boss.hp-damage);
   }
   if(action===3){
@@ -140,7 +140,7 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   if(s.boss.hp>0){
     const factor={charge:1.8,drain:1.18,barrier:.80,bleed:1.28}[skill.type];
     const base=115+s.boss.floor*8;
-    enemyDamage=Math.max(1,Math.round(base*factor*s.stats.mitigation*(action===2?.25:1)*(interrupted?0:1)));
+    enemyDamage=Math.max(1,Math.round(base*factor*s.stats.mitigation*(action===2 ? .25 : 1)*(interrupted?0:1)));
     s.hp=Math.max(0,s.hp-enemyDamage);
   }
   s.turns++;s.boss.turn++;
