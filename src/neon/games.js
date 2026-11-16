@@ -1118,6 +1118,7 @@ function raidPetPotion(rows,missingHp,context={}){
 export async function startRaid(chat,host,level=null,options={}){
   return tx(async c=>{
     const loteAttemptId=options?.loteAttemptId||null
+    if(loteAttemptId&&raidConfig(level)?.slug)throw new Error('Raid de collab por nome não permite raidlote.')
     let s,gameType
     if(loteAttemptId){
       if(!/^__alpha_raid_lote__:[0-9a-f-]{36}$/i.test(chat))throw new Error('Sala interna de lote invalida')
