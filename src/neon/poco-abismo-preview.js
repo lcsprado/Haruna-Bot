@@ -10,7 +10,7 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
-import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoRememberMessage,pocoDispatchActionPrompt,pocoNumericChoiceInSession} from './poco-abismo-delivery.js'
 
 const BETA_ONLY=process.env.POCO_BETA_GROUP_PREVIEW==='true'
 const ENABLED=BETA_ONLY||process.env.POCO_ABISMO_PREVIEW==='true'
@@ -100,7 +100,7 @@ function prompt(state){
   ' • 🧪 '+state.potions+' poção(ões) • ✨ '+state.skillCharges+' técnicas'+
   '\n👹 Guardião: '+label(boss.hp)+'/'+label(boss.maxHp)+' HP'+
   '\n⚠️ Próxima skill: *'+skill.name+'*'+OPTIONS+
-  '\n⏳ Responda em *120 segundos* com *!poco 1*, 2, 3 ou 4.'+
+  '\n⏳ Responda em *120 segundos* somente com *1, 2, 3 ou 4* (sem comando).'+
   '\n🔄 Sem resposta, termina a tentativa e a próxima começa do andar zero.'
 }
 function report(s){
@@ -217,6 +217,21 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
  await sendActionPrompt(sender,name,reply,result)
  return true
 }
+// Um número solto não deve roubar respostas de inventário/quiz de outros jogadores.
+export async function handlePocoPreviewNumericChoice({choice,sender,chat,sock,...rest}={}){
+ if(!ENABLED||!/^[1-4]$/.test(String(choice||''))||!sender||!chat)return false
+ const {rows}=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[keyFor(sender)])
+ if(!pocoNumericChoiceInSession({session:rows[0]?.value,chat,season:POCO_SEASON.id}))return false
+ let betaAllowed=false
+ if(BETA_ONLY){
+  if(typeof sock?.groupMetadata!=='function')return false
+  const metadata=await sock.groupMetadata(chat).catch(()=>null)
+  betaAllowed=pocoBetaGroupAllowed({chat,subject:metadata?.subject})
+  if(!betaAllowed)return false
+ }
+ return handlePocoCommand({cmd:'poco',args:[String(choice)],sender,chat,betaAllowed,...rest})
+}
+
 export function startPocoPreviewScheduler(sock){
  if(!ENABLED)return
  if(timer)clearInterval(timer)
