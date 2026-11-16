@@ -1,2 +1,2 @@
-// Delegação temporária para o evento de 05/11. O histórico de 01/11 fica no banco e no Git.
-export {startAuctionAlphaScheduler,handleAuctionAlphaCommand,getAuctionWebStatus,placeAuctionWebBid} from './auction-20261111-1230.js'
+// Delegação do comando !leilao e da API Web para o evento de 15/11, preservando estado das edições antigas.
+export {startAuctionAlphaScheduler,handleAuctionAlphaCommand,getAuctionWebStatus,placeAuctionWebBid} from './auction-20261115-2100.js'
