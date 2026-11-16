@@ -99,7 +99,7 @@ test('WhatsApp reconectado: reenviar com token novo e ignorar confirmação atra
  assert.equal(state.deadline,126000)
  const previous=await pocoDispatchActionPrompt({
   message:'Mensagem anterior chegou atrasada',token:stale,
-  reply:async()=>true,confirm:async(token,at)=>pocoConfirmPrompt(state,token,at),
+  reply:async()=>({key:{id:'antiga'}}),confirm:async(token,at)=>pocoConfirmPrompt(state,token,at),
   clock:()=>10000
  })
  assert.deepEqual(previous,{sent:true,confirmed:false})
@@ -113,4 +113,19 @@ test('ACK de mensagem sem turno não tenta gravar decisão no banco',async()=>{
  })
  assert.deepEqual(done,{sent:true,confirmed:false})
  assert.equal(calls,1)
+})
+
+test('transporte resolve sem chave do Baileys: não inicia o relógio',async()=>{
+ const {state}=pocoStart({profile:{heroId:'pecado_ban'},seed:2,now:100})
+ const token=pocoStagePrompt(state)
+ let calls=0
+ const result=await pocoDispatchActionPrompt({
+  reply:async()=>undefined,message:'A mensagem não tem confirmação',token,
+  confirm:async()=>{calls++;throw Error('Não deveria confirmar')},
+  clock:()=>999999
+ })
+ assert.deepEqual(result,{sent:false,confirmed:false})
+ assert.equal(calls,0)
+ assert.equal(state.deliveryPending,true)
+ assert.equal(state.deadline,POCO_PENDING_DEADLINE)
 })
