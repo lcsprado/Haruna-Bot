@@ -8,6 +8,7 @@ import {
  weeklyGolemV2Ranking
 } from '../src/neon/weekly-golem-v2-20261113.js'
 import {weeklyBossResultMessages} from '../src/neon/boss-final-results.js'
+import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares,WEEKLY_BOSS_POOL_CASH} from '../src/neon/weekly-boss-prize-pool.js'
 
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -68,7 +69,8 @@ test('se o Golem sobreviver, a liquidação não reinicia Boss nem duplica pagam
  assert.match(code,/s\.mode!=='weekly'/)
  assert.match(code,/nowMs<=Number\(s\.endsAt\|\|0\)/)
  assert.match(code,/const entries=weeklyGolemV2Ranking\(s\.participants\)/)
- assert.match(code,/await credit\(c,p\.jid,cash,'boss_weekend_timeout_20261113'\)/)
+ assert.match(code,/if\(cash>0\)await credit\(c,p\.jid,cash,proportionalPool\?'boss_weekend_pool_timeout':'boss_weekend_timeout_20261113'\)/)
+ assert.match(code,/const weeklyCashShares=weeklyBossCashPoolShares\(s\.weekendKey,entries\)/)
  assert.match(code,/weeklyGolemV2Choice/)
  assert.match(code,/mode:'completed'/)
  assert.match(code,/defeated:false/)
@@ -90,4 +92,16 @@ test('comandos para escolha e anúncio acessíveis no WhatsApp',()=>{
  assert.match(index,/await claimWeeklyGolemChoice\(sender,choice\)/)
  assert.match(index,/golem-v2-forja5-20261113/)
  assert.match(index,/golemRewards/)
+})
+
+test('Golem antigo e Superboss proporcional futuro não compartilham prêmio nem duplicam bolo',()=>{
+ assert.equal(isWeeklyBossPoolEdition('2026-11-13'),false)
+ assert.equal(isWeeklyBossPoolEdition('2026-11-20'),true)
+ const ranking=[{jid:'jogador-a',damage:100},{jid:'jogador-b',damage:250},{jid:'jogador-c',damage:50}]
+ assert.equal(weeklyBossCashPoolShares('2026-11-13',ranking),null)
+ const shares=weeklyBossCashPoolShares('2026-11-20',ranking)
+ assert.equal(shares.size,3)
+ assert.equal([...shares.values()].reduce((acc,x)=>acc+x,0),WEEKLY_BOSS_POOL_CASH)
+ assert.ok(shares.get('jogador-b')>shares.get('jogador-a'))
+ assert.ok(shares.get('jogador-a')>shares.get('jogador-c'))
 })
