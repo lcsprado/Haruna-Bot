@@ -95,7 +95,7 @@ function advance(state,now){
     const f=state.floor+1;
     const loss=Math.max(10,Math.round((45+f*2)*state.stats.mitigation));
     state.hp=Math.max(0,state.hp-loss);
-    state.turns++;state.floor=f;cleared.push(f);
+    state.turns++;state.floor=f;state.reachedAt=now;cleared.push(f);
     // Sorte de encontrar poção não interfere nos drops econômicos diários.
     if([7,14,22,28].includes(f)&&nextRandom(state)<.55)state.potions=Math.min(3,state.potions+1);
     if(state.hp===0){finish(state,'death','Os inimigos comuns esgotaram seu HP antes do próximo Guardião.',now);return cleared;}
@@ -111,7 +111,7 @@ export function pocoStart({profile={},attempt=1,seed=1,now=Date.now()}={}){
   if(!Number.isInteger(attempt)||attempt<1)throw new RangeError('Tentativa inválida');
   const stats=pocoNormalize(profile);
   const state={season:POCO_SEASON.id,attempt,status:'active',
-    floor:0,turns:0,hp:stats.maxHp,potions:2,skillCharges:5,
+    floor:0,turns:0,reachedAt:null,hp:stats.maxHp,potions:2,skillCharges:5,
     stats,seed:Number(seed)>>>0,startedAt:now,deadline:null,boss:null,report:null};
   const cleared=advance(state,now);
   return {state,cleared,bossDefeated:null};
@@ -152,7 +152,7 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   }
   if(s.boss.hp===0){
     const bossDefeated=s.boss.floor;
-    s.floor=bossDefeated;s.boss=null;
+    s.floor=bossDefeated;s.reachedAt=now;s.boss=null;
     const cleared=[bossDefeated,...advance(s,now)];
     return {state:s,cleared,bossDefeated,message};
   }
@@ -169,7 +169,7 @@ export function pocoEnd(state,reason='abandoned',now=Date.now()){
 export function pocoScore(state,name='',jid=''){
   if(!state||!Number.isInteger(state.floor))throw new Error('Resultado inválido');
   return {jid,name,floor:state.floor,turns:state.turns,
-    hp:state.hp,potions:state.potions,endedAt:state.endedAt||state.startedAt,
+    hp:state.hp,potions:state.potions,endedAt:state.reachedAt||state.endedAt||state.startedAt,
     attempt:state.attempt,completed:state.status==='completed'};
 }
 export function pocoBetter(a,b){
