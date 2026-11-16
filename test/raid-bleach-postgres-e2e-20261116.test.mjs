@@ -34,7 +34,7 @@ test('actual Bleach and 75 raids run isolated on disposable PG16',{skip:!safe},a
   await db.query("UPDATE trevo_games SET state=$3::jsonb WHERE chat_jid=$1 AND game_type=$2",
    [chat,'raid:76',JSON.stringify(next)])
  }
- const getState=async lvl=76=>(await db.query(
+ const getState=async(lvl=76)=>(await db.query(
   'SELECT state FROM trevo_games WHERE chat_jid=$1 AND game_type=$2',
   [chat,'raid:'+lvl])).rows[0]?.state
  try{
