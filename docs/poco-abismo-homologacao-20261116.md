@@ -27,7 +27,7 @@ Status deste PR: **HOMOLOGAÇÃO / PRÉVIA — NÃO PUBLICAR / SEM PRÊMIOS REAI
 ## Restrições a concluir ANTES da liberação
 1. Integrar os cinco equipamentos com \`EQUIPMENT\`, \`equipmentStatsAtLevel\`, inventário, equipamento, escudo, botas e renderização. O sistema atual só aceita certas origens para ★★★★★; não cadastrar sem testes end-to-end.
 2. Conceder prêmios **atomicamente e de modo idempotente** (claim por andar, drop por Boss/dia, cash e EXP). Nunca pagar apenas pela repetição nem gerar loot duplicado após restart/retry. Validar Caixa Épica/Lendária e tabelas de conteúdo antes da implementação.
-3. Implementar encerramento irrevogável às 21h e ranking final + pagamento único transacional de R$ 50M; nenhum tempo/tentativa após esse instante pode alterar colocação.
+3. A liquidação e o ranking final estão implementados em `poco-abismo-settlement.js`, com fechamento irrevogável às 21h, pontuação por andar/rodadas virtuais e transação de pagamento único de R$ 50M. O módulo usa **somente prefixo de produção**, nunca a prévia. **Não está conectado a um agendador nem habilitado para créditos reais**; ainda falta validar end-to-end com banco antes da liberação.
 4. Cronômetro de 120s: o preview agora começa após resolução positiva de `sock.sendMessage` (envio ao servidor WhatsApp), **não** após leitura/entrega ao aparelho. Uma falha de envio deixa o turno pendente, sem morte por tempo; `!poco` pode reenviar, e tokens impedem que um ACK antigo reinicie o relógio. Falta validar a confirmação efetiva de entrega, desconexão/reenvio e corrida de mensagens no ambiente WhatsApp.
 5. Validar prévia com cenário sem poções, dano, desconexão, reinício, resposta duplicada, ataques simultâneos e corrida de banco. Incluir regressões WhatsApp, Web, autenticação, Boss/Raid, garagem e Cerco.
 6. Preservar a paridade com a versão Web onde aplicável. Em produção, a Web pode apenas consultar inicialmente; não duplicar motor de combate/pagamento.
@@ -39,3 +39,9 @@ Status deste PR: **HOMOLOGAÇÃO / PRÉVIA — NÃO PUBLICAR / SEM PRÊMIOS REAI
 - \`src/neon/poco-abismo-preview.js\`: comandos e agendamento sob flag, estado de simulação sem créditos.
 - \`test/poco-abismo-temporada1.test.mjs\`: testes unitários de regras.
 - \`src/neon/index.js\`: apenas registro controlado da prévia (inativa por padrão).
+
+## Rodada de implementação 16/11 — continuação
+- O relógio de 120s começa após sucesso de `sock.sendMessage`; falha de envio mantém turno pendente sem punir o jogador. `!poco` reenvia decisão pendente sem avançar o turno, e token de sequência rejeita confirmações antigas.
+- ID de mensagem enviado pelo roteador WhatsApp e cache transacional limitado a 80 mensagens por jogador impedem retransmissão da mesma ação.
+- Os testes `poco-abismo-delivery.test.mjs` e `poco-abismo-settlement.test.mjs` validam prazo, reenvio, fim da temporada, ordenação e isolamento de preview.
+- Prévia não credita dinheiro/EXP/equipamento: manter PR como draft até homologação completa do fluxo real.
