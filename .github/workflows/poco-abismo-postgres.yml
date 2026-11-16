@@ -32,8 +32,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Instalar dependências do repositório sem scripts
-        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Instalar somente cliente PostgreSQL no runner descartável
+        run: |
+          mkdir -p .poco-ci
+          echo '{"private":true,"type":"module","dependencies":{"pg":"8.13.0"}}' > .poco-ci/package.json
+          npm install --prefix .poco-ci --ignore-scripts --no-audit --no-fund
+          ln -s .poco-ci/node_modules node_modules
       - name: Validar transações no PostgreSQL efêmero, nunca Neon/Aiven de produção
         env:
           POCO_TEST_POSTGRES_URL: postgresql://poco_ci:poco_ci_only@127.0.0.1:5432/poco_ci
