@@ -4,10 +4,17 @@ import {readFileSync} from 'node:fs';
 import {selectEffectiveGear} from '../src/neon/equipment-star-logic.js';
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
 
-test('seis escudos com progressão exclusiva, sem ATK ou DEF',()=>{
- assert.equal(ANTI_CRIT_SHIELDS.length,6);
- assert.deepEqual(ANTI_CRIT_SHIELDS.map(x=>x.critResist),[.02,.04,.06,.09,.11,.12]);
- for (const x of ANTI_CRIT_SHIELDS) {
+test('seis escudos históricos preservados e sétimo exclusivo do Poço',()=>{
+ const historical=ANTI_CRIT_SHIELDS.filter(x=>x.id!=='poco_escudo_eternidade_20261116');
+ assert.equal(historical.length,6);
+ assert.equal(ANTI_CRIT_SHIELDS.length,7);
+ assert.deepEqual(historical.map(x=>x.critResist),[.02,.04,.06,.09,.11,.12]);
+ const event=ANTI_CRIT_SHIELDS.find(x=>x.id==='poco_escudo_eternidade_20261116');
+ assert.equal(event.critResist,.125);
+ assert.equal(event.critGuard,.185);
+ assert.equal(event.price,0);
+ assert.ok(antiCritShieldStats(event.id,10,5).critResist>antiCritShieldStats(event.id,1,1).critResist);
+ for (const x of historical) {
   assert.equal(x.category,'shield');
   assert.equal(x.atk,undefined);
   assert.equal(x.def,undefined);
