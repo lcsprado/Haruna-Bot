@@ -2540,7 +2540,7 @@ function renderMarket(){
   const ex=ui.extras||{}, market=ex.market||[], mine=ui.data.market||[], inv=ui.data.inventory||[];
   const available=inv.map(i=>({
     ...i,
-    market_quantity:Math.max(0,Number(i.sellable_quantity||0))
+    market_quantity:Math.max(0,Number(i.regular_sellable_quantity||0))
   })).filter(i=>i.market_quantity>0 && i.sellable!==false);
   return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><span class="tag">'+market.length+' ativos</span></div>'+
     '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+
