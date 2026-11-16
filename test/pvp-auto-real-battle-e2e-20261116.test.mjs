@@ -142,6 +142,50 @@ if(!safe){
    assert.equal(Number(r.opening.attacker.heroMasteryStage),5);
    assert.equal(Number((await db.query('SELECT stage FROM player_hero_mastery_unlocks WHERE jid=$1',[a])).rows[0].stage),5);
   });
+  await t.test('real !batalhar WhatsApp command branch -> PostgreSQL settlement -> formatted reply',async()=>{
+   process.env.ALPHA_PVP_AUTO_STRATEGY_ENABLED='1';
+   const sender=await player('whatsapp-a','samurai');
+   const target=await player('whatsapp-b','paladin');
+   await configureAutoBattleStrategy(sender,'agressiva');
+   await configureAutoBattleStrategy(target,'defensiva');
+   const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+   const marker="} else if(['batalhar','batalha','battle','duelo'].includes(cmd)){";
+   const start=src.indexOf(marker),end=src.indexOf("} else if(['rankingrpg','rankrpg','toprpg'].includes(cmd)){",start);
+   assert.ok(start>0&&end>start);
+   const body=src.slice(start+marker.length,end);
+   const AsyncFn=Object.getPrototypeOf(async function(){}).constructor;
+   const command=new AsyncFn('msg','mentionsOf','chat','sender','sock',
+     'resolvePlayerIdentity','consolidateUserIdentity','battle','reply',
+     'formatPvpBattleReport','creditDailyActivity','progressGroupMission',
+     'isGroup','setQuickFlow','duration',body);
+   const output=[];
+   const reply=async(message,options)=>{output.push({message,options});return null};
+   const mentioned=()=>[target];
+   const identity=async()=>({jid:target,aliases:[]});
+   const noop=async()=>{};
+   const badFlow=()=>{throw new Error('Unexpected interactive flow')};
+   const realIdentity=async(jid,aliases)=>{assert.equal(jid,target);assert.deepEqual(aliases,[])};
+   const oldRandom=Math.random;Math.random=random(2399);
+   try{
+    await command({},mentioned,'synthetic-group@g.us',sender,{},identity,
+     realIdentity,battle,reply,formatPvpBattleReport,noop,noop,false,badFlow,
+     x=>String(x)+'s');
+   }finally{Math.random=oldRandom}
+   assert.equal(output.length,1);
+   assert.match(output[0].message,/BATALHA DO ALPHA BOT/);
+   assert.deepEqual(output[0].options.mentions,[target]);
+   const rewards=await db.query("SELECT COUNT(*)::int AS n FROM transactions WHERE type='battle_reward' AND to_jid=ANY($1::text[])",[[sender,target]]);
+   assert.equal(rewards.rows[0].n,1);
+   const affected=await db.query('SELECT win,loss FROM stats WHERE jid=ANY($1::text[])',[[sender,target]]);
+   assert.equal(affected.rows.reduce((a,x)=>a+Number(x.win),0),1);
+   assert.equal(affected.rows.reduce((a,x)=>a+Number(x.loss),0),1);
+   output.length=0;
+   await command({},mentioned,'synthetic-group@g.us',sender,{},identity,realIdentity,
+    battle,reply,formatPvpBattleReport,noop,noop,false,badFlow,x=>String(x)+'s');
+   assert.equal(output.length,1);
+   assert.match(output[0].message,/poderá batalhar novamente/);
+   assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM transactions WHERE type='battle_reward' AND to_jid=ANY($1::text[])",[[sender,target]])).rows[0].n,1);
+  });
   await t.test('actual WhatsApp strategy command branch with mocked reply, no socket',async()=>{
    process.env.ALPHA_PVP_AUTO_STRATEGY_ENABLED='1';
    const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
