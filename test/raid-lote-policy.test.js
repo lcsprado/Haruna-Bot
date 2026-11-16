@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {RAID_LOTE_V1,raidLoteQuote,raidLoteReward,raidLoteGearChance,raidLoteShouldStop} from '../src/neon/raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteQuote,raidLoteReward,raidLoteGearChance,raidLoteShouldStop,raidLoteCashPayout} from '../src/neon/raid-lote-policy.js'
 
 test('pacote 10 raids 75 cobrado integralmente antes de iniciar',()=>{
   assert.deepEqual(raidLoteQuote(480000,10),{
@@ -20,7 +20,7 @@ test('chaves existentes sao gastas no pacote sem cobrar duas vezes',()=>{
   assert.equal(RAID_LOTE_V1.refundUnusedAttempts,false)
 })
 test('recompensas menores com truncamento',()=>{
-  assert.equal(raidLoteReward(633600,'cash'),506880)
+  assert.equal(raidLoteCashPayout(633600,480000),604800) // líquido 76.800 = metade de 153.600
   assert.equal(raidLoteReward(10,'fragment'),4)
   assert.equal(raidLoteReward(1,'fragment'),0)
   assert.equal(raidLoteReward(90,'masteryXp'),45)
@@ -31,7 +31,8 @@ test('limites e overflow rejeitados',()=>{
   for(const n of [0,11,-1,1.5])assert.throws(()=>raidLoteQuote(480000,n))
   assert.throws(()=>raidLoteQuote(-1,1))
   assert.throws(()=>raidLoteQuote(Number.MAX_SAFE_INTEGER,10))
-  assert.throws(()=>raidLoteReward(-1,'cash'))
+  assert.throws(()=>raidLoteCashPayout(-1,480000))
+  assert.throws(()=>raidLoteReward(10000,'cash'),/nao suportada/)
 })
 test('falha, morte ou cancelamento encerram o lote sem reembolso',()=>{
   assert.equal(raidLoteShouldStop({won:true,attemptsCompleted:1,attemptsRequested:10}),false)
