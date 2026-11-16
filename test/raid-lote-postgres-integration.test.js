@@ -21,6 +21,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     await db.query('CREATE TABLE wallets(jid TEXT PRIMARY KEY,cash BIGINT NOT NULL,bank BIGINT NOT NULL)')
     await db.query('CREATE TABLE transactions(from_jid TEXT,to_jid TEXT,amount BIGINT,type TEXT,note TEXT)')
     await db.query('CREATE TABLE trevo_games(chat_jid TEXT,game_type TEXT,state JSONB NOT NULL)')
+    await db.query('CREATE TABLE trevo_settings(key TEXT PRIMARY KEY,value JSONB NOT NULL,updated_at BIGINT)')
     await initRaidLoteStore(db)
     await db.query('INSERT INTO users VALUES($1,600)',[jid])
     await db.query('INSERT INTO stats VALUES($1,8000)',[jid])
