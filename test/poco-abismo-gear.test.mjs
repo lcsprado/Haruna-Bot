@@ -37,6 +37,7 @@ test('inventário reconhece itens e o multiplicador das estrelas da peça entreg
  assert.match(source,/POCO_ABISMO_GEAR_IDS\.includes\(itemId\)/)
  assert.match(source,/POCO_ABISMO_GEAR\.map\(\(\{id,description,rarity,price,\.\.\.gear\}\)/)
  assert.match(source,/sellable=FALSE,stackable=FALSE,price=0 WHERE id=ANY/)
+ assert.match(source,/getEquipmentStarLevels\(jid,\[p\.weapon_id,p\.armor_id,p\.boot_id,p\.helmet_id,p\.shield_id\]\)/)
  assert.match(source,/equipmentStatsAtLevel\(p\.boot_id,levels\[p\.boot_id\]\|\|1,stars\[p\.boot_id\]\|\|1\)/)
  assert.match(source,/equipmentStatsAtLevel\(a\.boot_id,eqLevel\(attackerJid,a\.boot_id\),starLevel\(attackerJid,a\.boot_id\)\)/)
 })
