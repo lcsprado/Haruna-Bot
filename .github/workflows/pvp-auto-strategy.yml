@@ -13,6 +13,7 @@ on:
       - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
       - 'test/pvp-auto-real-battle-e2e-20261116.test.mjs'
+      - 'test/pvp-auto-web-browser-staging-20261116.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
   pull_request:
     paths:
@@ -25,6 +26,7 @@ on:
       - 'test/pvp-auto-live-engine-audit-20261116.test.mjs'
       - 'test/pvp-auto-postgres-20261115.test.mjs'
       - 'test/pvp-auto-real-battle-e2e-20261116.test.mjs'
+      - 'test/pvp-auto-web-browser-staging-20261116.test.mjs'
       - '.github/workflows/pvp-auto-strategy.yml'
 jobs:
   auto-pvp:
@@ -104,3 +106,43 @@ jobs:
       - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund
       - run: node --check test/pvp-auto-real-battle-e2e-20261116.test.mjs
       - run: node --test test/pvp-auto-real-battle-e2e-20261116.test.mjs
+
+
+  web-browser-staging:
+    name: Chrome Web UI + actual auth API - isolated local DB
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_pvp_web_stage
+          POSTGRES_USER: alpha_test
+          POSTGRES_PASSWORD: alpha_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_test -d alpha_pvp_web_stage"
+          --health-interval 3s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://alpha_test:alpha_test@127.0.0.1:5432/alpha_pvp_web_stage
+      ALPHA_PVP_WEB_STAGING: '1'
+      ALPHA_PVP_AUTO_STRATEGY_ENABLED: '0'
+      NODE_ENV: test
+      ALPHA_RUNTIME: testing
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --package-lock=false --no-audit --no-fund playwright@1.55.1
+      - run: npx playwright install --with-deps chromium
+      - run: node --check test/pvp-auto-web-browser-staging-20261116.test.mjs
+      - run: node --test test/pvp-auto-web-browser-staging-20261116.test.mjs
