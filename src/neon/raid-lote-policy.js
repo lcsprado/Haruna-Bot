@@ -3,7 +3,7 @@ export const RAID_LOTE_V1=Object.freeze({
   maxAttempts:10,dailyResetTimeZone:'America/Sao_Paulo',minimumManualWins:3,
   paymentMode:'prepaid_no_refund', // compra pacote INTEIRO antes da primeira rodada
   feeBasisPoints:1000,
-  cashBasisPoints:8000,
+  cashNetProfitBasisPoints:5000, // RaidLote comum: 50% do LUCRO liquido manual por vitoria
   playerXpBasisPoints:6000,heroXpBasisPoints:6000,petXpBasisPoints:6000,
   masteryXpBasisPoints:5000,fragmentBasisPoints:4000,
   gearChanceBasisPoints:2500,
@@ -32,7 +32,6 @@ export function raidLoteQuote(keyPrice,attempts,ownedKeys=0){
 }
 export function raidLoteReward(base,kind){
   const rate={
-    cash:RAID_LOTE_V1.cashBasisPoints,
     playerXp:RAID_LOTE_V1.playerXpBasisPoints,
     heroXp:RAID_LOTE_V1.heroXpBasisPoints,
     petXp:RAID_LOTE_V1.petXpBasisPoints,
@@ -42,6 +41,21 @@ export function raidLoteReward(base,kind){
   if(rate===undefined)throw new RangeError('Recompensa nao suportada')
   if(!integer(base))throw new RangeError('Recompensa base invalida')
   return Math.floor(Number(base)*rate/10000)
+}
+// Dinheiro por vitória no Raid Lote COMUM. Não é 50% do prêmio BRUTO:
+// subtrair 50% do valor bruto causaria prejuízo ao pagar chave + taxa 10%.
+// Reembolsa economicamente o valor da chave consumida + a taxa da automação,
+// e concede 50% do lucro líquido manual (sem eventos temporários).
+// Não é reembolso em derrotas: só executado depois de uma Raid vencida.
+export function raidLoteCashPayout(manualCash,keyPrice){
+  if(!integer(manualCash)||!integer(keyPrice)||Number(keyPrice)<1)
+    throw new RangeError('Valores de recompensa ou chave inválidos')
+  const key=Number(keyPrice),fee=Math.ceil(key*RAID_LOTE_V1.feeBasisPoints/10000)
+  const manualProfit=Math.max(0,Number(manualCash)-key)
+  const halfProfit=Math.floor(manualProfit*RAID_LOTE_V1.cashNetProfitBasisPoints/10000)
+  const payout=key+fee+halfProfit
+  if(!Number.isSafeInteger(payout))throw new RangeError('Prêmio fora do limite')
+  return payout
 }
 export function raidLoteGearChance(baseChance){
   if(!Number.isFinite(baseChance)||baseChance<0||baseChance>1)throw new RangeError('Probabilidade invalida')

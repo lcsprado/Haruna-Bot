@@ -1,5 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
-import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout} from './raid-lote-policy.js'
 import {raidGoUnavailableMessage,raidJoinUnavailableMessage,RAID_LOBBY_TTL_MS} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
@@ -1324,7 +1324,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
     const normalCash=Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
-    const cash=loteReduced?raidLoteReward(normalCash,'cash'):normalCash
+    const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
     const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
