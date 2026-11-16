@@ -162,7 +162,7 @@ export function pocoEnd(state,reason='abandoned',now=Date.now()){
   if(!state||state.status!=='active')throw new Error('Tentativa não está ativa');
   const s=structuredClone(state);
   if(reason==='timeout'&&now<=s.deadline)throw new Error('Prazo ainda aberto');
-  finish(s,reason,reason==='timeout'?'Você não respondeu em 2 minutos. Próxima tentativa começa no zero.':'Tentativa encerrada pelo jogador.',now);
+  finish(s,reason,reason==='timeout'?'Você não respondeu em 2 minutos. Próxima tentativa começa no zero.':reason==='season_closed'?'O ranking fechou sexta-feira às 21h; nenhuma ação após o prazo é válida.':'Tentativa encerrada pelo jogador.',now);
   return {state:s,cleared:[],bossDefeated:null};
 }
 export function pocoScore(state,name='',jid=''){
