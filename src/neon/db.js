@@ -5358,6 +5358,9 @@ const PET_VITALS_LEGACY_FIX=Object.freeze([
 'corcel_espectral_halloween'
 ])
 async function fixLegacyPetVitals(){
+// A fresh database has no pet collection yet; the legacy repair is for existing data.
+const tables=(await db.query("SELECT to_regclass('public.pet_collection') AS collection,to_regclass('public.pets') AS pets")).rows[0]||{}
+if(!tables.collection||!tables.pets)return
 const species=PET_VITALS_LEGACY_FIX
 const profiles=species.map(s=>PET_HP_PROFILES[s])
 const energyBases=species.map(s=>PET_BASE_ENERGY[s])
