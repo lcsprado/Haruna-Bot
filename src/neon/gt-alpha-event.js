@@ -4,7 +4,7 @@ import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from '.
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
- gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS
+ gtRunHeats,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings
 } from './gt-alpha-rules.js'
 import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 
@@ -42,21 +42,13 @@ async function eligible(c){
 function rankText(rows,title){
  return title+'\n\n'+(rows.length?rows.map((r,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.')+' *'+gtCleanName(r.name)+'* — *'+r.points+' pts* • '+r.wins+' vitória(s)').join('\n'):'Nenhum resultado registrado.')
 }
-function parcial(s){
- const table=new Map()
- for(const heat of (s?.results?.heats||[]).slice(0,Number(s.stage||0)))for(const p of heat.positions){
-  const row=table.get(p.jid)||{jid:p.jid,name:p.name,points:0,wins:0,performance:0}
-  row.points+=p.points;row.wins+=p.place===1?1:0;row.performance+=p.score
-  table.set(p.jid,row)
- }
- return gtLeaderboard([...table.values()])
-}
+
 function heatText(heat,n,s){
  return '🏁 *GT ALPHA BOT — '+n+'ª PROVA*\n'+heat.name+
   '\n🌦️ Condições: '+(GT_WEATHER_LABELS[heat.weather]||'☀️ Pista seca')+'\n\n'+
   heat.positions.map(p=>(p.place===1?'🥇':p.place===2?'🥈':p.place===3?'🥉':p.place+'.')+
    ' '+gtCleanName(p.name)+' — '+p.score.toFixed(2)+' desempenho • +'+p.points+' pts').join('\n')+
-  '\n\n'+rankText(parcial(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
+  '\n\n'+rankText(gtPartialStandings(s),'📊 *CLASSIFICAÇÃO PARCIAL*')
 }
 async function prepNotice(day){
  const key=dayKey(day)
@@ -236,11 +228,27 @@ export async function getGtAlphaTable(scope='dia',now=Date.now()){
    '\n📅 '+week+' a '+gtWeekEnd(week)+(closed?.phase==='completed'?'\n✅ Semana encerrada.':'\n⏰ Próxima etapa: 20h30.')
  }
  const s=await read(dayKey(day))
- const table=s?.phase==='completed'?s.results?.standings||[]:parcial(s)
+ if(!s?.phase){
+  // Antes da primeira corrida de hoje, não há estado. Exibir a última
+  // classificação concluída sem recalcular pontuação nem simular corridas.
+  const previous=(await db.query(
+   "SELECT key,value FROM trevo_settings WHERE key>=$1 AND key<$2 AND value->>'phase'='completed' ORDER BY key DESC LIMIT 1",
+   [dayKey(FIRST_DAY),dayKey(day)]
+  )).rows[0]
+  if(previous?.value?.results?.standings?.length){
+   const previousDay=previous.key.slice(DAY_PREFIX.length)
+   return rankText(previous.value.results.standings,'🏎️ *GT ALPHA BOT — ÚLTIMO RANKING DIÁRIO*')+
+    '\n📅 Etapa de '+previousDay+' (última concluída).'+
+    '\n📅 Hoje: '+day+' • '+(now<gtDayStartMs(day)?'largada às 20h30.':'etapa ainda sem resultado registrado.')+
+    '\n📊 Ranking acumulado: *!gttabela semana*.'
+  }
+ }
+ const table=s?.phase==='completed'?s.results?.standings||[]:gtPartialStandings(s)
  return rankText(table,'🏎️ *GT ALPHA BOT — RANKING DIÁRIO*')+
+  '\n📅 '+day+
   (s?.phase==='running'?'\n🏁 Corridas: '+s.stage+'/3':
    s?.phase==='completed'?'\n✅ Etapa encerrada.':
-   s?.phase==='cancelled'?'\n⚠️ Etapa sem participantes suficientes.':
+   s?.phase==='cancelled'?'\n⚠️ Etapa não disputada.':
    '\n⏰ Largada às 20h30 (Brasília).')
 }
 export async function getGtAlphaCar(jid){

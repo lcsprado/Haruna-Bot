@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {
  GT_TRACK_IDS,GT_TIME,GT_GROUP,GT_WEEKLY_PRIZES,GT_MIN_DRIVERS,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,
- gtPoints,gtLeaderboard,gtRunHeats
+ gtPoints,gtLeaderboard,gtRunHeats,gtPartialStandings
 } from '../src/neon/gt-alpha-rules.js'
 
 const source=path=>readFileSync(new URL('../src/neon/'+path,import.meta.url),'utf8')
@@ -12,6 +12,28 @@ const full=Object.fromEntries(['motor','cambio','pneus','suspensao','freios','tu
 const player=(jid,modelId,upgrades={},condition=100)=>({
  jid,name:'Piloto '+jid,carId:Number(jid),modelId,upgrades,condition,driverLevel:20
 })
+test('!gttabela nao quebra antes da largada: dia inexistente ou anuncio sem stage',()=>{
+ assert.deepEqual(gtPartialStandings(null),[])
+ assert.deepEqual(gtPartialStandings(undefined),[])
+ assert.deepEqual(gtPartialStandings({}),[])
+ assert.deepEqual(gtPartialStandings({preparationNotice:Date.now()}),[])
+ const twoHeats={results:{heats:[
+  {positions:[{jid:'a',name:'A',place:1,points:10,score:80},{jid:'b',name:'B',place:2,points:7,score:75}]},
+  {positions:[{jid:'b',name:'B',place:1,points:10,score:83},{jid:'a',name:'A',place:2,points:7,score:79}]},
+ ]},stage:2,phase:'running'}
+ const p=gtPartialStandings(twoHeats)
+ assert.deepEqual(p.map(x=>[x.jid,x.points,x.wins]),[['a',17,1],['b',17,1]])
+ assert.deepEqual(gtPartialStandings({...twoHeats,stage:0}),[])
+ assert.equal(gtPartialStandings({...twoHeats,stage:1})[0].points,10)
+ const src=source('gt-alpha-event.js')
+ assert.match(src,/if\(!s\?\.phase\)\{/)
+ assert.match(src,/ORDER BY key DESC LIMIT 1/)
+ assert.match(src,/value->>'phase'='completed'/)
+ assert.match(src,/ÚLTIMO RANKING DIÁRIO/)
+ assert.match(src,/gtPartialStandings\(s\)/)
+ assert.match(src,/\!gttabela semana/)
+})
+
 test('horario de 20h30 Brasil com etapa de domingo na inauguracao',()=>{
  assert.equal(GT_TIME,'20:30')
  assert.equal(gtDayStartMs('2026-11-15'),Date.parse('2026-11-15T20:30:00-03:00'))

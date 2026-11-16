@@ -73,6 +73,22 @@ const rounded=n=>Math.round(Number(n)*100)/100
 export function gtLeaderboard(entries){
  return [...entries].sort((a,b)=>b.points-a.points||b.wins-a.wins||b.performance-a.performance||String(a.jid).localeCompare(String(b.jid)))
 }
+// A etapa do dia ainda não existe antes da largada. Null precisa
+// resultar em classificação vazia (e não gerar erro no !gttabela).
+export function gtPartialStandings(s){
+ const table=new Map()
+ const stage=Math.max(0,Math.min(3,Number(s?.stage)||0))
+ for(const heat of (s?.results?.heats||[]).slice(0,stage)){
+  for(const p of (heat?.positions||[])){
+   const row=table.get(p.jid)||{jid:p.jid,name:p.name,points:0,wins:0,performance:0}
+   row.points+=Number(p.points||0)
+   row.wins+=p.place===1?1:0
+   row.performance+=Number(p.score||0)
+   table.set(p.jid,row)
+  }
+ }
+ return gtLeaderboard([...table.values()])
+}
 function optimalStrategy(car,trackId,weather='seco'){
  return RACING_STRATEGIES.map(strategy=>({id:strategy.id,power:racingPower(car,trackId,strategy.id)*gtClimateMultiplier(car,weather)}))
   .sort((a,b)=>b.power-a.power||a.id.localeCompare(b.id))[0]
