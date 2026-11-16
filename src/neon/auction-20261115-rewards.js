@@ -4,7 +4,7 @@ import {syncEffectiveGear} from './equipment-star-logic.js'
 export const REWARDS_15=Object.freeze([
  {id:'voucher_arsenal_supremo_20261115',name:'Decreto do Arsenal Supremo',description:'Escolhe arma, armadura ou bota de drop de Raid, entregue FORJADA ★★★★★ Lv.1. Uso único.'},
  {id:'voucher_essencia_perfeicao_20261115',name:'Essência da Perfeição',description:'Eleva qualquer equipamento próprio para FORJADO ★★★★★ Lv.10. Uso único.'},
- {id:'voucher_passe_raidlote_triplo_20261115',name:'Passe Supremo de Raid Lote',description:'Ativa três pacotes de !raidlote por 24 horas, com custos e recompensas normais. Uso único.'}
+ {id:'voucher_passe_raidlote_triplo_20261115',name:'Passe Supremo de Raid Lote',description:'Ativa até três pacotes especiais de !raidlote em 24 horas, com 100% das recompensas-base e chances da Raid manual. Uso único.'}
 ])
 const voucher=(n)=>REWARDS_15[n].id
 const gear=new Set(['weapon','armor','boots','helmet','shield'])
@@ -81,7 +81,7 @@ export async function activateRaidLotePass(jid,at=Date.now()){
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const key=passKey(jid)
   const old=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[key])).rows[0]?.value
-  if(Number(old?.expiresAt)>at)throw Error('Já possui passe ativo. Use !meupasse.')
+  if(Number(old?.expiresAt)>at)throw Error('Passe Supremo já ativo. Use !passeraidlote status para acompanhar.')
   await spendVoucher(c,jid,voucher(2))
   const state={activatedAt:at,expiresAt:at+86400000,maxPackages:3,source:'leilao_15_11'}
   await c.query('INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at',[key,JSON.stringify(state)])
@@ -91,12 +91,18 @@ export async function activateRaidLotePass(jid,at=Date.now()){
 }
 export async function raidPassText(jid){
  const s=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(jid)])).rows[0]?.value
- if(!s||Number(s.expiresAt)<=Date.now())return '🎟️ Sem Passe Supremo ativo. Se tem voucher, use !usarpasse.'
+ if(!s||Number(s.expiresAt)<=Date.now())return '🎟️ Nenhum Passe Supremo ativo. Se possui o ticket, use !passeraidlote para ativar.'
  const n=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,s.activatedAt,s.expiresAt])).rows[0]?.n||0
- return '🎟️ *PASSE SUPREMO ATIVO*\n📦 Pacotes: '+n+'/'+s.maxPackages+'\n⌛ Até '+localTime(s.expiresAt)+'\n⚔️ !raidlote com custos e recompensas normais.'
+ return '🎟️ *PASSE RAIDLOTE — SUPREMO ATIVO*\n📦 Pacotes utilizados: '+n+'/'+s.maxPackages+'\n⌛ Até '+localTime(s.expiresAt)+'\n🏆 Pacotes especiais: 100% das recompensas-base da Raid manual (EXP, dinheiro, maestria, pets, fragmentos, caixas e equipamentos).\n💰 Compra, chaves e taxas normais.\n⚔️ !raidlote 75 10 para consultar um pacote.'
+}
+export async function isNextRaidLotePassPackage(jid,at=Date.now()){
+ const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(jid)])).rows[0]?.value
+ if(!(Number(state?.activatedAt)>0&&Number(state?.expiresAt)>at&&Number(state?.maxPackages)===3))return false
+ const used=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,state.activatedAt,state.expiresAt])).rows[0]?.n||0
+ return Number(used)<3
 }
 export async function handleAuction15RewardCommand({cmd,args=[],sender,reply}){
- if(!['itensraid','usardecreto','usarperfeicao','usarpasse','meupasse'].includes(cmd))return false
+ if(!['itensraid','usardecreto','usarperfeicao','passeraidlote','usarpasse','meupasse'].includes(cmd))return false
  try{
   await initAuction15Rewards()
   if(cmd==='itensraid'){
@@ -105,9 +111,20 @@ export async function handleAuction15RewardCommand({cmd,args=[],sender,reply}){
   }else if(cmd==='usardecreto')await reply('✅ *DECRETO RESGATADO* — '+await redeemArsenal(sender,args[0])+' ★★★★★ Lv.1.')
   else if(cmd==='usarperfeicao')await reply('✅ *PERFEIÇÃO APLICADA* — '+await redeemPerfection(sender,args[0])+' ★★★★★ Lv.10.')
   else if(cmd==='usarpasse'){
-   const s=await activateRaidLotePass(sender)
-   await reply('✅ *PASSE SUPREMO ATIVO!*\nAté 3 pacotes !raidlote por 24h, até '+localTime(s.expiresAt)+'.')
-  }else await reply(await raidPassText(sender))
+    await reply('🎟️ O comando foi separado. Use *!passeraidlote* para ativar o ticket do leilão.')
+   }else if(cmd==='passeraidlote'){
+    const action=String(args[0]||'').toLowerCase()
+    if(action==='status'||action==='ver')await reply(await raidPassText(sender))
+    else if(action)await reply('🎟️ Use *!passeraidlote* para ativar ou *!passeraidlote status* para consultar.')
+    else{
+      const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(sender)])).rows[0]?.value
+      if(Number(current?.expiresAt)>Date.now())await reply(await raidPassText(sender))
+      else{
+        const active=await activateRaidLotePass(sender)
+        await reply('✅ *PASSE RAIDLOTE ATIVADO!*\n📦 Até 3 pacotes especiais em 24h.\n🏆 Recompensas-base iguais às da Raid manual, sem redução de drop.\n💰 Preços, chaves e taxas continuam normais.\n⌛ Até '+localTime(active.expiresAt)+'.\n⚔️ Compre com *!raidlote* e veja em *!passeraidlote status*.')
+      }
+    }
+   }else await reply(await raidPassText(sender))
  }catch(e){await reply('❌ '+String(e?.message||e).slice(0,220))}
  return true
 }

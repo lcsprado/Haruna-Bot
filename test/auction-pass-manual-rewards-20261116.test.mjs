@@ -1,0 +1,65 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+import {raidLoteReward,raidLoteGearChance,RAID_LOTE_V1} from '../src/neon/raid-lote-policy.js'
+
+const read=p=>readFileSync(new URL('../src/neon/'+p,import.meta.url),'utf8')
+const store=read('raid-lote-store.js')
+const games=read('games.js')
+const vouchers=read('auction-20261115-rewards.js')
+const bot=read('index.js')
+const receipt=read('raid-lote-notice-outbox.js')
+
+test('RaidLote comum conserva economia reduzida e chance padrão',()=>{
+ assert.equal(raidLoteReward(10000,'cash'),8000)
+ assert.equal(raidLoteReward(10000,'playerXp'),6000)
+ assert.equal(raidLoteReward(10000,'heroXp'),6000)
+ assert.equal(raidLoteReward(10000,'petXp'),6000)
+ assert.equal(raidLoteReward(10000,'masteryXp'),5000)
+ assert.equal(raidLoteReward(10000,'fragment'),4000)
+ assert.equal(raidLoteGearChance(.40),.10)
+ assert.equal(RAID_LOTE_V1.maxAttempts,10)
+ assert.equal(RAID_LOTE_V1.refundUnusedAttempts,false)
+})
+test('Passe Supremo: no máximo 3 pacotes, dentro de 24h, sem ressarcir compra antiga',()=>{
+ assert.match(store,/auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE/)
+ assert.match(store,/ADD COLUMN IF NOT EXISTS auction_pass_manual_rewards/)
+ assert.match(store,/const auctionPassManualRewards=passActive&&usedPassPackages<3/)
+ assert.match(store,/const used=\(await c\.query\(/)
+ assert.match(store,/usedPassPackages=Number\(used\?\.n\|\|0\)/)
+ assert.match(store,/if\(!auctionPassManualRewards&&Number\(today\?\.purchased\|\|0\)/)
+ assert.match(store,/quote\.serviceTotal,quote\.totalPrice/)
+ assert.match(store,/auction_pass_manual_rewards/)
+ assert.match(store,/VALUES\(\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8,\$9,\$10,\$11,\$12,\$13,\$14\)/)
+ assert.match(vouchers,/expiresAt:at\+86400000,maxPackages:3/)
+ assert.match(vouchers,/return Number\(used\)<3/)
+})
+test('O modo especial vem do job validado na sala e nunca de opção do jogador',()=>{
+ assert.match(games,/j\.auction_pass_manual_rewards/)
+ assert.match(games,/auctionPassManualRewards:row\.auction_pass_manual_rewards===true/)
+ assert.match(games,/const loteReduced=lote&&s\.auctionPassManualRewards!==true/)
+ assert.match(games,/if\(loteReduced\)levelAward\.xp=raidLoteReward/)
+ assert.match(games,/xp:loteReduced\?raidLoteReward/)
+ assert.match(games,/const cash=loteReduced\?raidLoteReward/)
+ assert.match(games,/const exp=loteReduced\?raidLoteReward/)
+ assert.match(games,/const petXp=loteReduced\?raidLoteReward/)
+ assert.match(games,/const qty=loteReduced/)
+ assert.match(games,/boxChance=Math\.min\(\.85,loteReduced\?raidLoteGearChance/)
+ assert.match(games,/const chance=loteReduced\?raidLoteGearChance/)
+ assert.match(games,/passManualRewards:s\.auctionPassManualRewards===true/)
+ assert.match(games,/if\(!lote&&cfg\.level===60/) // exclusividades manuais não viram drops garantidos
+ assert.match(games,/lote\s*\?\{ignoreGroupProgressionEvent:true/) // RaidLote não conta progressão de grupo manual
+})
+test('Novo comando !passeraidlote separa ativação e consulta',()=>{
+ assert.match(vouchers,/cmd==='passeraidlote'/)
+ assert.match(vouchers,/action==='status'/)
+ assert.match(vouchers,/if\(Number\(current\?\.expiresAt\)>Date\.now\(\)\)/)
+ assert.match(vouchers,/await activateRaidLotePass\(sender\)/)
+ assert.match(vouchers,/cmd==='usarpasse'/)
+ assert.match(vouchers,/O comando foi separado/)
+ assert.match(bot,/isNextRaidLotePassPackage\(sender\)/)
+ assert.match(bot,/bought\.job\?\.auction_pass_manual_rewards===true/)
+ assert.match(bot,/nextPassPackage\?'🎟️/)
+ assert.match(receipt,/job\.auction_pass_manual_rewards===true/)
+ assert.match(receipt,/SELECT id,jid,status,level,requested,started,won_count,total_paid,auction_pass_manual_rewards/)
+})

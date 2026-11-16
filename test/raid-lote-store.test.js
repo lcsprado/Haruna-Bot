@@ -6,7 +6,7 @@ import {
 
 const catalog=()=>[{level:75,minLevel:70,keyPrice:480000}]
 const order={jid:'test-player@s.whatsapp.net',level:75,attempts:10,requestKey:'wamsg-unique-0001',confirmed:true}
-function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3,prior=null,active=false,publicRaid=false,failOnLog=false}={}){
+function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3,prior=null,active=false,publicRaid=false,failOnLog=false,pass=null,usedPassPackages=0}={}){
   const statements=[],amounts={wallet:null,city:null,keys:null,service:null},events=[]
   let tx=false
   const db={connect:async()=>({
@@ -18,7 +18,8 @@ function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3
       if(sql==='ROLLBACK'){tx=false;events.push('ROLLBACK');return {rows:[]}}
       if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]}
       if(sql.includes('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2'))return {rows:prior?[prior]:[]}
-      if(sql.includes('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE'))return {rows:[]}
+      if(sql.includes('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE'))return {rows:pass?[{value:pass}]:[]}
+       if(sql.includes('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>='))return {rows:[{n:usedPassPackages}]}
        if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:active?[{exists:1}]:[]}
       if(sql.includes('COALESCE(SUM(requested),0)'))return {rows:[{purchased}]}
       if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:publicRaid?[{}]:[]}
@@ -43,6 +44,28 @@ function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3
   })}
   return {db,statements,events,amounts,get inTransaction(){return tx}}
 }
+test('Passe Supremo: tres compras da janela recebem modo manual; quarta nao recebe',async()=>{
+ const at=Date.now()
+ const pass={activatedAt:at-2000,expiresAt:at+3600000,maxPackages:3}
+ for(let n=0;n<3;n++){
+  const f=dbForPurchase({pass,usedPassPackages:n})
+  const r=await purchaseRaidLote(f.db,{...order,requestKey:'passe-supermo-'+n},{getCatalog:catalog})
+  assert.equal(r.job.auction_pass_manual_rewards,true)
+  assert.equal(f.amounts.job[13],true)
+  assert.equal(r.quote.totalPrice,5280000)
+ }
+ const fourth=dbForPurchase({pass,usedPassPackages:3})
+ const normal=await purchaseRaidLote(fourth.db,{...order,requestKey:'passe-4-normal'},{getCatalog:catalog})
+ assert.equal(normal.job.auction_pass_manual_rewards,false)
+ assert.equal(fourth.amounts.job[13],false)
+ const overDaily=dbForPurchase({pass,usedPassPackages:3,purchased:10})
+ await assert.rejects(
+  purchaseRaidLote(overDaily.db,{...order,requestKey:'passe-4-blocked'},{getCatalog:catalog}),
+  /Limite de 10 tentativas/
+ )
+ assert.equal(overDaily.amounts.job,undefined)
+})
+
 test('compra antecipada debita tudo uma vez e credita taxa na Prefeitura',async()=>{
   const f=dbForPurchase()
   const r=await purchaseRaidLote(f.db,order,{getCatalog:catalog})

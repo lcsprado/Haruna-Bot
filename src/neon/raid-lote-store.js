@@ -57,11 +57,13 @@ export async function initRaidLoteStore(db){
       finished_at TIMESTAMPTZ,
       lease_token TEXT,
       lease_until TIMESTAMPTZ,
+      auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE,
       UNIQUE(jid,request_key)
     )
   `)
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_token TEXT")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE")
   await db.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS raid_lote_one_open_job_per_player
     ON raid_lote_jobs(jid) WHERE status IN ('queued','running')
@@ -130,18 +132,23 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       [jid,openStatuses]
     )).rows[0]
     if(active)throw new Error('Ja existe pacote de Raid em andamento')
-    // Passe Supremo do leilão: até 3 PACOTES em 24h, sem mudar preços, drops ou max 10 tentativas por pacote.
+    // Só os três pacotes vinculados ao Passe Supremo têm recompensas-base
+    // de Raid manual. O modo é fixado na compra e não muda após expiração.
     const pass=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',
       ['auction_raid_lote_pass_20261115:'+jid])).rows[0]?.value
     const passActive=Number(pass?.activatedAt)>0&&Number(pass?.expiresAt)>Date.now()&&
       Number(pass?.maxPackages)===3
+    let usedPassPackages=0
     if(passActive){
       const used=(await c.query(
         'SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',
         [jid,pass.activatedAt,pass.expiresAt]
       )).rows[0]
-      if(Number(used?.n||0)>=3)throw new Error('Passe Supremo esgotado: máximo de 3 pacotes em 24h.')
+      usedPassPackages=Number(used?.n||0)
     }
+    // Pacotes já comprados sob a versão anterior ocupam vaga no passe,
+    // sem pagamentos retroativos nem concessão de um quarto pacote especial.
+    const auctionPassManualRewards=passActive&&usedPassPackages<3
     // Renova as 00:00 de Brasilia, nao 24h apos a compra anterior.
     // Calcula o inicio do dia no fuso do jogo antes de comparar TIMESTAMPTZ;
     // o limite vale para todos os pacotes comprados na mesma data local.
@@ -151,7 +158,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       WHERE jid=$1
         AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
     `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
-    if(!passActive&&Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
+    if(!auctionPassManualRewards&&Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
       throw new Error('Limite de 10 tentativas por dia. Renova as 00:00 (horario de Brasilia).')
     const publicRaid=(await c.query(`
       SELECT 1 FROM trevo_games
@@ -200,10 +207,11 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     await c.query(`
       INSERT INTO raid_lote_jobs(
         id,jid,request_key,level,requested,key_price,keys_total,fee_total,
-        total_paid,cash_paid,bank_paid,owned_keys_spent,keys_bought
-      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        total_paid,cash_paid,bank_paid,owned_keys_spent,keys_bought,
+        auction_pass_manual_rewards
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `,[id,jid,requestKey,cfg.level,quote.attempts,quote.keyPrice,quote.keysTotal,
-      quote.serviceTotal,quote.totalPrice,fromCash,fromBank,quote.ownedKeysUsed,quote.keysToBuy])
+      quote.serviceTotal,quote.totalPrice,fromCash,fromBank,quote.ownedKeysUsed,quote.keysToBuy,auctionPassManualRewards])
     // Credito da taxa na Prefeitura na MESMA transacao do pagamento.
     await c.query('UPDATE raid_lote_municipality SET balance=balance+$1 WHERE id=1',[quote.serviceTotal])
     await c.query(`
@@ -212,13 +220,13 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
         ($1,'raid_shop',$2,'raid_lote_keys',$4),
         ($1,'alpha_prefeitura',$3,'raid_lote_service',$4)
     `,[jid,quote.keysTotal,quote.serviceTotal,'Pacote Raid Lv.'+cfg.level+' #'+id+' (chaves proprias '+quote.ownedKeysUsed+')'])
-    return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued'},quote,alreadyPurchased:false}
+    return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued',auction_pass_manual_rewards:auctionPassManualRewards},quote,alreadyPurchased:false}
   })
 }
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -234,7 +242,7 @@ export async function getRaidLoteAttemptReports(db,jid,jobId){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
