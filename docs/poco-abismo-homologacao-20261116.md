@@ -26,7 +26,7 @@ Status deste PR: **HOMOLOGAÇÃO — NÃO PUBLICAR**. O controlador de premiaç�
 
 ## Restrições a concluir ANTES da liberação
 1. **Implementado no código e em teste:** os cinco equipamentos constam no catálogo, escudo e botas são reconhecidos pelo combate, e a função de recompensa concede uma única cópia ★★★★★ Lv.10. Ainda falta validação com banco real e Web.
-2. **Implementado e simulado:** claims por andar, Boss/dia, caixa e ranking; dinheiro e EXP concedidos dentro da mesma transação da batalha, com reversão se qualquer operação falhar. Testes cobrem 30 andares, cinco rolagens diárias, abertura de caixa, primeiro prêmio e retransmissão. Falta validar com PostgreSQL real.
+2. **Implementado e simulado:** claims por andar, Boss/dia, caixa e ranking; dinheiro e EXP concedidos dentro da mesma transação da batalha, com reversão se qualquer operação falhar. Testes cobrem 30 andares, cinco rolagens diárias, abertura de caixa, primeiro prêmio e retransmissão. Validação de commit/rollback, forja, abertura de caixa e liquidação com PostgreSQL real descartável no GitHub Actions concluída; ainda falta teste de sessão WhatsApp e ambiente de homologação completo.
 3. A liquidação e o ranking final estão em `poco-abismo-settlement.js`: fechamento às 21h, andar/rodadas virtuais e pagamento único de R$ 50M. O controlador real os chama pelo agendador somente com `POCO_ABISMO_LIVE=true` e `POCO_ABISMO_PREVIEW!=true`. A implantação e a flag **não** foram ativadas.
 4. Cronômetro de 120s: o preview agora começa após resolução positiva de `sock.sendMessage` (envio ao servidor WhatsApp), **não** após leitura/entrega ao aparelho. Uma falha de envio deixa o turno pendente, sem morte por tempo; `!poco` pode reenviar, e tokens impedem que um ACK antigo reinicie o relógio. Falta validar a confirmação efetiva de entrega, desconexão/reenvio e corrida de mensagens no ambiente WhatsApp.
 5. Validar prévia com cenário sem poções, dano, desconexão, reinício, resposta duplicada, ataques simultâneos e corrida de banco. Incluir regressões WhatsApp, Web, autenticação, Boss/Raid, garagem e Cerco.
@@ -59,3 +59,10 @@ Status deste PR: **HOMOLOGAÇÃO — NÃO PUBLICAR**. O controlador de premiaç�
 - Não há validação manual do fluxo com WhatsApp e banco isolado de testes; o GitHub Actions simula as transações, mas não comprova comportamento de rede, sessões nem latência real.
 - Verificações gerais de Web/Altar, heróis, Superboss e Raid Lote continuam falhando no CI por expectativas que não correspondem ao código na base `whatsapp-only`; corrigir em trabalho separado. Não modificar mecânicas antigas para "fazer o teste passar" no PR do Poço.
 - Não houve merge, deploy no Render nem alterações diretas de saldo/inventário reais.
+
+### Regressão de atomicidade e elegibilidade — 16/11
+- O controlador `poco-abismo-live.js` utiliza `pocoRunPlayerTransaction` para gravar estado, claims e créditos na mesma transação PostgreSQL.
+- CI independente sobe PostgreSQL 16 descartável e executa `test/poco-abismo-postgres.test.mjs`, sem nenhuma credencial de produção, testando falha injetada após a concessão e rollback de saldo, EXP e progresso.
+- O teste valida a exclusividade da peça ★★★★★ Lv.10, caixa aberta uma vez e a liquidação final única.
+- São seis Guardiões, mas somente cinco oportunidades de saque por dia (10/15/20/25/30); o Guardião 5 mantém apenas dinheiro/EXP de primeira conclusão.
+- O CI principal ainda possui falhas de expectativas históricas em módulos externos ao Poço. O merge/deploy segue bloqueado até classificação e homologação final.
