@@ -1,0 +1,29 @@
+name: Alpha - Legendary Box shield additions
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/anti-crit-shields.js'
+      - 'src/neon/legendary-box-gear.js'
+      - 'src/neon/db.js'
+      - 'test/legendary-box-shields-20261116.test.mjs'
+      - 'test/anti-crit-shields.test.mjs'
+      - 'test/shield-forge-integration-20261108.test.mjs'
+      - 'test/legendary-box-gear-20261030.test.mjs'
+      - '.github/workflows/legendary-box-shields-20261116.yml'
+  workflow_dispatch:
+jobs:
+  shields:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check src/neon/anti-crit-shields.js
+          node --check src/neon/legendary-box-gear.js
+          node --check src/neon/db.js
+      - name: Escudos, chances, progressao, forja e regressao
+        run: node --test test/legendary-box-shields-20261116.test.mjs test/legendary-box-gear-20261030.test.mjs test/anti-crit-shields.test.mjs test/shield-forge-integration-20261108.test.mjs test/auto-forge-inventory-20261114.test.mjs
