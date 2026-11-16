@@ -248,4 +248,5 @@ test('six flagged live matchups get 1000 mirrored seeds before balance conclusio
   pairs:flagged.length,battles:flagged.length*1000*2*stances.length,output
  }));
  assert.equal(output.length,6);
+ assert.ok(output.every(x=>x.largestSwing<=20),'a sensitive match-up exceeded 20pp');
 });
