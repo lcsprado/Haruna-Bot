@@ -550,18 +550,48 @@ export async function donateClan(jid,amount){
 export async function listClanDonors({clanId=null,limit=10}={}){
   const n=Math.max(1,Math.min(20,Math.floor(Number(limit)||10)))
   const {rows}=await db.query(`
+    WITH aliases AS (
+      SELECT SUBSTR(key,LENGTH('lid_identity_merge_backup_v1:')+1) AS source_jid,
+             NULLIF(value->'target_user'->>'jid','') AS target_jid
+      FROM trevo_settings
+      WHERE key LIKE 'lid_identity_merge_backup_v1:%'
+    ), identified AS (
+      SELECT COALESCE(a.target_jid,d.donor_jid) AS donor_jid,d.donor_name,d.amount
+      FROM clan_donations d
+      LEFT JOIN aliases a ON a.source_jid=d.donor_jid
+      WHERE ($1::bigint IS NULL OR d.clan_id=$1::bigint)
+    )
     SELECT d.donor_jid,
       COALESCE(NULLIF(TRIM(u.push_name),''),MAX(d.donor_name),'Jogador') AS donor_name,
       SUM(d.amount)::bigint AS total,
       COUNT(*)::int AS donations
-    FROM clan_donations d
+    FROM identified d
     LEFT JOIN users u ON u.jid=d.donor_jid
-    WHERE ($1::bigint IS NULL OR d.clan_id=$1::bigint)
     GROUP BY d.donor_jid,u.push_name
     ORDER BY total DESC,donations DESC,d.donor_jid ASC
     LIMIT $2
   `,[clanId,n])
   return rows
+}
+
+// Consolidação sobre todos os registros, não somente o top 10.
+export async function listClanDonationCoverage({clanId=null}={}){
+  const {rows}=await db.query(`
+    WITH ledger AS (
+      SELECT clan_id,SUM(amount)::bigint AS tracked
+      FROM clan_donations GROUP BY clan_id
+    )
+    SELECT COALESCE(SUM(c.xp),0)::bigint AS historical_total,
+      COALESCE(SUM(COALESCE(l.tracked,0)),0)::bigint AS tracked_total,
+      COALESCE(SUM(GREATEST(c.xp-COALESCE(l.tracked,0),0)),0)::bigint AS unidentified_total,
+      COALESCE(SUM(GREATEST(COALESCE(l.tracked,0)-c.xp,0)),0)::bigint AS discrepancy_total,
+      (SELECT COALESCE(SUM(d.amount),0)::bigint FROM clan_donations d
+       WHERE $1::bigint IS NULL AND NOT EXISTS(SELECT 1 FROM clans c2 WHERE c2.id=d.clan_id)
+      ) AS departed_clan_total
+    FROM clans c LEFT JOIN ledger l ON l.clan_id=c.id
+    WHERE ($1::bigint IS NULL OR c.id=$1::bigint)
+  `,[clanId])
+  return rows[0]||null
 }
 
 export async function listClans(limit=10){

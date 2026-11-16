@@ -7,10 +7,10 @@ test('ranking global de doadores soma totais retornados e conta contribuições'
     {donor_jid:'a',donor_name:'João',total:'15000',donations:3},
     {donor_jid:'b',donor_name:'Augusto',total:'2000',donations:1}
   ]);
-  assert.match(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
+  assert.match(result,/RANKING PARCIAL DE DOADORES — TODOS OS CLÃS/);
   assert.match(result,/João.*R\$ 15\.000 \(3 doações\)/);
   assert.match(result,/Augusto.*R\$ 2\.000 \(1 doação\)/);
-  assert.match(result,/anteriores não tinham identificação/);
+  assert.match(result,/Não comprova quem mais doou desde a fundação/);
 });
 
 test('ranking interno distingue nome do clã e lista vazia',()=>{
@@ -58,7 +58,7 @@ test('ranking individual vazio exibe o histórico dos clãs como alternativa',()
   assert.match(result,/R\$ 71\.202\.000 doados/);
   assert.match(result,/R\$ 36\.000\.000 doados/);
   assert.match(result,/Total histórico: R\$ 107\.202\.000/);
-  assert.doesNotMatch(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
+  assert.doesNotMatch(result,/RANKING PARCIAL DE DOADORES — TODOS OS CLÃS/);
   assert.doesNotMatch(result,/Nenhuma doação individual registrada ainda/);
 });
 
@@ -66,7 +66,23 @@ test('ranking com doadores continua mostrando apenas dados individuais',()=>{
   const result=formatClanDonors([{donor_name:'Jogador',total:'12000',donations:2}],{
     clans:[{name:'Alpha',xp:5000000}]
   });
-  assert.match(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
+  assert.match(result,/RANKING PARCIAL DE DOADORES — TODOS OS CLÃS/);
   assert.match(result,/R\$ 12\.000 \(2 doações\)/);
   assert.doesNotMatch(result,/R\$ 5\.000\.000/);
+});
+
+test('ranking evidencia diferença entre histórico e registros de doadores',()=>{
+  const coverage={historical_total:300000000,tracked_total:200000000,
+    unidentified_total:100000000,discrepancy_total:0,departed_clan_total:0};
+  const result=formatClanDonors([{donor_name:'João',total:200000000,donations:5}],
+    {coverage,clans:[{name:'Alpha',xp:300000000}]});
+  assert.match(result,/Total histórico dos clãs ativos: R\$ 300\.000\.000/);
+  assert.match(result,/Registros com doador identificado: R\$ 200\.000\.000/);
+  assert.match(result,/Histórico sem doador identificado: R\$ 100\.000\.000/);
+});
+
+test('diferença negativa é sinalizada sem inventar doador',()=>{
+  const result=formatOwnClanDonations({name:'Alpha',xp:900,treasury:100},[],
+    {historical_total:900,tracked_total:1200,unidentified_total:0,discrepancy_total:300});
+  assert.match(result,/Divergência de R\$ 300/);
 });

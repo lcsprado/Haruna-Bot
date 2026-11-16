@@ -70,7 +70,7 @@ import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
 getDailyMissions, progressDailyMission, claimDailyMissions,
 getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
-kickClanMember, leaveClan, donateClan, listClans, listClanDonors,
+kickClanMember, leaveClan, donateClan, listClans, listClanDonors, listClanDonationCoverage,
 getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, tradeCar, carTradeInCredit, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
 hireCltUberDriver, getCltUberStatus, sellCltUberDriver, tradeCltUberDriver, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
 hireCltIfoodDriver, getCltIfoodStatus, startCltIfoodShifts, collectCltIfood,
@@ -9485,9 +9485,9 @@ await reply(text.trim())
 return true
 }
 if(input==='4'){
-const [clans,donors]=await Promise.all([listClans(10),listClanDonors({limit:10})])
+const [clans,donors,coverage]=await Promise.all([listClans(10),listClanDonors({limit:10}),listClanDonationCoverage()])
 clearQuickFlow(chat,sender)
-await reply(formatClanDonationOverview(clans,donors))
+await reply(formatClanDonationOverview(clans,donors,coverage))
 return true
 }
 await reply('🏴 Escolha *1, 2, 3 ou 4*.')
@@ -9526,9 +9526,9 @@ await reply(text.trim())
 return true
 }
 if((leader && input==='8') || (!leader && input==='6')){
-const rows=await listClanDonors({clanId:clan.id,limit:10})
+const [rows,coverage]=await Promise.all([listClanDonors({clanId:clan.id,limit:10}),listClanDonationCoverage({clanId:clan.id})])
 clearQuickFlow(chat,sender)
-await reply(formatOwnClanDonations(clan,rows))
+await reply(formatOwnClanDonations(clan,rows,coverage))
 return true
 }
 if(leader && input==='5'){
@@ -12829,16 +12829,16 @@ await reply(formatClanDonationTotals(rows))
 }else if(['cla','clã','meu','meucla'].includes(mode)){
 const clan=await getClanForUser(sender)
 if(!clan) return await reply('🏴 Você precisa pertencer a um clã para consultar os doadores dele. Use *!rankdoacoes* para o ranking dos clãs.')
-const rows=await listClanDonors({clanId:clan.id,limit:10})
-await reply(formatOwnClanDonations(clan,rows))
+const [rows,coverage]=await Promise.all([listClanDonors({clanId:clan.id,limit:10}),listClanDonationCoverage({clanId:clan.id})])
+await reply(formatOwnClanDonations(clan,rows,coverage))
 }else if(['jogadores','doadores','individual','pessoas'].includes(mode)){
 // Mesmo o ranking individual deve exibir o histórico dos clãs se não houver
 // doações identificadas. Inclui os atalhos !topdoadores e !rankdoacoes jogadores.
-const [rows,clans]=await Promise.all([listClanDonors({limit:10}),listClans(10)])
-await reply(formatClanDonors(rows,{clans}))
+const [rows,clans,coverage]=await Promise.all([listClanDonors({limit:10}),listClans(10),listClanDonationCoverage()])
+await reply(formatClanDonors(rows,{clans,coverage}))
 }else{
-const [clans,donors]=await Promise.all([listClans(10),listClanDonors({limit:10})])
-await reply(formatClanDonationOverview(clans,donors))
+const [clans,donors,coverage]=await Promise.all([listClans(10),listClanDonors({limit:10}),listClanDonationCoverage()])
+await reply(formatClanDonationOverview(clans,donors,coverage))
 }
 } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
 const rows=await listClans(10)
