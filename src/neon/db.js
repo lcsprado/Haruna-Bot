@@ -525,6 +525,8 @@ const starterItems = [
 ['chave_raid_65','Chave de Raid Lv.65','Abre a Raid Lv.65. Consumida ao iniciar.','special',300000,'legendary'],
 ['chave_raid_70','Chave de Raid Lv.70','Abre a Raid Lv.70. Consumida ao iniciar.','special',390000,'legendary'],
 ['chave_raid_75','Chave da Raid dos Sete Pecados','Abre a Raid dos Sete Pecados. Consumida somente ao começar a luta.','special',480000,'event'],
+['chave_raid_bleach','Chave da Raid Bleach','Abre a Raid Bleach — Aizen. Consumida apenas ao iniciar.','special',480000,'event'],
+['fragmento_reiatsu_bleach','Fragmento de Reiatsu — Bleach','Material exclusivo da Raid Bleach; reservado à progressão desta collab. Não substitui os fragmentos dos Sete Pecados.','special',0,'event'],
 ['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
 ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
 ['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
@@ -586,6 +588,8 @@ await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE,price=0 WHERE id='fragmento_reiatsu_bleach'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='chave_raid_bleach'")
 await db.query('UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id=$1',[HALLOWEEN_SOUL_ID])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_GEAR.map(g=>g.id)])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_ALTAR_GEAR_IDS])
