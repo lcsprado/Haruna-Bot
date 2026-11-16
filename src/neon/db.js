@@ -15,6 +15,7 @@ import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rul
 import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
 import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {WEEKLY_GOLEM_V2_GEAR,WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER} from './weekly-golem-v2-20261113.js'
+import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
@@ -562,6 +563,7 @@ starterItems.push(...ANTI_CRIT_SHIELDS.map(g=>[g.id,g.name,g.description,'shield
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(...LEGENDARY_BOX_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push(...WEEKLY_GOLEM_V2_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'event']))
+starterItems.push(...POCO_ABISMO_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push([WEEKLY_GOLEM_V2_VOUCHER,'Direito de Escolha — Golem Forja V','Permite escolher um equipamento exclusivo ★★★★★ Lv.10 da edição de 13/11/2026. Use !golempremio 1, 2 ou 3.','special',0,'event'])
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
@@ -590,6 +592,7 @@ await db.query('UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id=$1',[HAL
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_GEAR.map(g=>g.id)])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_ALTAR_GEAR_IDS])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[[...WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER]])
+await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id=ANY($1::text[])',[POCO_ABISMO_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
@@ -2110,6 +2113,7 @@ const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
 ...Object.fromEntries(WEEKLY_GOLEM_V2_GEAR.map(({id,description,...gear})=>[id,gear])),
+...Object.fromEntries(POCO_ABISMO_GEAR.map(({id,description,rarity,price,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_ALTAR_NEW_GEAR.map(({id,cost,short,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
@@ -2370,7 +2374,7 @@ const eq=EQUIPMENT[itemId]
 if(!eq) return null
 level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)||POCO_ABISMO_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
 const mult=multipliers[level-1]
 return {
