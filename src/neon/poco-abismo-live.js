@@ -9,7 +9,7 @@ import {
  pocoRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
 } from './poco-abismo-rules.js'
 
-import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoPendingPromptToken,pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
+import {pocoStagePrompt,pocoConfirmPrompt,pocoIsChoiceReady,pocoMessageSeen,pocoPendingPromptToken,pocoDispatchActionPrompt,pocoNumericChoiceInSession} from './poco-abismo-delivery.js'
 import {pocoInitRewardLedger,pocoClaimCommandInTx,pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
 import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
@@ -100,7 +100,7 @@ function prompt(state){
   ' • 🧪 '+state.potions+' poção(ões) • ✨ '+state.skillCharges+' técnicas'+
   '\n👹 Guardião: '+label(boss.hp)+'/'+label(boss.maxHp)+' HP'+
   '\n⚠️ Próxima skill: *'+skill.name+'*'+OPTIONS+
-  '\n⏳ Responda em *120 segundos* com *!poco 1*, 2, 3 ou 4.'+
+  '\n⏳ Responda em *120 segundos* somente com *1, 2, 3 ou 4* (sem comando).'+
   '\n🔄 Sem resposta, termina a tentativa e a próxima começa do andar zero.'
 }
 function report(s){
@@ -232,6 +232,14 @@ export async function handlePocoLiveCommand({cmd,args=[],sender,name,reply,chat,
  await sendActionPrompt(sender,name,reply,result)
  return true
 }
+// Encaminhar dígitos antes dos menus gerais somente para uma batalha deste jogador.
+export async function handlePocoLiveNumericChoice({choice,sender,chat,...rest}={}){
+ if(!ENABLED||!/^[1-4]$/.test(String(choice||''))||!sender||!chat)return false
+ const {rows}=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[keyFor(sender)])
+ if(!pocoNumericChoiceInSession({session:rows[0]?.value,chat,season:POCO_SEASON.id}))return false
+ return handlePocoLiveCommand({cmd:'poco',args:[String(choice)],sender,chat,...rest})
+}
+
 export function startPocoLiveScheduler(sock){
  if(!ENABLED)return
  if(timer)clearInterval(timer)
