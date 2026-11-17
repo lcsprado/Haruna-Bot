@@ -19,6 +19,7 @@ import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -3224,7 +3225,7 @@ const a=statFor(attackerJid)
 const b=statFor(defenderJid)
 // Somente herói desbloqueado participa. A classe tradicional continua intacta
 // e o herói não recebe o despertar da classe nem bônus extra por ter collab.
-const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stage,1)::int AS mastery_stage,
+const heroModes=classesOnlyRebootEnabled()?[]:(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stage,1)::int AS mastery_stage,
   COALESCE((SELECT MAX(p.level) FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species),70)::int AS hero_level
   FROM player_hero_mode m
   LEFT JOIN player_hero_mastery_unlocks u ON u.jid=m.jid AND u.hero_species=m.hero_species
