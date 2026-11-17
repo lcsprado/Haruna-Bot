@@ -1,4 +1,5 @@
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {VITAL_PETS} from './vital-pets.js'
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
@@ -25,7 +26,7 @@ export function getPlayerClass(id){
 }
 
 export const PET_STATUS_SPECIALTIES = {
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
+  ...Object.fromEntries((classesOnlyRebootEnabled()?[]:PECADOS_HEROES).map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
   ...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{label:p.name+' — Vínculo Vital',stats:p.stats,healPct:p.healPct||0,healCooldown:p.healCooldown||0,raid:true}])),
   morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   corcel_espectral_halloween:{label:'🐎 Corcel Espectral Ascendido — Halloween',stats:{bossDamage:11,crit:5,defense:4,dodge:4},raid:true},
