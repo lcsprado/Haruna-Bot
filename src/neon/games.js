@@ -10,7 +10,7 @@ import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExp
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
-import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog} from './reboot-classes-policy.js'
+import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -3375,8 +3375,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const existingParticipant=s.participants[jid]||{}
     // Identidade fixada pelo primeiro ataque do Boss; não alterna habilidades
     // ou reinicia cargas em ataques automáticos e reconexões.
-    const heroId=Object.hasOwn(existingParticipant,'heroId')
-      ?existingParticipant.heroId:await getActivePlayableHero(c,jid)
+    const heroId=eligiblePlayableHero(Object.hasOwn(existingParticipant,'heroId')
+      ?existingParticipant.heroId:await getActivePlayableHero(c,jid))
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
     const heroStats=heroCombatStats(st,heroId,heroLevel)
     const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
