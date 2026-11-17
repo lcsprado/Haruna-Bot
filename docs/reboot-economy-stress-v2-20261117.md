@@ -28,3 +28,17 @@ Se a remuneração de eventos dominar o ciclo dos quatro jogadores, ou se o prê
 A revisão C4d é análise offline e **não modifica** economia, preços, progressão, status do banco, infra ou cron.
 
 O JavaScript calcula o bônus de contribuição em ponto flutuante antes do `Math.floor`. Com três integrantes, isso arredonda o bônus a R$15.999 por pessoa (em vez de R$16.000), gerando R$242.397. A auditoria reproduz exatamente o código antigo; padronizar cálculo monetário em inteiros é uma futura melhoria, não um ajuste furtivo nesta fase.
+
+## Resultados conferidos na Fase C4d
+Os valores abaixo representam o patrimônio dos quatro perfis somados; a coluna com eventos inclui todo bônus como caixa guardado, sem reinvestimento:
+
+| Horizonte | C4c sem prêmios | C4d + prêmios condicionais | Dinheiro novo de eventos |
+| --- | ---: | ---: | ---: |
+| 7 dias | R$260.090 | R$1.002.090 | R$742.000 |
+| 30 dias | R$2.213.127 | R$5.289.127 | R$3.076.000 |
+| 60 dias | R$9.343.297 | R$16.183.297 | R$6.840.000 |
+| 120 dias | R$53.841.696 | R$67.197.696 | R$13.356.000 |
+
+A emissão adicional de eventos nos primeiros sete dias equivale a 2,85 vezes o patrimônio-base inicial do grupo. Esses valores são condicionais: pressupõem participação, vitórias e limpeza do Poço no dia 60. Não são valores observados dos jogadores. Mesmo após cortes anteriores, o conjunto de Boss, GT e Poço pode dominar a economia. Os negócios também seguem como principal motor de inflação em 120 dias.
+
+A fórmula atual da Raid 70 paga R$242.397 a três participantes e R$315.200 a quatro, apesar do campo cashPool nominal de R$200.000. O campo é coeficiente de bônus, não teto coletivo. Essa diferença permanece como bloqueio para a próxima proposta de prêmios. Nenhum payout foi alterado nesta auditoria.

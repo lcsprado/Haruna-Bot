@@ -211,6 +211,15 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
         ', ciclos Boss/GT semanais '+row.eventBudget.completedWeeks+
         ', Poço '+row.eventBudget.pocoCount+'\n');
     }
+    const longest=r.rows.find(x=>x.days===120);
+    for(const person of longest.players){
+      const fleet=person.prefundedFleet;
+      process.stdout.write('Frota pré-financiada '+person.profile+': capital R$ '+
+        fleet.upfrontCapital.toLocaleString('pt-BR')+
+        ', rendimento líquido por dia ativo R$ '+
+        (fleet.cltNetDaily+fleet.manualNetDaily).toLocaleString('pt-BR')+
+        ', retorno '+fleet.operatingDaysToPayback+' dias ativos; capital NÃO parte de R$0\n');
+    }
     for(const x of r.raid70)if(x.canStart)process.stdout.write(
       'Raid70 '+x.partySize+' jogadores: prêmio R$ '+x.cashAwarded.toLocaleString('pt-BR')+
       ', chaves R$ '+x.keysConsumed.toLocaleString('pt-BR')+
