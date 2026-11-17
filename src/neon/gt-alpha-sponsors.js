@@ -2,9 +2,9 @@
 // Sem XP infinito, sem bônus de dano/velocidade e sem compras automáticas.
 import {db,ensureUser} from './db.js'
 import {gtBrazilDay,gtWeekStart,gtWeekEnd,gtCleanName,gtFormatCash} from './gt-alpha-rules.js'
-import {GT_SPONSORS,gtSponsorIncrement,gtSponsorDiscount,gtSponsorOption} from './gt-alpha-sponsor-rules.js'
+import {gtEffectiveSponsor,gtEffectiveSponsorCatalog,gtSponsorIncrement,gtSponsorDiscount,gtSponsorOption} from './gt-alpha-sponsor-rules.js'
 
-const contract=id=>GT_SPONSORS.find(x=>x.id===String(id||'').toLowerCase())
+const contract=id=>gtEffectiveSponsor(String(id||'').toLowerCase())
 const dayPlus=(day,delta)=>{
  const d=new Date(String(day)+'T12:00:00Z')
  d.setUTCDate(d.getUTCDate()+delta)
@@ -88,7 +88,7 @@ export async function gtSponsorText(jid,{withStatus=false}={}){
  const r=(await db.query('SELECT * FROM gt_sponsor_contracts_alpha WHERE jid=$1 AND week_start=$2',[jid,week])).rows[0]
  const header='🤝 *GT ALPHA BOT — PATROCINADORES*\n📅 Temporada: '+week+' a '+gtWeekEnd(week)+'\n'
  if(!r){
-  const text=header+'\nEscolha *um contrato por temporada*:\n\n'+GT_SPONSORS.map((s,i)=>
+  const text=header+'\nEscolha *um contrato por temporada*:\n\n'+gtEffectiveSponsorCatalog().map((s,i)=>
    '*'+(i+1)+'️⃣ '+s.name+'* — '+s.goal+' '+s.measure+'\n🎁 '+s.reward).join('\n\n')+
    '\n\n📲 *Responda só 1, 2 ou 3* nos próximos 5 minutos.'+
    '\nOu envie *!gtpatrocinio 1*, *2* ou *3* a qualquer momento.'+
