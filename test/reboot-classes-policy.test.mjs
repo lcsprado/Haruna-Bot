@@ -87,6 +87,7 @@ test('fluxos de combate e entrada de herói estão protegidos no modo V2',()=>{
   assert.match(contents['games.js'],/const raidConfig=level=>RAID_CONFIGS\.find\(r=>r\.level===Number\(level\)&&raidEnabledInReboot\(r\)\)/);
   assert.match(contents['games.js'],/getRaidCatalog\(\)\{ return filterRebootRaidCatalog\(RAID_CONFIGS\)/);
   assert.match(contents['db.js'],/const heroModes=classesOnlyRebootEnabled\(\)\?\[\]:\(await client\.query/);
+  assert.match(contents['db.js'],/const collab=!classesOnlyRebootEnabled\(\)\&\&!vital/);
   assert.match(contents['index.js'],/classesOnlyRebootEnabled\(\)&&\['7pecados','setepecados','pecados7'\]/);
   assert.match(contents['game-catalog.js'],/classesOnlyRebootEnabled\(\)\?\[\]:PECADOS_HEROES/);
 });
