@@ -111,6 +111,7 @@ jobs:
           node scripts/reboot-economy-flow-audit.mjs --json > /tmp/reboot-flow-audit.json
           node scripts/reboot-vehicle-roi.mjs --json > /tmp/reboot-vehicle-roi.json
           node scripts/reboot-economy-integrated.mjs --json > /tmp/reboot-economy-integrated.json
+          node scripts/reboot-economy-integrated.mjs
           node scripts/reboot-economy-sim.mjs
           node scripts/reboot-reset-manifest.mjs --json > /tmp/reboot-reset-manifest.json
           node -e "const d=require('/tmp/reboot-dependencies.json');const e=require('/tmp/reboot-business-baseline.json');const r=require('/tmp/reboot-reset-manifest.json');const sim=require('/tmp/reboot-economy-sim.json');const flow=require('/tmp/reboot-flow-audit.json');if(!flow.readOnly||flow.mixedPeriodStressTotal!==129000000||flow.ignoreLast12Hours!==true)process.exit(1);if(!d.readOnly||!r.readOnly||!r.classes.valid||d.sourceFilesScanned<1||e.length<1||d.tablesFound.length!==r.total||!sim.readOnly||sim.profiles.length!==12||sim.profiles.some(p=>!p.current.accountingBalanced||!p.proposed.accountingBalanced))process.exit(1);console.log('Auditados',d.sourceFilesScanned,'arquivos,',d.tablesFound.length,'tabelas e',e.length,'cenarios de negocio');console.log('CLASSES:',r.classes.actual.join(', '));console.log('TABELAS POR CATEGORIA:',JSON.stringify(r.counts));console.log('TABELAS A REVISAR:',r.groups.unclassified_blocker.join(', '));"
