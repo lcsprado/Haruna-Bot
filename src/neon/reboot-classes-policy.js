@@ -12,6 +12,31 @@ export function classesOnlyRebootEnabled(env=process.env){
 
 // Barrar TODOS os heróis de collab, incluindo registros antigos vindos da DB.
 // Não cria/atualiza registros, apenas escolhe a modalidade de combate.
+// Fail-closed: a V2 NÃO pode iniciar apontando ao banco da temporada antiga.
+// As credenciais/URLs nunca são retornadas, logadas ou gravadas no repositório.
+export function assertRebootDatabaseTarget(env=process.env){
+  if(!classesOnlyRebootEnabled(env))return {reboot:false};
+  if(String(env?.ALPHA_REBOOT_DB_CONFIRMED||'')!=='isolated-v2'){
+    throw new Error('Reboot bloqueado: falta confirmação do banco isolado.');
+  }
+  let name='';
+  try { name=decodeURIComponent(new URL(String(env?.DATABASE_URL||'')).pathname.slice(1)); }
+  catch{throw new Error('Reboot bloqueado: endereço do banco inválido.');}
+  if(!/^alpha_reboot_[a-z0-9_]{2,48}$/.test(name)){
+    throw new Error('Reboot bloqueado: banco alvo não identificado como alpha_reboot_*.');
+  }
+  return {reboot:true,databaseName:name};
+}
+
+// Por padrão, nunca criar uma segunda conexão com o WhatsApp real em homologação.
+// Somente após a virada aprovada e o consumidor anterior comprovadamente parado.
+export function assertRebootWhatsappPermission(env=process.env){
+  if(classesOnlyRebootEnabled(env)&&String(env?.ALPHA_REBOOT_ALLOW_WHATSAPP||'')!=='cutover-approved'){
+    throw new Error('Reboot bloqueado: WhatsApp real proibido antes da virada controlada.');
+  }
+  return true;
+}
+
 export function eligiblePlayableHero(heroId,{enabled=classesOnlyRebootEnabled()}={}){
   return enabled?null:(heroId||null);
 }
