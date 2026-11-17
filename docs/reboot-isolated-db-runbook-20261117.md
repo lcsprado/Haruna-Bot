@@ -63,3 +63,13 @@ PR #387 apenas prepara auditoria e docs. A decisão de criar B é recomendada pa
 - O banco real `alpha_prod_v2` no Aiven é o banco informado como produção; nenhuma conexão foi alterada.
 - Resultado: a alternativa de reaproveitar banco antigo existe APENAS como hipótese condicionada à auditoria. Para homologação, preferir instância isolada que não dependa de restaurar banco arquivado, não compartilhe quota excedida e não seja usada pelo Conciliador.
 - Este levantamento usou somente os metadados/listagens Neon e não abriu conexões SQL, não reiniciou compute e não executou alterações.
+
+
+## Alternativa avaliada em 17/11: arquivar temporada antiga no Neon e reutilizar Aiven para V2
+Consulta somente leitura ao Aiven: projeto `lcsh-3393`, serviço PostgreSQL `alphabot` RUNNING, plano `free-1-1gb`, armazenamento provisionado 1.024 MB, máximo 20 conexões, 8 bancos já cadastrados (`alpha_homolog`, `alpha_prod`, `alpha_prod_v2`, `alpha_verify_snapshot`, `alpha_verify_snapshot_v2`, `alpha_verify_snapshot_v3`, `alpha_verify_snapshot_v4`, `defaultdb`). Não confundir múltiplos bancos dentro de um serviço com isolamento de compute/conexões/quota.
+
+**Opção sob análise, não autorizada para execução:** exportar snapshot consistente e restaurável de `alpha_prod_v2` para arquivo seguro, comprovar restore e integridade num destino ARQUIVO separado, eventualmente Neon. O antigo Neon `jolly-glitter-58248440` está com branches arquivadas e histórico de cota excedida; NÃO usar sem comprovação de capacidade, disponibilidade e ausência de conflitos com Conciliador Financeiro. Depois, preparar novo banco/serviço Aiven para V2, inicializado do zero, migrando SOMENTE dados operacionais autorizados (identidades, configurações, licenças/pagamentos reais e credenciais WhatsApp/Web sob procedimento controlado).
+
+**Não misturar:** cada serviço/app deve apontar para exatamente um destino por ambiente. Não deixar dois consumidores WhatsApp, rotinas de cron ou replay de filas apontados à mesma identidade; não executar scripts de V2 com `DATABASE_URL` de V1; não usar o `alpha_prod_v2` como teste e não sobrescrever `alpha_homolog` sem identificar seu conteúdo. Após corte, preservar banco antigo desconectado até relatório de restore e rollback conclusivo; remoção de dados antigos do Aiven exige aprovação posterior expressa.
+
+**Capacidade/decisão:** O Aiven gratuito atual possui apenas 1 GB; antes de clonar ou manter simultaneamente bases grandes, apurar uso de disco e conexões (somente leitura). Se armazenamento/isolamento for insuficiente, um segundo serviço independente pode exigir plano/custo adicional; não provisionar sem escolha do dono.
