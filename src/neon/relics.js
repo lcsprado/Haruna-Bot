@@ -1,6 +1,7 @@
 import {db,ensureUser} from './db.js'
 import {weeklyInsigniaFromId} from './weekly-boss-insignias.js'
 import {HALLOWEEN_INSIGNIA_ID} from './halloween-altar.js'
+import {classesOnlyRebootEnabled,isRebootCollabItemId,assertRebootItemAllowed} from './reboot-classes-policy.js'
 const RELICS={
   reliquia_mercado_negro_20261105:{name:'🗝️ Insígnia do Mercado Negro',effect:'🗝️ +6% dano e +2,5 p.p. CRIT Boss/Raid; -1,5% dano recebido em Raid (sem PvP; não acumula com outra insígnia)',boss:0.06,raidAttack:0.06,bossCrit:0.025,raidCrit:0.025,raid:0.015},
   insignia_primeiros_conquistadores_20261102:{name:'👑 Insígnia dos Primeiros Conquistadores',effect:'👑 +7% dano e +3 p.p. CRIT Boss/Raid; -2% dano recebido em Raid (sem PvP)',boss:0.07,raidAttack:0.07,bossCrit:0.03,raidCrit:0.03,raid:0.02},
@@ -37,6 +38,7 @@ export async function initRelics(){
 export async function activeRelic(queryable,jid){
   const r=await queryable.query('SELECT item_id FROM player_active_relics WHERE jid=$1',[jid])
   const id=r.rows[0]?.item_id
+  if(classesOnlyRebootEnabled()&&isRebootCollabItemId(id))return null
   const relic=RELICS[id]||weeklyInsigniaFromId(id)
   return relic?{id,...relic}:null
 }
@@ -46,9 +48,10 @@ export async function relicStatus(jid){
     db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND (item_id=ANY($2::text[]) OR item_id LIKE 'insignia_semanal_%')",[jid,Object.keys(RELICS)]),
     activeRelic(db,jid)
   ])
-  return {active,items:owned.rows.map(r=>({id:r.item_id,...(RELICS[r.item_id]||weeklyInsigniaFromId(r.item_id)),qty:Number(r.quantity)})).filter(r=>r.name)}
+  return {active,items:owned.rows.filter(r=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id)).map(r=>({id:r.item_id,...(RELICS[r.item_id]||weeklyInsigniaFromId(r.item_id)),qty:Number(r.quantity)})).filter(r=>r.name)}
 }
 export async function selectRelic(jid,itemId){
+  assertRebootItemAllowed(itemId)
   await ensureUser(jid)
   if(itemId==='nenhuma'||itemId==='0'){
     await db.query('DELETE FROM player_active_relics WHERE jid=$1',[jid])
