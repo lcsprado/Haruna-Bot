@@ -19,6 +19,11 @@ test('identifica referências aos Pecados, collab, ganho financeiro e tabelas co
   assert.deepEqual(result.tables,['user_businesses']);
 });
 
+test('DDL dinâmico não cria nome de tabela falso como IF',()=>{
+  const result=analyzeRebootSource('CREATE TABLE IF NOT EXISTS \\${tableName};','src/neon/dynamic.js');
+  assert.deepEqual(result.tables,[]);
+});
+
 test('auditoria só lê diretórios fonte e devolve manifesto ordenado sem DB',()=>{
   const root=mkdtempSync(join(tmpdir(),'alpha-reboot-audit-'));
   try{
