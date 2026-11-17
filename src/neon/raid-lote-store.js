@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import {raidLoteQuote,RAID_LOTE_V1} from './raid-lote-policy.js'
+import {assertRaid70V2Start} from './reboot-economy-policy.js'
 import {initRaidLoteNoticeOutbox,enqueueRaidLoteNotice} from './raid-lote-notice-outbox.js'
 
 // RAIDLOTE V1 — persistencia transacional em TESTE. Nao importar para ativar.
@@ -106,6 +107,8 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
   const catalog=await getCatalog()
   const cfg=catalog.find(r=>Number(r.level)===Number(level))
   if(!cfg)throw new Error('Raid indisponivel para compra')
+  // Não cobrar pacote que não pode iniciar uma Raid cooperativa.
+  assertRaid70V2Start({level:cfg.level,partySize:1,mode:'lote'})
   const initialQuote=raidLoteQuote(cfg.keyPrice,attempts)
   return inTransaction(db,async c=>{
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
