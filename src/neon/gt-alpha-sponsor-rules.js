@@ -31,7 +31,7 @@ export function gtSponsorDiscount(id,cost,{enabled=rebootEconomyEnabled()}={}){
  const value=Math.max(0,Math.floor(Number(cost)||0));
  const cap=gtEffectiveSponsor(id,{enabled})?.cap||0;
  if(id==='oficina')return Math.min(cap,value);
- if(id==='pitstop')return Math.min(cap,Math.floor(value*(enabled?.20:.30)));
+ if(id==='pitstop')return Math.min(cap,Math.floor(value*(enabled ? .20 : .30)));
  return 0;
 }
 

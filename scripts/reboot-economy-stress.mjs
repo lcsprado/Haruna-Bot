@@ -10,6 +10,7 @@ import {C4C_WINDOWS,PLAYER_BEHAVIOR,buildIntegratedInputs,
   simulateIntegrated} from './reboot-economy-integrated.mjs';
 import {V2_EVENT_BUDGET,V2_RAID_LEVELS,raid70V2Policy,raidCashSharesV2} from '../src/neon/reboot-economy-policy.js';
 import {V2_TRANSPORT} from '../src/neon/reboot-transport-policy.js';
+import {V2_GT_SPONSOR_BUDGET} from '../src/neon/gt-alpha-sponsor-rules.js';
 
 const RANKED=Object.freeze(['intensivo','dedicado','regular','casual']);
 const sum=xs=>xs.reduce((a,b)=>a+b,0);
@@ -40,9 +41,9 @@ export function eventPressure(days,{pocoClearedAtDay=60}={}){
   if(!Number.isSafeInteger(pocoClearedAtDay)||pocoClearedAtDay<1)
     throw RangeError('Dia de conclusão do Poço inválido');
   const paid=Object.fromEntries(RANKED.map(id=>[id,{
-    gtHeat:0,gtWeekly:0,weeklyBoss:0,pocoRanking:0,pocoFloors:0
+    gtHeat:0,gtWeekly:0,gtSponsor:0,weeklyBoss:0,pocoRanking:0,pocoFloors:0
   }]));
-  const sources={gtHeat:0,gtWeekly:0,weeklyBoss:0,pocoRanking:0,pocoFloors:0};
+  const sources={gtHeat:0,gtWeekly:0,gtSponsor:0,weeklyBoss:0,pocoRanking:0,pocoFloors:0};
   let completedWeeks=0,gtHeatDays=0,pocoCount=0;
   const grant=(id,key,value)=>{
     if(!Number.isSafeInteger(value)||value<0)throw Error('Pagamento inválido');
@@ -59,6 +60,8 @@ export function eventPressure(days,{pocoClearedAtDay=60}={}){
     }
     if(day%7===0){
       completedWeeks++;
+      // Teto condicional: cada um dos 4 pilotos conquistou 2 vitórias Turbo na semana.
+      RANKED.forEach(id=>grant(id,'gtSponsor',V2_GT_SPONSOR_BUDGET.turbo.cap));
       // Quatro pilotos elegíveis a prêmios semanais é hipótese máxima.
       RANKED.slice(0,4).forEach((id,rank)=>grant(id,'gtWeekly',
         V2_EVENT_BUDGET.gtWeeklyPrizes[rank]));
@@ -77,7 +80,7 @@ export function eventPressure(days,{pocoClearedAtDay=60}={}){
   return {days,players,sources,groupTotal:sum(Object.values(sources)),
     reconciled:sum(players.map(row=>row.total))===sum(Object.values(sources)),
     completedWeeks,gtHeatDays,pocoCount,
-    caveat:'Teto teórico de pagamentos condicionais. GT pressupõe participações nos dias ativos; Boss e GT semanal pressupõem elegibilidade. Poço no dia 60 e quatro conclusões são hipóteses, NÃO disponibilidade ou progressão comprovada.'};
+    caveat:'Teto condicional: patrocínio Turbo pressupõe contrato e 2 vitórias por semana de cada piloto. GT, Boss e Poço também dependem de elegibilidade e vitória; nenhum prêmio é garantido.'};
 }
 const DRIVERS=Object.freeze({
   uber:Object.freeze(['executivo','experiente','comum']),

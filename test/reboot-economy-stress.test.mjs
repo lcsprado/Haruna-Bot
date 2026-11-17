@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {PROFILES} from '../scripts/reboot-economy-sim.mjs';
 import {buildIntegratedInputs} from '../scripts/reboot-economy-integrated.mjs';
 import {V2_EVENT_BUDGET} from '../src/neon/reboot-economy-policy.js';
+import {V2_GT_SPONSOR_BUDGET} from '../src/neon/gt-alpha-sponsor-rules.js';
 import {allocatePoolByWeights,eventPressure,fundedFleetForMode,
   prefundedFleetUpperBound,raid70V2EmissionEstimate,stressEconomyReport}
   from '../scripts/reboot-economy-stress.mjs';
@@ -30,12 +31,13 @@ test('7,30,60,120 dias: prêmios não se multiplicam por quatro ao pagar pools',
     assert.equal(events.completedWeeks,expectedWeeks[i]);
     assert.equal(events.sources.weeklyBoss,expectedWeeks[i]*V2_EVENT_BUDGET.weeklyBossPool);
     assert.equal(events.sources.gtWeekly,expectedWeeks[i]*V2_EVENT_BUDGET.gtWeeklyPrizes.reduce((a,b)=>a+b,0));
+    assert.equal(events.sources.gtSponsor,expectedWeeks[i]*4*V2_GT_SPONSOR_BUDGET.turbo.cap);
     assert.equal(events.sources.gtHeat<=days*3*V2_EVENT_BUDGET.gtHeatPrizes.slice(0,4).reduce((a,b)=>a+b,0),true);
     assert.equal(events.pocoCount,days<60?0:1);
   }
 });
 test('Poço é uma edição sazonal, não 1 evento semanal, e requer conclusão hipotética',()=>{
-  assert.ok(eventPressure(7).groupTotal<130000);
+  assert.equal(eventPressure(7).groupTotal,132800);
   assert.ok(eventPressure(120).groupTotal<3000000);
   assert.equal(eventPressure(30).sources.pocoRanking,0);
   const e60=eventPressure(60);
