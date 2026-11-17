@@ -1,5 +1,6 @@
 import {db,ensureUser,grantExpInTransaction,petMaxHp,petMaxEnergy} from './db.js'
 import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity} from './daily-mission-rotation.js'
+import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 
 const TYPES=[...DAILY_MAIN_TYPES,'legend_raid']
 const MAIN=[...DAILY_MAIN_TYPES]
@@ -37,6 +38,11 @@ const dateDiff=(a,b)=>Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:0
 const nowDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
 const milestone=streak=>{
  const d=((streak-1)%30)+1
+ if(rebootEconomyEnabled()){
+   const cash=V2_EVENT_BUDGET.dailyStreakMilestones[d]
+   const item=d===7||d===14?'caixa_rara':d===21||d===30?'caixa_epica':null
+   return cash?{cash,...(item?{item,qty:1}:{})}:null
+ }
  const m={3:{cash:50000},7:{cash:150000,item:'caixa_epica',qty:1},14:{cash:300000,item:'caixa_epica',qty:2},21:{cash:500000,item:'caixa_epica',qty:3},30:{cash:1000000,item:'caixa_lendaria',qty:1}}
  return m[d]||null
 }
@@ -99,19 +105,20 @@ async function ensureRows(c,jid){
  // ensureRows retorna antes daqui. O novo quadro começa em 14/11.
  const insert=[...(today>=DAILY_V3_START?dailyV3MainMissions(today):dailyRotatedDefinitions(today)),special]
  for(const m of insert){
-   const cash=Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
+   const cash=rebootEconomyEnabled()?V2_EVENT_BUDGET.dailyMissionCash[m.type]
+     :Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
    const xp=Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
    const petXp=Math.round(m.petXp*(m.type==='legend_raid'?1:XP[tier]))
    await c.query(`INSERT INTO daily_missions
      (jid,day_key,mission_type,title,target,reward_cash,reward_xp,reward_pet_xp,reward_box,level_snapshot,money_factor,xp_factor)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,$11)
      ON CONFLICT(jid,day_key,mission_type) DO NOTHING`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
    // Só migra missões legadas NÃO resgatadas. O snapshot após isso nunca muda.
    await c.query(`UPDATE daily_missions SET title=$4,target=$5,reward_cash=$6,reward_xp=$7,
        reward_pet_xp=$8,level_snapshot=$9,money_factor=$10,xp_factor=$11,reward_box=0
      WHERE jid=$1 AND day_key=$2 AND mission_type=$3 AND claimed=FALSE AND level_snapshot=0`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
  }
  return {today,level,tier}
 }
@@ -184,16 +191,17 @@ async function claimDailyInTx(c,jid,day){
  const level=Number((await c.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
  const tier=levelTier(level)
  const baseCash=[15000,30000,50000,75000,100000][tier],exp=[300,500,800,1000,1500][tier]
+ const effectiveBaseCash=rebootEconomyEnabled()?V2_EVENT_BUDGET.dailyBaseByTier[tier]:baseCash
  const extra=milestone(streak),bonusCash=Number(extra?.cash||0)
  if(extra?.item)await creditBox(c,jid,extra.item,extra.qty)
- await creditCash(c,jid,baseCash+bonusCash,'daily',day)
+ await creditCash(c,jid,effectiveBaseCash+bonusCash,'daily',day)
  await grantExpInTransaction(c,jid,exp)
  await c.query(`UPDATE daily_streaks SET streak=$2,best_streak=$3,last_claim_day=$4::date,
    last_protection_used_day=CASE WHEN $5 THEN $4::date ELSE last_protection_used_day END,
    updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1`,
    [jid,streak,bestStreak,day,protectedGap])
- console.log('[DAILY V2 CLAIM]',JSON.stringify({jid,day,level,streak,cash:baseCash+bonusCash,exp,protectedGap}))
- return {ok:true,amount:baseCash,bonusCash,totalCash:baseCash+bonusCash,exp,streak,bestStreak,
+ console.log('[DAILY V2 CLAIM]',JSON.stringify({jid,day,level,streak,cash:effectiveBaseCash+bonusCash,exp,protectedGap}))
+ return {ok:true,amount:effectiveBaseCash,bonusCash,totalCash:effectiveBaseCash+bonusCash,exp,streak,bestStreak,
    protectedGap,continued,eventMultiplier:1,reward:extra?{label:extra.item?(extra.qty+'x '+(extra.item==='caixa_lendaria'?'Caixa Lendária':'Caixa Épica')):'Bônus de sequência',itemId:extra.item||null,qty:extra.qty||0,bonusCash}:null,
    next:nextMark(streak)}
 }
