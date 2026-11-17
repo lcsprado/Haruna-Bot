@@ -2277,10 +2277,10 @@ await client.query(
 if(eventGain+bonusXp>0){
  const cr=(await client.query(`SELECT p.class_id,p.level,p.xp FROM player_class_levels p
    JOIN stats s ON s.jid=p.jid AND s.class_id=p.class_id AND s.class_applied=TRUE
-   WHERE p.jid=$1 AND NOT EXISTS (
+   WHERE p.jid=$1 AND ($2::boolean OR NOT EXISTS (
     SELECT 1 FROM player_hero_mode m WHERE m.jid=p.jid AND m.hero_species IS NOT NULL
     AND EXISTS(SELECT 1 FROM pet_collection h WHERE h.jid=p.jid AND h.species=m.hero_species)
-   ) FOR UPDATE OF p`,[jid])).rows[0];
+   )) FOR UPDATE OF p`,[jid,classesOnlyRebootEnabled()])).rows[0];
  if(cr){
   const next=classLevelAdvance(cr.level,cr.xp,eventGain+bonusXp);
   if(next.level!==Number(cr.level)||next.xp!==Number(cr.xp))
@@ -3129,7 +3129,7 @@ const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND 
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
 const gearHp=Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0)
-const activeHeroMode=await db.query(`SELECT 1 FROM player_hero_mode m WHERE m.jid=$1 AND m.hero_species IS NOT NULL
+const activeHeroMode=classesOnlyRebootEnabled()?{rows:[]}:await db.query(`SELECT 1 FROM player_hero_mode m WHERE m.jid=$1 AND m.hero_species IS NOT NULL
   AND EXISTS(SELECT 1 FROM pet_collection c WHERE c.jid=m.jid AND c.species=m.hero_species) LIMIT 1`,[jid])
 const classActive=Boolean(p.class_applied)&&activeHeroMode.rows.length===0
 const cls=classCombatStats(p,p.class_id,p.class_level,classActive)
