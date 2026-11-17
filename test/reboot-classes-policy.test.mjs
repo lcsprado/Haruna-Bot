@@ -5,7 +5,8 @@ import {
   REBOOT_MODE,REBOOT_CLASS_IDS,REBOOT_HERO_MESSAGE,
   classesOnlyRebootEnabled,eligiblePlayableHero,
   assertRebootHeroSelection,raidEnabledInReboot,filterRebootRaidCatalog,
-  isRebootCollabItemId,filterRebootStarterItems
+  isRebootCollabItemId,filterRebootStarterItems,
+  assertRebootDatabaseTarget,assertRebootWhatsappPermission
 } from '../src/neon/reboot-classes-policy.js';
 
 test('modo classes-only exige configuração exata, nunca é ligado acidentalmente',()=>{
@@ -14,6 +15,24 @@ test('modo classes-only exige configuração exata, nunca é ligado acidentalmen
   assert.equal(classesOnlyRebootEnabled({ALPHA_REBOOT_MODE:'true'}),false);
   assert.equal(classesOnlyRebootEnabled({ALPHA_REBOOT_MODE:'classes_only'}),true);
   assert.deepEqual([...REBOOT_CLASS_IDS],['paladin','necromancer','samurai','berserker']);
+});
+test('V2 bloqueia conexões com banco de produção e Whatsapp prematuro',()=>{
+  const base={ALPHA_REBOOT_MODE:'classes_only',ALPHA_REBOOT_DB_CONFIRMED:'isolated-v2'};
+  assert.deepEqual(assertRebootDatabaseTarget({DATABASE_URL:'postgres://u:p@aiven/alpha_prod_v2'}),
+    {reboot:false});
+  assert.throws(()=>assertRebootDatabaseTarget({...base,DATABASE_URL:'postgres://u:p@aiven/alpha_prod_v2'}),
+    /alpha_reboot/);
+  assert.throws(()=>assertRebootDatabaseTarget({...base,DATABASE_URL:'postgres://u:p@aiven/defaultdb'}),
+    /alpha_reboot/);
+  assert.throws(()=>assertRebootDatabaseTarget({ALPHA_REBOOT_MODE:'classes_only',
+    DATABASE_URL:'postgres://u:p@aiven/alpha_reboot_nova_era'}),/falta confirmação/);
+  assert.throws(()=>assertRebootDatabaseTarget({...base,DATABASE_URL:'not-a-url'}),/inválido/);
+  assert.equal(assertRebootDatabaseTarget({...base,
+    DATABASE_URL:'postgres://u:p@aiven/alpha_reboot_nova_era'}).databaseName,'alpha_reboot_nova_era');
+  assert.equal(assertRebootWhatsappPermission({}),true);
+  assert.throws(()=>assertRebootWhatsappPermission({ALPHA_REBOOT_MODE:'classes_only'}),/WhatsApp real proibido/);
+  assert.equal(assertRebootWhatsappPermission({ALPHA_REBOOT_MODE:'classes_only',
+    ALPHA_REBOOT_ALLOW_WHATSAPP:'cutover-approved'}),true);
 });
 test('nenhum herói da collab pode ocupar o combatente na V2',()=>{
   assert.equal(eligiblePlayableHero('pecado_ban',{enabled:true}),null);
