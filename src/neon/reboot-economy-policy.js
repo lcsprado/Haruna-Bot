@@ -86,6 +86,22 @@ export function raid70V2Contributors(players,{level,enabled=rebootEconomyEnabled
   return {valid:total>0&&new Set(qualified.map(p=>p.jid)).size>=2,
     required:2,contributors:new Set(qualified.map(p=>p.jid)).size};
 }
+export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled()}={}){
+ if(!business)return business;
+ if(!enabled)return business;
+ const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business.id];
+ if(!Number.isSafeInteger(hourly)||hourly<0)throw new Error('Negócio sem tarifa V2 aprovada.');
+ return {...business,profitHour:hourly};
+}
+export function businessIntervalGrossV2(business,row,now){
+ const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business?.id],cap=Number(business?.capacityHours);
+ const end=Number(now),start=Number(row?.last_collected_at??end),level=Number(row?.level||1);
+ if(!Number.isSafeInteger(hourly)||!Number.isFinite(cap)||cap<=0||!Number.isFinite(end)||
+    !Number.isFinite(start)||!Number.isInteger(level)||level<1||level>5)
+    throw new Error('Dados de coleta V2 inválidos.');
+ const seconds=Math.min(Math.max(0,end-start),cap*3600);
+ return Math.floor(seconds/3600*hourly*(1+(level-1)*V2_BUSINESS_ECONOMY.levelBonus));
+}
 export function budgetReport(){
   const e=V2_EVENT_BUDGET;
   return Object.freeze({

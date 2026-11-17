@@ -4,6 +4,7 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2} from './reboot-economy-policy.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
@@ -1439,7 +1440,7 @@ export async function patrimonyLeaderboard(limit=10){
 export async function getBusinesses(jid){
   await ensureUser(jid)
   const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at,level,accrued_gross FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
-  return rows.map(r=>({...BUSINESSES.find(b=>b.id===r.business_id),...r,id:r.business_id}))
+  return rows.map(r=>({...candidateBusinessCatalog(BUSINESSES.find(b=>b.id===r.business_id)),...r,id:r.business_id}))
 }
 
 export async function buyBusiness(jid,input){
@@ -1455,7 +1456,7 @@ export async function buyBusiness(jid,input){
     const now=Math.floor(Date.now()/1000)
     await client.query('INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at) VALUES($1,$2,$3,$4,$4)',[jid,business.id,business.price,now])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_purchase',$3)",[jid,business.price,business.name])
-    return business
+    return candidateBusinessCatalog(business)
   })
 }
 
@@ -1482,7 +1483,8 @@ export async function collectBusinesses(jid){
     for(const row of rows){
       const b=BUSINESSES.find(x=>x.id===row.business_id)
       if(!b) continue
-      const earned=Number(row.accrued_gross||0)+businessIntervalGross(b,row,now)
+      const earned=Number(row.accrued_gross||0)+(rebootEconomyEnabled()
+        ?businessIntervalGrossV2(b,row,now):businessIntervalGross(b,row,now))
       if(earned>0){
         total+=earned
         details.push({name:b.name,earned})
@@ -1492,12 +1494,14 @@ export async function collectBusinesses(jid){
       }
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10),net=gross-tax
+    const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')
+    const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10)
+    const operating=rebootEconomyEnabled()?Math.floor(gross*V2_BUSINESS_ECONOMY.operatingCostRate):0
+    const net=gross-tax-operating
     // Settle a documented economy recovery from future net business profits.
     // No player's wallet goes negative; all changes share the collection transaction.
     const recoveryKey='economy_recovery:'+jid
-    const recovery=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
+    const recovery=rebootEconomyEnabled()?null:(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
     const pending=Math.max(0,Math.trunc(Number(recovery?.remaining||0)))
     // Augusto: o saldo anterior já cobre a parcela final do estorno.
     // Quitá-la separadamente preserva a auditoria, sem reter mais lucros futuros.
@@ -1525,7 +1529,8 @@ export async function collectBusinesses(jid){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_operating','operacao 10% V2')",[jid,operating])
+    return {total:creditedNet,gross,tax,operating,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
   })
 }
 
@@ -1542,11 +1547,14 @@ export function businessUpgradeQuote(business,currentLevel,targetLevel){
   let cost=0
   for(let level=fromLevel;level<toLevel;level++)
     cost+=Math.floor(Number(business.price)*rates[level])
+  const base=candidateBusinessCatalog(business).profitHour
+  const growth=rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:0.25
+  const extraHours=rebootEconomyEnabled()?0:1
   return {fromLevel,toLevel,levelsGained:toLevel-fromLevel,cost,
-    previousProfitHour:Math.floor(business.profitHour*(1+(fromLevel-1)*0.25)),
-    profitHour:Math.floor(business.profitHour*(1+(toLevel-1)*0.25)),
-    previousCapacityHours:business.capacityHours+fromLevel-1,
-    capacityHours:business.capacityHours+toLevel-1}
+    previousProfitHour:Math.floor(base*(1+(fromLevel-1)*growth)),
+    profitHour:Math.floor(base*(1+(toLevel-1)*growth)),
+    previousCapacityHours:business.capacityHours+extraHours*(fromLevel-1),
+    capacityHours:business.capacityHours+extraHours*(toLevel-1)}
 }
 
 export async function upgradeBusiness(jid,input,targetLevel=null){
@@ -1566,11 +1574,13 @@ export async function upgradeBusiness(jid,input,targetLevel=null){
     // Uma cobrança e uma atualização no Neon: sem níveis parciais se faltar saldo.
     await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[quote.cost,jid])
     const now=Math.floor(Date.now()/1000)
-    const accrued=businessIntervalGross(business,own.rows[0],now)
+    const accrued=rebootEconomyEnabled()?businessIntervalGrossV2(business,own.rows[0],now)
+      :businessIntervalGross(business,own.rows[0],now)
     await client.query('UPDATE user_businesses SET level=$1,accrued_gross=accrued_gross+$2,last_collected_at=$3 WHERE jid=$4 AND business_id=$5',[target,accrued,now,jid,business.id])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",
       [jid,quote.cost,business.name+' Lv.'+level+' → Lv.'+target])
-    return {...business,...quote,level:target,cost:quote.cost,multiplier:1+(target-1)*0.25,cash:cash-quote.cost}
+    return {...candidateBusinessCatalog(business),...quote,level:target,cost:quote.cost,
+      multiplier:1+(target-1)*(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25),cash:cash-quote.cost}
   })
 }
 
