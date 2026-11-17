@@ -55,3 +55,11 @@ Estado: PROPOSTA — sem autorização de deploy, reset ou mudança de DB.
 
 ## Condição atual
 PR #387 apenas prepara auditoria e docs. A decisão de criar B é recomendada para futura homologação; **ainda não precisamos criá-lo**. Nenhum deploy, reset, cópia de credenciais ou troca de DATABASE_URL foi feito.
+
+
+## Levantamento de projetos Neon existentes (somente leitura, 17/11/2026)
+- Conta Neon principal: `jolly-glitter-58248440` (`conciliador-financeiro`), projeto antigo com cota de transferência excedida em 12/11. Continua existente. Branch `main` ARQUIVADA, tamanho lógico ~31,4 MB; branch `bot-wpp-test` ARQUIVADA, ~81,8 MB. `quota_reset_at=2026-12-01T00:00:00Z`. Não tentar restaurar/ativar branch ou reutilizar em produção sem avaliar limites, dependências do Conciliador e recuperação de acesso; a data de reset de quota não equivale a autorização de reutilização.
+- `ancient-snow-09805670` (`ALPHA BOT`) existe na mesma conta, branch padrão `production` em estado READY, ~89,4 MB, atualizada em 17/11, mais várias branches de backup ARQUIVADAS. Não afirmar que está offline ou apagável: detectar consumidores/automação e confirmar origem do dado antes de eventual reaproveitamento.
+- O banco real `alpha_prod_v2` no Aiven é o banco informado como produção; nenhuma conexão foi alterada.
+- Resultado: a alternativa de reaproveitar banco antigo existe APENAS como hipótese condicionada à auditoria. Para homologação, preferir instância isolada que não dependa de restaurar banco arquivado, não compartilhe quota excedida e não seja usada pelo Conciliador.
+- Este levantamento usou somente os metadados/listagens Neon e não abriu conexões SQL, não reiniciou compute e não executou alterações.
