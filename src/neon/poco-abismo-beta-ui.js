@@ -1,6 +1,38 @@
 // UI reduzida da prévia beta: uma mensagem do bot por Guardião, editada
 // a cada decisão do mesmo jogador. Não altera ações nem créditos.
 import {pocoBossSkill} from './poco-abismo-rules.js'
+import {pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
+
+// Preserve a mesma mensagem original entre edições. Uma edição produz sua
+// própria chave Baileys, mas a próxima edição deve mirar o balão ORIGINAL.
+// Caso a edição não seja aceita, envia nova mensagem (deadline só após ACK).
+export async function pocoBetaDispatchPrompt({reply,message,token,uiEdit,confirm}){
+ let lastKey=null,edited=false
+ const send=async text=>{
+   if(uiEdit?.key?.id){
+     try{
+       const sent=await reply(text,{edit:uiEdit.key})
+       if(sent?.key?.id){
+         lastKey=uiEdit.key
+         edited=true
+         return sent
+       }
+     }catch(error){
+       console.warn('[POCO BETA] edição falhou; enviando novo prompt',String(error?.message||error).slice(0,110))
+     }
+   }
+   const sent=await reply(text)
+   lastKey=sent?.key?.id?sent.key:null
+   edited=false
+   return sent
+ }
+ return pocoDispatchActionPrompt({
+   reply:send,message,token,
+   confirm:(tok,sentAt)=>confirm(tok,sentAt,lastKey?.id?{
+     key:lastKey,at:edited?uiEdit.at:sentAt
+   }:null)
+ })
+}
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const shortName=x=>String(x||'Jogador').replace(/[\r\n\t*]/g,' ').trim().slice(0,28)
