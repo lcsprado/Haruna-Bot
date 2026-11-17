@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,pecadosBonus} from '../src/neon/sete-pecados-catalog.js'
 import {VITAL_PETS,VITAL_TEAM_BONUS,resolveVitalTeam} from '../src/neon/vital-pets.js'
+import {classesOnlyRebootEnabled} from '../src/neon/reboot-classes-policy.js'
 
 // Execute a production snapshot of the pure synergy function without opening a DB connection.
 const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
@@ -17,9 +18,9 @@ const speciesStyles=new Function('PECADOS_HEROES','VITAL_PETS',take('const PET_T
 const styleBonuses=new Function('VITAL_TEAM_BONUS',take('const PET_TEAM_STYLE_BONUS=','function resolveBatTeamStyles(')+'\nreturn PET_TEAM_STYLE_BONUS')(VITAL_TEAM_BONUS)
 const resolveBatTeamStyles=new Function('PET_TEAM_STYLE_BY_SPECIES',take('function resolveBatTeamStyles(','export function petStyleLabel(')+'\nreturn resolveBatTeamStyles')(speciesStyles)
 const petTeamSynergy=new Function(
-  'PECADOS_HERO_IDS','pecadosBonus','PET_TEAM_STYLE_BY_SPECIES','PET_TEAM_STYLE_BONUS','PET_TEAM_WILDCARD_BONUS','resolveBatTeamStyles','resolveAstralLynxWildcard','resolveCollabWildcardTeam','PET_COLLAB_TEAM_GROUPS','resolveVitalTeam',
+  'PECADOS_HERO_IDS','pecadosBonus','PET_TEAM_STYLE_BY_SPECIES','PET_TEAM_STYLE_BONUS','PET_TEAM_WILDCARD_BONUS','resolveBatTeamStyles','resolveAstralLynxWildcard','resolveCollabWildcardTeam','PET_COLLAB_TEAM_GROUPS','resolveVitalTeam','classesOnlyRebootEnabled',
   take('export function petTeamSynergy(pets=[])','export const LEGENDARY_PET_SUMMONS=').replace(/^export /,'')+'\nreturn petTeamSynergy'
-)(PECADOS_HERO_IDS,pecadosBonus,speciesStyles,styleBonuses,{},resolveBatTeamStyles,()=>null,()=>null,[],resolveVitalTeam)
+)(PECADOS_HERO_IDS,pecadosBonus,speciesStyles,styleBonuses,{},resolveBatTeamStyles,()=>null,()=>null,[],resolveVitalTeam,classesOnlyRebootEnabled)
 const pet=(species)=>({species})
 const team=(...species)=>species.map(pet)
 
