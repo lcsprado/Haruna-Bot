@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'docs/reboot-classes-only-20261117.md'
+      - 'docs/reboot-data-inventory-20261117.md'
+      - 'docs/reboot-isolated-db-runbook-20261117.md'
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
       - 'scripts/reboot-reset-manifest.mjs'
