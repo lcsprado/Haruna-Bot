@@ -1,6 +1,6 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
-import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE} from './reboot-classes-policy.js'
+import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -126,6 +126,8 @@ import {handleAuction15RewardCommand,isNextRaidLotePassPackage} from './auction-
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
+// No modo V2, o consumidor real só inicia após aprovação explícita do cutover.
+assertRebootWhatsappPermission()
 
 import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
