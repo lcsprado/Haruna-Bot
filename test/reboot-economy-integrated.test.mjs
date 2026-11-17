@@ -35,7 +35,7 @@ test('economia integrada fecha contabilidade e nunca dá saldo negativo em 16 ce
   assert.equal(r.days,row.days);
   assert.ok(r.netWorthAtResaleAssumption>=r.cash);
   assert.ok(r.drivers<=2);
-  assert.ok(r.vehicles<=4);
+  assert.ok(r.vehicles<=INVESTMENT_SEQUENCE.filter(x=>x.type==='vehicle').length);
   assert.ok(r.ownedBusinesses<=9);
   assert.equal(r.driverHiring,r.purchases.filter(p=>p.type==='driver').reduce((a,b)=>a+b.paid,0));
   assert.ok(r.purchases.every(p=>p.paid>0));
