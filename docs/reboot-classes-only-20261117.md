@@ -67,3 +67,14 @@ Analise `src/neon/db.js`, `src/neon/progression.js`, `src/neon/games.js`, `src/n
 Entrega única: tabela com (arquivo/linha, tabela ou rotina, tipo de persistência, risco de remoção de collab, ação proposta).
 Verificar especificamente se haverá regressão em GT, Cerco, pets, Poço e licenças.
 Não criar novos sistemas, não reescrever eventos, não tocar no deploy ou DB. Se algo depender de dados de produção, marque PENDENTE, sem conectar. Termine ao entregar a tabela; não faça alterações especulativas.
+
+
+## Memória, sessões e segurança do reset (verificação de código 17/11)
+- `src/neon/auth.js` e `db.js`: `auth_creds` e `auth_keys` guardam credenciais Signal/Baileys do WhatsApp. **PROIBIDO zerar**; apagar pode desconectar permanentemente a sessão/obrigar novo pareamento.
+- `src/neon/web-api.js`: `web_sessions`, `web_link_codes`, `web_pending_group_links` e tabelas de senha/cadastro são operacionais. **PROIBIDO confundir com progresso**; preservar autenticação e revisar expiração de vínculos de temporada.
+- `src/neon/index.js`: `NodeCache`, caches de metadados de grupo, mídia, deduplicação e reenvio, além de `startGtAlphaScheduler`, `startPocoLiveScheduler`, `startGuerraAlmasScheduler` e diversos temporizadores. Reiniciar processo só remove memória volátil, mas tarefas persistentes podem reabrir/recreditar a partir do banco. Exigir janela de manutenção, parada de schedulers, conciliação de outbox e idempotência.
+- `src/neon/db.js` contém `ownerResetTotal(jid)`: NÃO USAR para reboot 2.0. Ele zera `users`, `wallets`, parte de `stats`, inventário/forja, cooldowns, avatar, daily_missions, casas e carros, MAS NÃO cobre todos os sistemas da temporada (e.g. `user_businesses`, `pet_collection`, empréstimos, GT, clãs, maestrias). Pode gerar resíduos competitivos.
+- `src/neon/progression.js`: `user_businesses` preserva `last_collected_at`, `level`, `accrued_gross`; esses dados não devem sobreviver à nova temporada para os quatro JIDs.
+- Preparar inventário de todas as ~117 tabelas detectadas estaticamente, com consulta do schema real APENAS em clone isolado e categorização: preservado operacional, histórico arquivado, jogo resetável, estado global encerrado.
+- Migração futura deve ser idempotente e transacional quando possível, com snapshot pré/pós, FK verificadas, isolamento de usuários-alvo, sem acionamento de eventos ou pagamentos antigos e aprovação explícita antes de tocar na produção.
+- Histórico de conversa e memórias do ChatGPT são independentes do banco do Alpha Bot: nenhuma migração do jogo deve tentar apagar conversas do ChatGPT.
