@@ -4,7 +4,7 @@ import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from '.
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
- gtRunHeats,gtReplayWithEntrant,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings,gtRaceReward
+ gtRunHeats,gtReplayWithEntrant,gtRetractPlayerXp,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings,gtRaceReward
 } from './gt-alpha-rules.js'
 import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
 
@@ -315,6 +315,196 @@ async function rematchGtAlpha20261116(){
  })
 }
 
+
+/**
+ * Reverte exatamente a inclusão excepcional de 16/11, sem simular nova prova.
+ * A operação inteira é protegida por lock da etapa, BEGIN/COMMIT e marcador
+ * idempotente. A liquidação original de três pilotos nunca foi descartada.
+ */
+async function restoreGtOriginal20261116(){
+ const day='2026-11-16',key=dayKey(day)
+ const previousMark='pending-upgrade-car-1-rematch-v1'
+ const mark='workshop-rule-original-20261116-v1'
+ const preview=await read(key)
+ if(preview?.correction?.reversal?.id===mark||preview?.correction?.id!==previousMark)return
+ await mutate(key,async(s,c)=>{
+  await c.query("SET LOCAL statement_timeout='90000ms'")
+  if(s.correction?.reversal?.id===mark)return
+  if(s.phase!=='completed'||s.stage!==3||s.correction?.id!==previousMark)
+   throw Error('GT 16/11: etapa não está no replay que deve ser revertido')
+  const original=s.correction.originalResults
+  const originalParticipants=s.correction.originalParticipants
+  if(original?.heats?.length!==3||original?.standings?.length!==3||
+     originalParticipants?.length!==3||s.results?.heats?.length!==3||
+     s.results?.standings?.length!==4||s.participants?.length!==4)
+   throw Error('GT 16/11: estrutura de corrida divergente; sem estorno')
+  const originalJids=new Set(originalParticipants.map(p=>p.jid))
+  const extras=s.participants.filter(p=>!originalJids.has(p.jid))
+  const entrant=extras[0]
+  if(extras.length!==1||Number(entrant?.carId)!==1||
+     s.correction.deltas?.length!==4)
+   throw Error('GT 16/11: piloto incluído e diferenças não conferem')
+  const deltas=new Map(s.correction.deltas.map(d=>[d.jid,d]))
+  if(deltas.size!==4||!s.participants.every(p=>deltas.has(p.jid))||
+     [...deltas.values()].some(d=>![d.cash,d.pilotXp,d.playerXp].every(Number.isSafeInteger)))
+   throw Error('GT 16/11: compensações sem integridade')
+  const wrong=deltas.get(entrant.jid)
+  if(wrong.cash!==900000||wrong.pilotXp!==2250||wrong.playerXp!==103860||
+     s.correction.sponsors?.length!==1||
+     s.correction.sponsors[0].jid!==entrant.jid)
+   throw Error('GT 16/11: ganhos não correspondem à inclusão conhecida')
+  // Provar que o diário original, o replay e seus 14 lançamentos ainda conferem.
+  for(let i=0;i<3;i++){
+   const positions=original.heats[i].positions
+   const revised=s.results.heats[i].positions
+   if(positions.length!==3||revised.length!==4)throw Error('GT 16/11: prova incompleta')
+   for(const pos of positions){
+    const current=revised.find(p=>p.jid===pos.jid)
+    if(!current||Number(current.score)!==Number(pos.score))
+     throw Error('GT 16/11: desempenho do piloto original divergiu')
+   }
+   if(!revised.some(p=>p.jid===entrant.jid))
+    throw Error('GT 16/11: não há resultado do piloto incluído')
+  }
+  const ledger=(await c.query(
+   "SELECT from_jid,to_jid,amount,type,note FROM transactions WHERE (type='gt_alpha_heat' AND note LIKE $1) OR (type='gt_alpha_rematch_adjustment' AND note LIKE $2) OR (type='gt_sponsor_reward' AND to_jid=$3 AND note=$4) OR (type='gt_alpha_replay_reversal' AND note LIKE $5) FOR UPDATE",
+   [key+':heat:%',key+':rematch:%',entrant.jid,
+    'gt:'+gtWeekStart(day)+':turbo',key+':restore:%']
+  )).rows
+  if(ledger.some(x=>x.type==='gt_alpha_replay_reversal')||
+     ledger.filter(x=>x.type==='gt_alpha_heat').length!==9||
+     ledger.filter(x=>x.type==='gt_alpha_rematch_adjustment').length!==4||
+     ledger.filter(x=>x.type==='gt_sponsor_reward').length!==1)
+   throw Error('GT 16/11: número de pagamentos diverge da auditoria')
+  for(let i=0;i<3;i++)for(const pos of original.heats[i].positions){
+   const note=key+':heat:'+(i+1)+':place:'+pos.place
+   if(!ledger.some(x=>x.type==='gt_alpha_heat'&&x.note===note&&
+     x.to_jid===pos.jid&&Number(x.amount)===Number(pos.reward?.cash)))
+    throw Error('GT 16/11: recompensa original inconsistente')
+  }
+  for(const delta of deltas.values()){
+   const note=key+':rematch:'+delta.jid
+   if(!ledger.some(x=>x.type==='gt_alpha_rematch_adjustment'&&x.note===note&&
+      Number(x.amount)===Math.abs(delta.cash)&&
+      x.to_jid===(delta.cash>0?delta.jid:'system')&&
+      x.from_jid===(delta.cash>0?'system':delta.jid)))
+    throw Error('GT 16/11: lançamento da correção não confere')
+  }
+  const sponsorBonus=ledger.find(x=>x.type==='gt_sponsor_reward')
+  if(sponsorBonus.from_jid!=='system'||Number(sponsorBonus.amount)!==500000)
+   throw Error('GT 16/11: prêmio de patrocinador divergente')
+  const originalWins=new Map(originalParticipants.map(p=>[
+   p.jid,original.heats.filter(h=>h.positions[0]?.jid===p.jid).length
+  ]))
+  const revisedWins=new Map(s.participants.map(p=>[
+   p.jid,s.results.heats.filter(h=>h.positions[0]?.jid===p.jid).length
+  ]))
+  const formerWinner=original.heats.find(h=>h.positions[0]?.jid!==entrant.jid)?.positions[0]?.jid
+  const sponsorOther=original.heats[1]?.positions[0]?.jid
+  if(!originalJids.has(formerWinner)||!originalJids.has(sponsorOther)||
+     originalWins.get(sponsorOther)!==1||revisedWins.get(entrant.jid)!==3)
+   throw Error('GT 16/11: vitórias e patrocinador original inconsistentes')
+  const sponsors=(await c.query(
+   'SELECT jid,contract_id,progress,last_day,completed_at,reward_used_at FROM gt_sponsor_contracts_alpha WHERE week_start=$1 AND jid=ANY($2::text[]) FOR UPDATE',
+   [gtWeekStart(day),[entrant.jid,sponsorOther]]
+  )).rows
+  const entrantSponsor=sponsors.find(x=>x.jid===entrant.jid)
+  const otherSponsor=sponsors.find(x=>x.jid===sponsorOther)
+  if(sponsors.length!==2||entrantSponsor?.contract_id!=='turbo'||
+     Number(entrantSponsor.progress)!==2||entrantSponsor.last_day!==day||
+     Number(entrantSponsor.completed_at)<=0||Number(entrantSponsor.reward_used_at)<=0||
+     otherSponsor?.contract_id!=='turbo'||Number(otherSponsor.progress)!==0||
+     otherSponsor.last_day!==day||Number(otherSponsor.completed_at)!==0||
+     Number(otherSponsor.reward_used_at)!==0)
+   throw Error('GT 16/11: patrocínio já mudou, revisão manual necessária')
+  // Todos os lançamentos são revertidos antes de substituir a tabela.
+  // Não modificar recompensas originais; registrar novos débitos/créditos.
+  for(const p of s.participants){
+   const delta=deltas.get(p.jid)
+   const pilot=await c.query(
+    'UPDATE racing_profiles_alpha SET xp=xp-$1 WHERE jid=$2 AND xp>=$1',
+    [delta.pilotXp,p.jid]
+   )
+   if(pilot.rowCount!==1)throw Error('GT 16/11: saldo XP do piloto insuficiente')
+   const cashToReverse=delta.cash+(p.jid===entrant.jid?Number(sponsorBonus.amount):0)
+   const wallet=await c.query(
+    'UPDATE wallets SET cash=cash-$1,updated_at=$2 WHERE jid=$3 AND cash>=$1',
+    [cashToReverse,nowSec(),p.jid]
+   )
+   if(wallet.rowCount!==1)throw Error('GT 16/11: saldo da carteira insuficiente')
+   if(p.jid===entrant.jid){
+    const user=(await c.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]
+    if(!user)throw Error('GT 16/11: jogador não encontrado')
+    const adjusted=gtRetractPlayerXp(user.level,user.exp,delta.playerXp)
+    if(Number(user.level)<500||adjusted.level<500||adjusted.level>Number(user.level)||
+       adjusted.level!==Number(user.level)-2)
+     throw Error('GT 16/11: evolução de nível alterada; não aplicar parcialmente')
+    const xp=await c.query('UPDATE users SET level=$1,exp=$2,updated_at=$3 WHERE jid=$4',
+      [adjusted.level,adjusted.exp,nowSec(),p.jid])
+    const stats=await c.query(
+     'UPDATE stats SET max_hp=max_hp-$1,hp=GREATEST(1,hp-$1),atk=atk-$2,def=def-$3,spd=spd-$3,updated_at=$4 WHERE jid=$5 AND max_hp>$1 AND atk>$2 AND def>$3 AND spd>$3',
+     [adjusted.levelsLost*8,adjusted.levelsLost*2,adjusted.levelsLost,nowSec(),p.jid]
+    )
+    if(xp.rowCount!==1||stats.rowCount!==1)
+     throw Error('GT 16/11: atributos de nível sem compensação segura')
+   }else if(delta.playerXp<0){
+    // Com o XP devolvido o personagem volta a progredir normalmente,
+    // inclusive se a experiência acumulada ultrapassar um nível.
+    await grantExpInTransaction(c,p.jid,-delta.playerXp,{
+     ignoreXpBoost:true,ignoreGroupProgressionEvent:true
+    })
+   }else throw Error('GT 16/11: sinal de XP inesperado para piloto original')
+   const amount=Math.abs(cashToReverse)
+   if(amount>0){
+    const outgoing=cashToReverse>0
+    await c.query(
+     'INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',
+     [outgoing?p.jid:'system',outgoing?'system':p.jid,
+      amount,'gt_alpha_replay_reversal',key+':restore:'+p.jid]
+    )
+   }
+  }
+  // A peça permanece em instalação; somente o desgaste e as vitórias indevidas somem.
+  const wear=GT_DAILY_WEAR*3
+  const car=await c.query(
+   'UPDATE racing_cars_alpha SET condition=condition+$1,races=races-3,wins=wins-$2 WHERE id=$3 AND jid=$4 AND condition+$1<=100 AND races>=3 AND wins>=$2',
+   [wear,revisedWins.get(entrant.jid),entrant.carId,entrant.jid]
+  )
+  if(car.rowCount!==1)throw Error('GT 16/11: não foi possível desfazer o desgaste do carro')
+  for(const p of originalParticipants){
+   const deltaWin=(originalWins.get(p.jid)||0)-(revisedWins.get(p.jid)||0)
+   if(!deltaWin)continue
+   const update=await c.query('UPDATE racing_cars_alpha SET wins=wins+$1 WHERE id=$2 AND jid=$3 AND wins+$1>=0',
+    [deltaWin,p.carId,p.jid])
+   if(update.rowCount!==1)throw Error('GT 16/11: vitórias originais não recuperadas')
+  }
+  const sponsorReset=await c.query(
+   "UPDATE gt_sponsor_contracts_alpha SET progress=1,last_day=$1,completed_at=0,reward_used_at=0 WHERE jid=$2 AND week_start=$3 AND contract_id='turbo'",
+   ['2026-11-15',entrant.jid,gtWeekStart(day)]
+  )
+  const sponsorOriginal=await c.query(
+   "UPDATE gt_sponsor_contracts_alpha SET progress=1,last_day=$1 WHERE jid=$2 AND week_start=$3 AND contract_id='turbo'",
+   [day,sponsorOther,gtWeekStart(day)]
+  )
+  if(sponsorReset.rowCount!==1||sponsorOriginal.rowCount!==1)
+   throw Error('GT 16/11: contrato do patrocinador não restaurado')
+  s.results=JSON.parse(JSON.stringify(original))
+  s.participants=JSON.parse(JSON.stringify(originalParticipants))
+  s.correction.reversal={
+   id:mark,reversedAt:Date.now(),reason:'carro estava na oficina e não poderia disputar',
+   restoredFrom:'originalResults',removedCarId:entrant.carId,removedJid:entrant.jid,
+   restoredStandings:original.standings.map(p=>({jid:p.jid,points:p.points,wins:p.wins})),
+   adjustmentCount:4,sponsorReversed:Number(sponsorBonus.amount)
+  }
+  // O marcador de rematch continua no histórico para impedir reaplicação.
+  addNotice(s,'original-restored:2026-11-16',
+   '📢 *GT ALPHA BOT — RESULTADO DEFINITIVO DE 16/11*\n\n'+
+   '🔧 Carros em melhoria não podem competir. A inclusão posterior foi anulada e os resultados originais foram restaurados.\n\n'+
+   rankText(original.standings,'🏆 *CLASSIFICAÇÃO DO DIA*')+
+   '\n\n💰 Prêmios, XP, vitórias, desgaste e patrocínios reconciliados. Consulte *!gttabela* e *!gttabela semana*.')
+ })
+}
+
 async function completedDays(week,c=db){
  const r=(await c.query('SELECT key,value FROM trevo_settings WHERE key BETWEEN $1 AND $2 ORDER BY key',[dayKey(week),dayKey(gtWeekEnd(week))])).rows
  return r.filter(x=>x.value?.phase==='completed').map(x=>x.value)
@@ -414,6 +604,7 @@ export function startGtAlphaScheduler(sock,{isConnected=()=>true}={}){
   if(process.env.GT_ALPHA_REPLAY_20261116==='1'){
    try{await rematchGtAlpha20261116()}catch(err){console.error('[GT] replay 16/11 não aplicado',err?.stack||err)}
   }
+  try{await restoreGtOriginal20261116()}catch(err){console.error('[GT] restauração original 16/11 não aplicada',err?.stack||err)}
   if(timer)return
   timer=setInterval(()=>void tick(),5000);timer.unref?.();void tick()
  }).catch(err=>console.error('[GT] falha ao preparar patrocínios; scheduler não ativado',err?.message||err))
