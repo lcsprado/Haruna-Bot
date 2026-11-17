@@ -73,3 +73,21 @@ Consulta somente leitura ao Aiven: projeto `lcsh-3393`, serviço PostgreSQL `alp
 **Não misturar:** cada serviço/app deve apontar para exatamente um destino por ambiente. Não deixar dois consumidores WhatsApp, rotinas de cron ou replay de filas apontados à mesma identidade; não executar scripts de V2 com `DATABASE_URL` de V1; não usar o `alpha_prod_v2` como teste e não sobrescrever `alpha_homolog` sem identificar seu conteúdo. Após corte, preservar banco antigo desconectado até relatório de restore e rollback conclusivo; remoção de dados antigos do Aiven exige aprovação posterior expressa.
 
 **Capacidade/decisão:** O Aiven gratuito atual possui apenas 1 GB; antes de clonar ou manter simultaneamente bases grandes, apurar uso de disco e conexões (somente leitura). Se armazenamento/isolamento for insuficiente, um segundo serviço independente pode exigir plano/custo adicional; não provisionar sem escolha do dono.
+
+
+## Limites de infraestrutura e travas V2 — verificado em 17/11/2026
+- **Aiven**: serviço `alphabot`, PostgreSQL plano `free-1-1gb`, 20 conexões máximas, oito bancos no mesmo serviço. A API de métricas forneceu `disk_usage` latest ~40,671 na unidade nativa do painel e `cpu_usage` latest ~20,761. A soma de bancos no mesmo serviço compartilha recursos: **não** criar cópias grandes sem dimensionar espaço livre; os dados não equivalem a orçamento de crescimento da V2.
+- **Vercel**: equipe `lcsprado` (plano Hobby), projeto Git `alpha-web-rpg` ligado ao `Haruna-Bot`. A listagem de deploys específicos da branch `feature/reboot-classes-only-20261117` retornou **zero**; nenhum preview identificado. A consulta de despesas retornou erro `404 costs_not_found`: **consumo/acréscimo de franquia não verificado**, não assumir cota disponível.
+- **Neon**: consulta detalhada de consumo rejeitada (`403`, disponível apenas a partir do Launch); as branches antigas estão arquivadas. Não executar restore ou testes pesados no Neon até confirmar quotas diretamente no painel.
+- **Render**: consulta de métricas ainda pendente de escolha explícita de workspace. Não inferir ID de serviços nem usar conta diferente sem confirmação. Nenhum deploy ou consumo adicional provocado.
+- **CI**: scripts locais/GitHub Actions leem apenas arquivos fonte; nenhuma operação em DB, Render ou Vercel; manter build/revisões pequenos. Não gerar preview Vercel desnecessário.
+- Se for preciso monitorar Aiven/Neon, usar preferencialmente a tarefa de alerta de limites já existente, sem criar outra tarefa duplicada.
+- **Raid 75**: indisponível no modo classes-only; não modificar a versão atual, não permitir chaves, salas ou prêmios antigos na nova temporada.
+
+### Novos bloqueios de inicialização (somente PR, NÃO configurar agora)
+Quando `ALPHA_REBOOT_MODE=classes_only`:
+1. `assertRebootDatabaseTarget` exige `ALPHA_REBOOT_DB_CONFIRMED=isolated-v2` E banco com nome `alpha_reboot_*`. Recusa `alpha_prod_v2`, `alpha_prod`, `alpha_homolog`, `defaultdb`, bancos históricos e URLs inválidas. Esta marcação **não substitui** a verificação real de que o banco é novo e isolado.
+2. `index.js` exige `ALPHA_REBOOT_ALLOW_WHATSAPP=cutover-approved` para iniciar o consumidor real. Sem essa autorização, a execução para antes de ligar o WhatsApp. **Jamais usar esta variável em homologação.**
+3. Sem `ALPHA_REBOOT_MODE`, as verificações V2 não alteram a execução atual.
+
+É proibido colocar credenciais, URLs reais ou tokens no commit. Antes do cutover, validar os quatro JIDs, DB de destino, backup e desligamento da instância antiga; a aprovação para o corte é separada da preparação.
