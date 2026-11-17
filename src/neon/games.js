@@ -2174,6 +2174,7 @@ function collabFarmState(phaseIndex,ledger,startedAt){
     participants:{},ledger:ledger||{},startedAt,endsAt:COLLAB_FARM_END}
 }
 export async function tickCollabFragmentFarm(now=Date.now()){
+  if(classesOnlyRebootEnabled())return {due:false,disabled:true};
   if(now<COLLAB_FARM_START||now>COLLAB_FARM_END+120000)return {due:false}
   return tx(async c=>{
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
@@ -2267,6 +2268,7 @@ function pecadosPhaseState(index,ledger,startedAt,edition){
     ...(edition.key===PECADOS_0111_KEY?{balanceVersion:PECADOS_0111_BALANCE}:{})}
 }
 export async function tickSetePecados(now=Date.now()){
+  if(classesOnlyRebootEnabled())return {due:false,disabled:true};
   const edition=PECADOS_EDITIONS.find(e=>now>=e.start&&now<=e.end+120000)
   if(!edition)return {due:false}
   return tx(async c=>{
