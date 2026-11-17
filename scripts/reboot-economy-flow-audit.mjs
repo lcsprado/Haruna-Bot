@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Alpha C2 — auditoria de orçamentos de prêmio feita só com arquivos Git.
-// Sem conexão, JID, DATABASE_URL, saldos ou histórico de transações.
+// Sem conexão, identidade de jogadores, saldos ou histórico de transações.
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
