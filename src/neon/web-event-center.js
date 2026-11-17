@@ -89,8 +89,8 @@ export function buildSevenSinsSchedule(now=Date.now(),{reboot=classesOnlyRebootE
   }))
 }
 
-export async function getWebEventCenter(db,jid,now=Date.now()){
-  const event={sevenSins:buildSevenSinsSchedule(now),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
+export async function getWebEventCenter(db,jid,now=Date.now(),{reboot=classesOnlyRebootEnabled()}={}){
+  const event={sevenSins:buildSevenSinsSchedule(now,{reboot}),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
     id:SATURDAY_WEB_EVENT.id,name:SATURDAY_WEB_EVENT.name,
     startsAt:SATURDAY_WEB_EVENT.startsAt,endsAt:SATURDAY_WEB_EVENT.endsAt,
     phase:eventPhase(SATURDAY_WEB_EVENT,now),
@@ -99,7 +99,7 @@ export async function getWebEventCenter(db,jid,now=Date.now()){
   },generatedAt:now,readOnly:true}
   // Uma consulta indexada somente se alguma edição já iniciou. Nunca carrega
   // ledger, jogadores ou inventários; os agendamentos aparecem mesmo sem login no Boss.
-  if(!classesOnlyRebootEnabled()&&now>=PECADOS_EDITIONS[0].start&&now<PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end){
+  if(!reboot&&now>=PECADOS_EDITIONS[0].start&&now<PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end){
     try{
       const {rows}=await db.query(
         "SELECT state->>'scheduleKey' AS edition_key,state->>'name' AS boss_name,state->>'active' AS active,state->>'phaseIndex' AS phase_index,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'outcome' AS outcome FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
