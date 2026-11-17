@@ -3,6 +3,7 @@
 // As classes de decisão indicam o tratamento FUTURO — não realizam qualquer ação.
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {resolve} from 'node:path';
 import {auditRebootSources} from './reboot-audit.mjs';
 
 export const REBOOT_CLASS_IDS=Object.freeze(['paladin','necromancer','samurai','berserker']);
@@ -70,7 +71,7 @@ export function classifyRebootTables(names){
     blocked:groups.unclassified_blocker.length>0||groups.manual_review.length>0};
 }
 
-// Lê apenas o catálogo atual. Não importa o bot nem abre DATABASE_URL.
+// Lê apenas o catálogo atual. Não importa o bot nem abre conexões.
 export function readSelectableClassIds(source){
   const match=String(source||'').match(/export const SELECTABLE_PLAYER_CLASS_IDS\s*=\s*Object\.freeze\(\[([^\]]+)\]\)/);
   if(!match)throw new Error('Catálogo de classes selecionáveis não encontrado.');
@@ -82,7 +83,7 @@ export function verifyFourClasses(source){
     valid:actual.length===4&&REBOOT_CLASS_IDS.every((id,i)=>actual[i]===id)};
 }
 
-if(process.argv[1]&&fileURLToPath(import.meta.url)===new URL('file://'+process.argv[1]).pathname){
+if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
   const tables=auditRebootSources().tablesFound;
   const status=classifyRebootTables(tables);
   const catalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8');
