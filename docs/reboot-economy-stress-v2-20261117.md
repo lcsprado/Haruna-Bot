@@ -12,7 +12,7 @@ O script calcula, sem bancos, tokens, rede, saldos, JIDs ou ações em produçã
 3. **Raid 70 como sensibilidade econômica de vitória hipotética:** simula 1 a 5 membros, exigência mínima de 3 e nível 90, sem RaidLote. Chaves são cobradas de cada membro; contabiliza a fórmula real do jogo sem consumíveis, drops ou derrotas. Não demonstra que esses jogadores conseguem matar o chefe.
 
 ## Diferença entre configuração e pagamento da Raid 70
-O campo `cashPool:200000` não funciona como teto coletivo na fórmula de vitória. Cada jogador recebe devolução econômica de 108% da chave mais bônus proporcional ao `cashPool`. Em grupos equilibrados de três, a fórmula de vitória paga R$242.400 ao conjunto, consumindo R$180.000 em chaves; sobra R$62.400 antes de poções/derrotas. Quatro membros: R$315.200 distribuídos, custo R$240.000, margem R$75.200. Cinco: R$388.000, chaves R$300.000, margem R$88.000. Esses valores são condicionais a vitória e não são limite do servidor. A proposta de economia deve tratar o pagamento agregado separadamente do retorno das chaves, sem punir automaticamente equipes maiores.
+O campo `cashPool:200000` não funciona como teto coletivo na fórmula de vitória. Cada jogador recebe devolução econômica de 108% da chave mais bônus proporcional ao `cashPool`. Em grupos equilibrados de três, a fórmula de vitória paga R$242.397 ao conjunto, consumindo R$180.000 em chaves; sobra R$62.397 antes de poções/derrotas. Quatro membros: R$315.200 distribuídos, custo R$240.000, margem R$75.200. Cinco: R$388.000, chaves R$300.000, margem R$88.000. Esses valores são condicionais a vitória e não são limite do servidor. A proposta de economia deve tratar o pagamento agregado separadamente do retorno das chaves, sem punir automaticamente equipes maiores.
 
 ## Como interpretar o resultado
 - O orçamento **Boss semanal R$240 mil** é rateado entre membros qualificados, não replicado quatro vezes.
@@ -26,3 +26,5 @@ O campo `cashPool:200000` não funciona como teto coletivo na fórmula de vitór
 Se a remuneração de eventos dominar o ciclo dos quatro jogadores, ou se o prêmio de Raid for tratado como cap sem ser, a economia V2 não está equilibrada apesar de testes verdes. A próxima etapa deve propor e validar um teto coletivo de emissão, com regra de divisão explícita e tratamento de chaves para grupos maiores, sem alterar regras V1 e sem implantar V2.
 
 A revisão C4d é análise offline e **não modifica** economia, preços, progressão, status do banco, infra ou cron.
+
+O JavaScript calcula o bônus de contribuição em ponto flutuante antes do `Math.floor`. Com três integrantes, isso arredonda o bônus a R$15.999 por pessoa (em vez de R$16.000), gerando R$242.397. A auditoria reproduz exatamente o código antigo; padronizar cálculo monetário em inteiros é uma futura melhoria, não um ajuste furtivo nesta fase.
