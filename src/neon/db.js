@@ -1400,6 +1400,7 @@ it.name
 return rows
 }
 export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1) {
+assertRebootItemAllowed(offerItemId)
 quantity=Number(quantity)
 if(fromJid===toJid) throw new Error('Você não pode trocar item consigo mesmo.')
 if(!Number.isInteger(quantity)||quantity<1||quantity>9999) throw new Error('Quantidade inválida para troca.')
@@ -1450,6 +1451,7 @@ LIMIT 1
 return rows[0]||null
 }
 export async function acceptItemTradeOffer(jid,offerId,requestItemId) {
+assertRebootItemAllowed(requestItemId)
 offerId=Number(offerId)
 if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
 if(!requestItemId) throw new Error('Escolha qual item você quer oferecer na troca.')
@@ -1458,6 +1460,7 @@ const now=Math.floor(Date.now()/1000)
 const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
 const t=r.rows[0]
 if(!t) throw new Error('Troca não encontrada.')
+assertRebootItemAllowed(t.offer_item_id)
 if(t.to_jid!==jid) throw new Error('Essa proposta de troca não é para você.')
 if(t.status!=='pending') throw new Error('Essa proposta não está mais pendente.')
 if(Number(t.expires_at)<=now){
@@ -1687,6 +1690,7 @@ for(const row of binds){
 }
 }
 export async function sellItem(jid, itemId, qty=1) {
+assertRebootItemAllowed(itemId)
 qty=Number(qty)
 if(!Number.isInteger(qty) || qty<1 || qty>9999) throw new Error('Quantidade inválida.')
 await ensureUser(jid)
@@ -1785,6 +1789,7 @@ qty:Number(s?.qty||0)
 if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
 throw new Error('Quantidade inválida na venda em lote.')
 }
+for(const row of normalized)assertRebootItemAllowed(row.itemId)
 await ensureUser(jid)
 return transaction(async client=>{
 const statsR=await client.query(
@@ -6613,6 +6618,7 @@ return rows.length
 })
 }
 export async function createMarketListing(jid,itemId,qty,price){
+assertRebootItemAllowed(itemId)
 qty=Number(qty); price=Number(price)
 if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
 await expireMarketListings()
@@ -6650,7 +6656,7 @@ GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$2)::bigint AS remaining_sec
 FROM market_listings m JOIN items i ON i.id=m.item_id LEFT JOIN users u ON u.jid=m.seller_jid
 WHERE m.status='active' AND COALESCE(m.expires_at,m.created_at+3600)>$2
 ORDER BY m.created_at DESC LIMIT $1`,[Math.min(30,Math.max(1,Number(limit)||15)),now])
-return rows
+return rows.filter(row=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(row.item_id))
 }
 export async function listMyMarketListings(jid,limit=30){
 await expireMarketListings()
@@ -6664,7 +6670,7 @@ AND m.status='active'
 AND COALESCE(m.expires_at,m.created_at+3600)>$3
 ORDER BY m.created_at DESC
 LIMIT $2`,[jid,Math.min(50,Math.max(1,Number(limit)||30)),now])
-return rows
+return rows.filter(row=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(row.item_id))
 }
 export async function buyMarketListing(buyerJid,id){
 await ensureUser(buyerJid)
@@ -6672,6 +6678,7 @@ await expireMarketListings()
 return transaction(async client=>{
 const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
 const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
+assertRebootItemAllowed(x.item_id)
 if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
 throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
 if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
