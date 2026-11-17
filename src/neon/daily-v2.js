@@ -209,7 +209,9 @@ async function claimDailyInTx(c,jid,day){
 function nextMark(streak){
  const day=((Math.max(1,streak)-1)%30)+1
  const next=[3,7,14,21,30].find(n=>n>day)||30
- const label={3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'}[next]
+ const label=(rebootEconomyEnabled()
+   ?{3:'R$ 5.000',7:'R$ 10.000 + Caixa Rara',14:'R$ 15.000 + Caixa Rara',21:'R$ 20.000 + Caixa Épica',30:'R$ 30.000 + Caixa Épica'}
+   :{3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'})[next]
  return {day:next,days:Math.max(0,next-day),label}
 }
 
