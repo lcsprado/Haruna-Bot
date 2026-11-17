@@ -58,7 +58,7 @@ export function candidateRaidConfig(base,{enabled=rebootEconomyEnabled()}={}){
 export function candidateShopCatalogItem(row,{enabled=rebootEconomyEnabled()}={}){
  if(!Array.isArray(row))throw new TypeError('Item de catálogo inválido');
  if(!enabled)return row;
- const match=String(row[0]||'').match(/^chave_raid_(\\d+)$/);
+ const match=String(row[0]||'').match(/^chave_raid_(\d+)$/);
  const price=match?V2_RAID_LEVELS[Number(match[1])]?.keyPrice:undefined;
  return price===undefined?row:[...row.slice(0,4),price,...row.slice(5)];
 }
