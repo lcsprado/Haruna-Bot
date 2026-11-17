@@ -31,7 +31,7 @@ Exemplo isolado com bruto de R$ 1.000 na V1 (sem tips): na V2 Uber paga R$ 550 b
 ## O que falta antes de aprovar
 - Simular 7/30/60/120 dias com até 5 carros e 3 funcionários, incluindo manutenção, gastos de compra e upgrades, mesmo quando offline.
 - Validar acessibilidade de comprar o primeiro veículo a partir do zero e rentabilidade real dos modelos caros.
-- Conferir UI e mensagens `!uber`, `!ifood`, `!centraluber`, `!centralifood` para mostrar `operating`, quantidade de veículos efetivamente remunerados e eventMultiplier=1 na V2.
+- Mensagens `!uber`, `!ifood`, `!all` e coleta CLT já exibem o custo operacional quando aplicável; falta verificar visualmente em WhatsApp/Web isolados que os detalhes são compreensíveis e não há dupla cobrança.
 - Recalcular carreira, trabalho, salários, leilões, banco/empréstimos e impostos fora de transporte; evitar emissão descontrolada por trabalho automático.
 - Nenhuma alteração no banco de produção; realizar testes em clone independente somente após autorização específica e confirmação de espaço no Aiven.
 

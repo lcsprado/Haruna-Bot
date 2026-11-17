@@ -45,3 +45,12 @@ test('caminhos da V2 evitam bônus de eventos, rastreiam custos e preservam a V1
   assert.match(src,/const CLT_IFOOD_SHIFT_SECONDS=8\*3600/);
   assert.match(src,/const CLT_UBER_SHIFT_SECONDS=8\*60\*60/);
 });
+
+
+test('Mensagens do WhatsApp informam operação V2 sem alterar os avisos V1',()=>{
+  const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  assert.equal((src.match(/Operação\/desgaste:/g)||[]).length,2);
+  assert.match(src,/operatingTotal\+=Number\(r\.operating\|\|0\)/);
+  assert.match(src,/\?\`TAXADE das atividades\`|TAXADE das atividades/);
+  assert.match(src,/Custo operacional:/);
+});

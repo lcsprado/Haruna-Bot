@@ -11953,7 +11953,7 @@ ${status}
 )
 } else if(['all','tudo'].includes(cmd)){
 const results=[]
-let grossTotal=0,taxTotal=0,netTotal=0
+let grossTotal=0,taxTotal=0,operatingTotal=0,netTotal=0
 const add=async(label,icon,fn)=>{
 try{
 const r=await fn()
@@ -11961,8 +11961,8 @@ if(!r?.ok){
 results.push(`${icon} *${label}:* ⏳ cooldown — ${duration(r?.remaining||0)}`)
 return
 }
-grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); netTotal+=Number(r.amount??r.total??0)
-results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?` 🔥 *×${eventMultLabel(r.eventMultiplier)} (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}`)
+grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); operatingTotal+=Number(r.operating||0); netTotal+=Number(r.amount??r.total??0)
+results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)}${Number(r.operating||0)>0?` • operação: -R$ ${fmt(r.operating)}`:''} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?` 🔥 *×${eventMultLabel(r.eventMultiplier)} (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}`)
 await creditDailyActivity(sender,'work',1,null,reply)
 if(isGroup) await progressGroupMission(chat,sender,'work')
 }catch(err){
@@ -11976,8 +11976,8 @@ await reply(
 `⚡ *ALL — ATIVIDADES EM LOTE*
 ${results.join('\n')}
 💵 Bruto executado: *R$ ${fmt(grossTotal)}*
-🧾 TAXADE te pegou 3×: *-R$ ${fmt(taxTotal)}*
-💰 Líquido recebido: *R$ ${fmt(netTotal)}*
+🧾 ${rebootEconomyEnabled()?'TAXADE das atividades':'TAXADE te pegou 3×'}: *-R$ ${fmt(taxTotal)}*
+${operatingTotal>0?`🔧 Custo operacional: *-R$ ${fmt(operatingTotal)}*\n`:''}💰 Líquido recebido: *R$ ${fmt(netTotal)}*
 🏪 *!coletar* não faz parte do !all.`
 )
 } else if(['trabalhar','work','trampo'].includes(cmd)){
@@ -12123,7 +12123,7 @@ let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
 r.details.forEach(x=>{
 text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
 })
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${Number(r.operating||0)>0?`\n🔧 *Operação/desgaste:* -R$ ${fmt(r.operating)}`:''}\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
 await reply(text)
 }
 } else if(['cltifood'].includes(cmd)){
@@ -12248,7 +12248,7 @@ let text='💰 *CENTRAL UBER — COLETA CONCLUÍDA!*\n\n'
 for(const d of (r.details||[])){
 text+=`${d.slot}. *${d.driver?.name||'Motorista'}* — ${d.car?.name||'carro'}\n   💵 Disponível desde a última coleta: *R$ ${fmt(d.amount)}*\n`
 }
-text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
+text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE${rebootEconomyEnabled()?' e custo operacional':''}.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
 await reply(text)
 }
 } else if(['uber'].includes(cmd)){
@@ -12263,7 +12263,7 @@ let text='🚗 *UBER — FROTA NA RUA*\n\n'
 r.details.forEach(x=>{
 text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
 })
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${Number(r.operating||0)>0?`\n🔧 *Operação/desgaste:* -R$ ${fmt(r.operating)}`:''}\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
 await reply(text)
 }
 } else if(['depositar','deposit','dep'].includes(cmd)){
