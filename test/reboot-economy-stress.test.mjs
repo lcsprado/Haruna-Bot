@@ -74,7 +74,8 @@ test('Raid 70: um ou dois jogadores nunca começam; cashPool é coeficiente, nã
   assert.deepEqual(cases.map(x=>x.canStart),[false,false,true,true,true]);
   assert.equal(cases[2].minLevel,90);
   assert.equal(cases[2].raidLoteAllowed,false);
-  assert.equal(cases[2].cashAwarded,242400);
+  assert.equal(cases[2].cashAwarded,242397);
+  assert.equal(cases[2].netBeforeConsumables,62397);
   assert.equal(cases[2].keysConsumed,180000);
   assert.equal(cases[3].cashAwarded,315200);
   assert.equal(cases[3].keysConsumed,240000);
