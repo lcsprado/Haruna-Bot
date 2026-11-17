@@ -1502,7 +1502,7 @@ function renderCharacter(){
   const selected=selectedCharacter();
   const activeHero=activePlayableHero();
   const heroVisual=activeHero?{id:activeHero.id,name:activeHero.name,isHero:true}:null;
-  const heroBanner=activeHero?'<section class="card collab-current-hero"><div class="collab-current-art">'+characterVisual(heroVisual,'collab-current-portrait')+'</div><div class="collab-current-content"><span class="tag good">⚔️ HERÓI ATIVO</span><h3>'+esc(activeHero.name)+'</h3><p>🌟 Nível '+num(activeHero.petLevel||1)+'/100 • Maestria '+num(activeHero.masteryStage||1)+'/5</p><p>Classe '+esc(selected.name)+' preservada enquanto o herói combate.</p><button class="btn" data-character-select="__class__">↩ Voltar à classe</button></div></section>':'';
+  const heroBanner=activeHero?'<section class="card collab-current-hero"><div class="collab-current-art">'+characterVisual(heroVisual,'collab-current-portrait')+'</div><div class="collab-current-content"><span class="tag good">⚔️ HERÓI ATIVO</span><h3>'+esc(activeHero.name)+'</h3><p>🧬 Elemento: '+esc((activeHero.element?.emoji||'')+' '+(activeHero.element?.name||'Neutro'))+'</p><p>🌟 Nível '+num(activeHero.petLevel||1)+'/100 • Maestria '+num(activeHero.masteryStage||1)+'/5</p><p>Classe '+esc(selected.name)+' preservada enquanto o herói combate.</p><button class="btn" data-character-select="__class__">↩ Voltar à classe</button></div></section>':'';
   const cp=profile();
   const applied=Boolean(cp.class_applied);
   const currentRule=classRule(selected.id);
@@ -1553,13 +1553,14 @@ function renderPlayableHeroes(){
     return '<div class="card character-card collab-hero-card '+(h.active?'selected':'')+(!h.owned?' collab-locked':'')+'">'+
       '<div class="character-art collab-hero-card-art">'+(character?characterVisual(character,'character-official-art'):'')+'</div>'+
       '<div class="tag-row"><span class="tag">'+(h.owned?'Lv.'+num(h.petLevel||1)+'/100':'Bloqueado')+'</span>'+(h.active?'<span class="tag good">⚔️ ATIVO</span>':'')+'</div>'+
-      '<h3>🌈 '+esc(h.name)+'</h3>'+
+      '<h3>🌈 '+esc(h.name)+'</h3>'+ 
+      '<p>🧬 Elemento: '+esc((h.element?.emoji||'')+' '+(h.element?.name||'Neutro'))+'</p>'+
       '<p>'+(h.owned?'✅ Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
       '<button class="btn '+(h.active?'good':'primary')+'" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
       '</div>';
   }).join('');
   return '<section class="card"><h3>⚔️ Heróis jogáveis — 7 Pecados</h3>'+
-    '<p>Seu herói ativo combate no lugar da classe. A classe e os Despertares ficam preservados. Retratos: arte oficial da série.</p>'+
+    '<p>Seu herói ativo define automaticamente o elemento. Ao trocar de Pecado, o elemento muda; níveis, maestrias, classe e Despertares permanecem preservados. Bônus elementais ainda em homologação.</p>'+
     '<div class="character-grid">'+items+'</div>'+
     '<div class="hero-actions"><button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>↩ Voltar à minha classe</button></div>'+
     '</section>';
