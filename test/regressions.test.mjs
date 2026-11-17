@@ -93,7 +93,7 @@ test('rendas de trabalho, frotas e negócios descontam imposto de 10%',async()=>
   const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
   const progression=await readFile(new URL('../src/neon/progression.js',import.meta.url),'utf8')
   const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
-  assert.match(dbSource,/const taxRate=Math\.min\(100,10\*Math\.max\(1,Number\(taxMultiplier\)\|\|1\)\)/)
+  assert.match(dbSource,/const taxRate=classesOnlyRebootEnabled\(\)\?10:Math\.min\(100,10\*Math\.max\(1,Number\(taxMultiplier\)\|\|1\)\)/)
   assert.match(dbSource,/const tax=Math\.floor\(gross\*\(taxRate\/100\)\)/)
   assert.match(dbSource,/income_tax[\s\S]{0,180}TAXADE te pegou \$\{taxRate\}% \| trabalho/)
   assert.equal((progression.match(/v2TravelSettlement\(gross,\{legacyTaxMultiplier:taxMultiplier\}\)/g)||[]).length,2)
