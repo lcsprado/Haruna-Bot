@@ -46,16 +46,24 @@ export function pocoBetaEditTarget(session,chat,floor,now=Date.now()){
  return {key:u.key,at:u.at}
 }
 
+// Somente os seis Guardiões exigem decisões; os quatro andares anteriores
+// são travessia automática. Texto faz parte do mesmo balão, sem mensagem extra.
+export function pocoBetaTraversalLabel(floor){
+ const f=Number(floor)
+ if(![5,10,15,20,25,30].includes(f))return ''
+ return '↪ travessia automática '+(f-4)+'–'+(f-1)
+}
+
 export function pocoBetaCompactPrompt({state,name,recap='',defeated=0,drop=''}={}){
  if(state?.status!=='active'||!state?.boss)return '🏁 Combate encerrado.'
  const b=state.boss
  const skill=pocoBossSkill(b.floor,b.turn)
- const head='🏰 *POÇO* • '+shortName(name)+' • G'+b.floor+'/30'
+ const head='🏰 *POÇO* • '+shortName(name)+' • G'+b.floor+'/30 • '+pocoBetaTraversalLabel(b.floor)
  const summary='❤️'+fmt(state.hp)+'/'+fmt(state.stats.maxHp)+
    ' 🧪'+state.potions+' ✨'+state.skillCharges+' • 👹'+fmt(b.hp)+'/'+fmt(b.maxHp)
  const notice=(defeated?'✅ G'+defeated+' vencido • ':'')+(recap?recap+' • ':'')+(drop?'🎲'+drop+' • ':'')
  return head+'\n'+summary+'\n'+notice+'⚠️ *'+skill.name+'*'+
-   '\n1⚔️ Atacar  2🛡️ Defender  3🧪 Curar  4✨ Técnica  • 120s'
+   '\n1⚔️ Atacar  2🛡️ Defender  3🧪 Curar  4✨ Técnica  • 1 ação/rodada • 120s'
 }
 
 export function pocoBetaCompactEnd({name,report,recap='',defeated=0,drop=''}={}){
