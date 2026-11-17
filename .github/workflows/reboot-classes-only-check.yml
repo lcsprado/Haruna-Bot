@@ -18,6 +18,8 @@ on:
       - 'src/neon/web-api.js'
       - 'src/neon/relics.js'
       - 'src/neon/auction-bonus-20261101.js'
+      - 'src/neon/npc-shops.js'
+      - 'src/neon/auction-20261115-rewards.js'
       - 'test/reboot-audit.test.mjs'
       - 'test/reboot-economy-baseline.test.mjs'
       - 'test/reboot-reset-manifest.test.mjs'
@@ -55,6 +57,8 @@ jobs:
           node --check src/neon/web-api.js
           node --check src/neon/relics.js
           node --check src/neon/auction-bonus-20261101.js
+          node --check src/neon/npc-shops.js
+          node --check src/neon/auction-20261115-rewards.js
       - name: Testes dedicados, sem dependencias ou credenciais
         run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs
       - name: Regressões do jogo anterior (sem DB)
