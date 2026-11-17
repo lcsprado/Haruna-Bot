@@ -21,6 +21,23 @@ export function raidEnabledInReboot(raid,{enabled=classesOnlyRebootEnabled()}={}
 export function filterRebootRaidCatalog(raids,{enabled=classesOnlyRebootEnabled()}={}){
   return (Array.isArray(raids)?raids:[]).filter(r=>raidEnabledInReboot(r,{enabled}));
 }
+// O catálogo inicial da V2 não pode semear itens exclusivos dos 7 Pecados.
+// Lista por identificador e não por nome para preservar itens originais com
+// palavras parecidas (e.g. armadura do eclipse, raids 60/65/70).
+const LEGACY_COLLAB_IDS=new Set([
+  'chave_raid_75','insignia_sete_pecados','titulo_conquistador_pecados'
+]);
+export function isRebootCollabItemId(itemId){
+  const id=String(itemId||'').trim().toLowerCase();
+  return LEGACY_COLLAB_IDS.has(id)||id.startsWith('pecados_')||
+    id.startsWith('pecado_')||id.startsWith('essencia_pecado_')||
+    id.startsWith('fragmento_ascensao_pecados_');
+}
+export function filterRebootStarterItems(items,{enabled=classesOnlyRebootEnabled()}={}){
+  const rows=Array.isArray(items)?items:[];
+  return enabled?rows.filter(row=>!isRebootCollabItemId(row?.[0])):rows;
+}
+
 export function assertRebootHeroSelection(heroId,{enabled=classesOnlyRebootEnabled()}={}){
   if(enabled&&heroId!=null&&String(heroId).trim()!==''&&String(heroId).trim()!=='class'){
     throw new Error(REBOOT_HERO_MESSAGE);
