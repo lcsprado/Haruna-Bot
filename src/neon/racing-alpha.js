@@ -60,7 +60,7 @@ export function raceGarageText(s){
     '⚡ Vel '+st.speed+' • 🚀 Arr '+st.accel+' • 🛞 Ader '+st.grip+' • 🛑 Fre '+st.brake,
     '🎨 Pintura '+color.emoji+' '+color.name,
     '🛠️ Preparação '+n+'/42 • ❤️ Condição '+car.condition+'/100',
-    car.pending_part?'🔧 '+racingPart(car.pending_part).name+' Lv.'+car.pending_level+' • ⏳ '+Math.max(0,Math.ceil((car.pending_until-nowSeconds())/60))+'min • ✅ Pode correr com as peças atuais':'🔧 Oficina livre','')
+    car.pending_part?'🔧 '+racingPart(car.pending_part).name+' Lv.'+car.pending_level+' • ⏳ '+Math.max(0,Math.ceil((car.pending_until-nowSeconds())/60))+'min • 🔒 Indisponível para corridas':'🔧 Oficina livre','')
  }
  arr.push('🎨 *!corescarro* • *!pintarcarro ID azul*', '🔧 *!oficina* • 🏁 *!corrida* • 🧰 *!repararcarro*','Carros desta garagem não são usados no Uber.')
  return arr.join('\n')
@@ -78,19 +78,21 @@ export function raceColorsText(){
 export function raceWorkshopText(s){
  const car=activeCar(s)
  if(!car)return '🔧 Equipe um carro com *!equiparcorrida ID*.'
+ const pending=s.cars.find(x=>x.pending_part)
  const arr=['🔧 *OFICINA — '+modelName(car)+'*','❤️ '+car.condition+'/100 • Preparação '+racingTuning(car.upgrades)+'/42']
+ if(pending&&pending.id!==car.id)arr.push('⏳ '+modelName(pending)+' (ID '+pending.id+') em instalação: '+Math.max(0,Math.ceil((pending.pending_until-nowSeconds())/60))+'min. Seu carro equipado está livre para corrida.')
  if(car.pending_part)arr.push('⏳ Instalando '+racingPart(car.pending_part).name+' Nv.'+car.pending_level+' • '+Math.max(0,Math.ceil((car.pending_until-nowSeconds())/60))+'min')
  for(const part of RACING_PARTS){
   const lv=Number(car.upgrades?.[part.id]||0),next=RACING_UPGRADES[lv]
   arr.push(part.name+' • *'+lv+'/7*'+(next?' → '+raceMoney(next.price)+' • '+(next.seconds<3600?next.seconds/60+'min':next.seconds/3600+'h'):' • MÁXIMO'))
  }
- return arr.join('\n')+'\n\n🏁 A instalação não bloqueia corridas; só as melhorias concluídas contam no desempenho.'+'\n⏳ Uma instalação por vez para toda a garagem.'+
+ return arr.join('\n')+'\n\n🏁 Carro em instalação não corre. Equipe outro carro pronto com *!equiparcorrida ID*.'+'\n⏳ Uma instalação por vez para toda a garagem.'+
  '\n💰 Custo de preparação completa de um carro: '+raceMoney(RACING_TOTAL_UPGRADE_COST+150000)+
  '\n⚙️ *!melhorarcarro motor* (cambio, pneus, suspensao, freios, turbo).'
 }
 export function checkRace(car,profile){
  if(!car)throw Error('Equipe seu carro: !equiparcorrida ID.')
- // Melhorias pendentes não impedem correr: a potência usa apenas upgrades concluídos.
+ if(car.pending_part)throw Error('Carro na oficina. Aguarde a melhoria ou equipe outro carro pronto: !equiparcorrida ID.')
  if(Number(car.condition)<RACING_MIN_CONDITION)throw Error('Carro desgastado (<35%). Use !repararcarro.')
  const remain=Number(profile.last_race_at||0)+RACING_COOLDOWN_SECONDS-nowSeconds()
  if(remain>0)throw Error('Próxima corrida em '+Math.ceil(remain/60)+'min.')
@@ -135,7 +137,7 @@ export async function raceEquip(jid,carId){
  return tx(jid,async c=>{
   const s=await state(c,jid),car=s.cars.find(x=>String(x.id)===String(carId)||x.model_id===String(carId))
   if(!car)throw Error('Carro não está na sua garagem.')
-  // Permitir equipar também o carro que está em preparação.
+  if(car.pending_part)throw Error('Este carro está em melhoria. Equipe outro que esteja pronto.')
   await c.query('UPDATE racing_cars_alpha SET equipped=FALSE WHERE jid=$1 AND equipped=TRUE',[jid])
   await c.query('UPDATE racing_cars_alpha SET equipped=TRUE WHERE id=$1',[car.id])
   return modelName(car)
