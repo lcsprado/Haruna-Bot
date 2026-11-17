@@ -5,6 +5,7 @@ import {randomInt} from 'node:crypto'
 import {db,getCombatProfile,getPetTeam} from './db.js'
 import {getActivePlayableHero} from './playable-heroes.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
+import {pocoBetaCompactPrompt,pocoBetaCompactEnd,pocoBetaEditTarget,pocoBetaDispatchPrompt} from './poco-abismo-beta-ui.js'
 import {
  POCO_SEASON,pocoStart,pocoDecision,pocoEnd,pocoScore,pocoBetter,
  pocoRankingCompare,pocoBetaRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
@@ -19,16 +20,27 @@ const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
 const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender'+(BETA_ONLY?' (reduz dano e contra-ataca)':'')+'\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
 async function sendActionPrompt(jid,name,reply,result){
- // Falha no transporte preserva o prompt pendente; confirmar apenas
- // depois de envio aceito e transação de ACK concluída.
+ // Com beta, edita o balão do mesmo Guardião. Em falha de edição,
+ // manda novo balão; 120s só começam após ACK do envio ou edição.
+ if(BETA_ONLY){
+   return pocoBetaDispatchPrompt({
+     reply,message:result.message,token:result.promptToken,uiEdit:result.uiEdit,
+     confirm:(token,sentAt,ui)=>{
+       return mutate(jid,name,s=>{
+         if(!s.active)return false
+         const ok=pocoConfirmPrompt(s.active,token,sentAt)
+         if(ok&&ui?.key?.id&&ui.key.fromMe===true&&
+           ui.key.remoteJid===s.chat){
+           s.uiPrompt={key:ui.key,at:ui.at,floor:s.active.boss.floor}
+         }
+         return ok
+       })
+     }
+   })
+ }
  return pocoDispatchActionPrompt({
   reply,message:result.message,token:result.promptToken,
-  confirm:(token,sentAt)=>{
-   return mutate(jid,name,s=>{
-   if(!s.active)return false
-   return pocoConfirmPrompt(s.active,token,sentAt)
-  })
-  }
+  confirm:(token,sentAt)=>mutate(jid,name,s=>s.active?pocoConfirmPrompt(s.active,token,sentAt):false)
  })
 }
 
@@ -154,13 +166,14 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
    if(pocoMessageSeen(s,messageId))return {message:'↩️ Este comando de início já foi processado. Consulte !poco.'}
    expire(s,sender,now)
    if(s.active)return {message:'⚠️ Já existe uma tentativa. Use !poco para continuar ou !poco sair.'}
-   const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now,balanceVersion:BETA_ONLY?'beta-v2':'legacy'})
-   s.attempts++;s.active=start.state;s.chat=chat
+   const start=pocoStart({profile:prepared,attempt:s.attempts+1,seed:randomInt(0,0x100000000),now,balanceVersion:BETA_ONLY?'beta-v3':'legacy'})
+   s.attempts++;s.active=start.state;s.chat=chat;
+   if(BETA_ONLY)s.uiPrompt=null
    updateBest(s,sender)
    recordRewards(s,start,now)
    const promptToken=pocoStagePrompt(s.active)
    pocoRememberMessage(s,messageId)
-   return {message:'⚔️ Tentativa '+s.attempts+' iniciada!\n'+prompt(s.active),promptToken}
+   return {message:BETA_ONLY?('⚔️ Tentativa '+s.attempts+'\n'+pocoBetaCompactPrompt({state:s.active,name:s.name})):('⚔️ Tentativa '+s.attempts+' iniciada!\n'+prompt(s.active)),promptToken}
   })
   await sendActionPrompt(sender,name,reply,result);return true
  }
@@ -201,9 +214,24 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
      (progress.message.heal?'\n💚 Curou '+label(progress.message.heal)+' HP.':''):''
    const passed=progress.bossDefeated?'\n✅ Guardião '+progress.bossDefeated+' derrotado.':''
    const loot=drop?'\n🎲 Saque SIMULADO: '+(drop.itemId||drop.kind)+'.':''
-   if(s.active.status!=='active'){finish(s,sender);return {message:recap+passed+loot+'\n'+report(s)}}
+   const shortRecap=progress.message
+     ?('⚔️+'+label(progress.message.damage)+'/-'+label(progress.message.enemyDamage)+
+       (progress.message.heal?' 💚+'+label(progress.message.heal):'')):''
+   const dropText=drop&&drop.kind!=='none'?(drop.itemId||drop.kind):''
+   if(s.active.status!=='active'){
+     finish(s,sender)
+     return {message:BETA_ONLY?pocoBetaCompactEnd({
+       name:s.name,report:s.last,recap:shortRecap,defeated:progress.bossDefeated,drop:dropText
+     }):recap+passed+loot+'\n'+report(s)}
+   }
+   // O Guardião terminou? Novo balão. Mesma luta? Atualizar o anterior.
+   const uiEdit=BETA_ONLY?pocoBetaEditTarget(s,chat,s.active.boss.floor,now):null
    const promptToken=pocoStagePrompt(s.active)
-   return {message:recap+passed+loot+'\n'+prompt(s.active),promptToken}
+   return {message:BETA_ONLY?pocoBetaCompactPrompt({
+      state:s.active,name:s.name,recap:shortRecap,
+      defeated:progress.bossDefeated,drop:dropText
+    }):recap+passed+loot+'\n'+prompt(s.active),promptToken,
+    ...(uiEdit?{uiEdit}:{})}
   })
   await sendActionPrompt(sender,name,reply,result);return true
  }
