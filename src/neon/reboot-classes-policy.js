@@ -63,6 +63,14 @@ export function filterRebootStarterItems(items,{enabled=classesOnlyRebootEnabled
   return enabled?rows.filter(row=>!isRebootCollabItemId(row?.[0])):rows;
 }
 
+// Uso obrigatório nos pontos de aquisição/uso: o seed filtrado, sozinho,
+// não impede uma operação administrativa ou rota legada de recriar itens.
+export function assertRebootItemAllowed(itemId,{enabled=classesOnlyRebootEnabled()}={}){
+  if(enabled&&isRebootCollabItemId(itemId))
+    throw new Error('Item da colaboração indisponível na temporada Alpha Bot 2.0.');
+  return true;
+}
+
 export function assertRebootHeroSelection(heroId,{enabled=classesOnlyRebootEnabled()}={}){
   if(enabled&&heroId!=null&&String(heroId).trim()!==''&&String(heroId).trim()!=='class'){
     throw new Error(REBOOT_HERO_MESSAGE);
