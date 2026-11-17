@@ -19,7 +19,7 @@ import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
-import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget} from './reboot-classes-policy.js'
+import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -1285,6 +1285,7 @@ ORDER BY category,price
 return rows.filter(isRegularShopItem)
 }
 export async function buyItem(jid, itemId, qty=1) {
+assertRebootItemAllowed(itemId)
 qty = Number(qty)
 if (!Number.isInteger(qty) || qty < 1 || qty > 99) throw new Error('Quantidade inválida.')
 return transaction(async client => {
@@ -1613,7 +1614,7 @@ ELSE 1
 END DESC,
 it.name
 `,[jid])
-return rows.map(r=>{
+return rows.filter(r=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id)).map(r=>{
 const upgradeRows=Array.isArray(r.upgraded_copies)?r.upgraded_copies:[]
 const upgradedQuantity=upgradeRows.reduce((n,c)=>n+Number(c.quantity||0),0)
 const sale=equipmentSalePolicy({quantity:r.quantity,equipped:r.equipped,boundQuantity:r.bound_quantity,upgradedQuantity,hasForge:Number(r.forged_level||0)>0,sellable:r.sellable!==false})
@@ -2379,6 +2380,7 @@ export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS
 const SHOP_FORGE5_STATS_IDS=new Set([...REGULAR_SHOP_IDS].filter(id=>['weapon','armor'].includes(EQUIPMENT[id]?.category)&&!RAID_GEAR_FORGE_ORIGINS[id]))
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
+if(classesOnlyRebootEnabled()&&isRebootCollabItemId(itemId))return null
 const eq=EQUIPMENT[itemId]
 if(!eq) return null
 level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
@@ -2417,6 +2419,7 @@ return Object.fromEntries(ids.map(id=>{const r=rows.find(x=>x.item_id===id);retu
 export async function listStarForgeEquipment(jid){
 await ensureUser(jid)
 const ids=[...Object.keys(RAID_GEAR_FORGE_ORIGINS),...ANTI_CRIT_SHIELDS.map(g=>g.id)]
+  .filter(id=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(id))
 const {rows}=await db.query(`
 SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
 (eq.weapon_id=inv.item_id OR eq.armor_id=inv.item_id OR eq.shield_id=inv.item_id) AS equipped,
@@ -2500,6 +2503,7 @@ next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
 }
 export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
+assertRebootItemAllowed(itemId)
 await ensureUser(jid)
 const shieldForge=ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)
 const origin=RAID_GEAR_FORGE_ORIGINS[itemId]||(shieldForge?{shieldForge:true,materialId:null,materialName:'',raidLevel:null}:null)
@@ -2799,7 +2803,7 @@ ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' 
 CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
 i.name
 `,[jid])
-return rows.map(r=>{
+return rows.filter(r=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id)).map(r=>{
 const level=Number(r.level||1)
 const activeStars=Number(r.forged_level||0)===level?Number(r.stars||1):1
 const current=equipmentStatsAtLevel(r.item_id,level,activeStars)
@@ -2848,6 +2852,7 @@ cost:level<10?equipmentUpgradeCost(m.rarity,level):0,targetCosts,targetStats}
 })
 }
 export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal',payment='cash'){
+assertRebootItemAllowed(itemId)
 await ensureUser(jid)
 if(!EQUIPMENT[itemId])throw new Error('Equipamento não aprimorável.')
 return transaction(async c=>{
@@ -2895,6 +2900,7 @@ return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:req
 })
 }
 export async function equipItem(jid, itemId) {
+assertRebootItemAllowed(itemId)
 const eq=EQUIPMENT[itemId]
 if(!eq) throw new Error('Esse item não pode ser equipado.')
 return transaction(async client=>{
@@ -3862,6 +3868,7 @@ RETURNING hp,max_hp
 return rows[0]
 }
 export async function ownerGrantItem(jid, itemId, qty=1) {
+assertRebootItemAllowed(itemId)
 qty=Number(qty)
 if(!Number.isInteger(qty) || qty<1 || qty>999) throw new Error('Quantidade inválida.')
 await ensureUser(jid)
