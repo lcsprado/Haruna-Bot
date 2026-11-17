@@ -19,7 +19,7 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
   await ensureUser(sender,name)
   const send=(text,opts)=>reply(text,opts)
   if(cmd==='corridas'){
-   await send("🏎️ *GARAGEM ALPHA — GUIA*\n\n1️⃣ *!corridacarros* — modelos e preços\n2️⃣ *!comprarcorrida gol* — comprar\n3️⃣ *!garagemcorrida* — status\n4️⃣ *!equiparcorrida ID* — carro ativo\n🎨 *!corescarro* — ver pinturas\n🖌️ *!pintarcarro ID azul* — personalizar (grátis)\n5️⃣ *!oficina* — peças e tempos\n6️⃣ *!melhorarcarro motor* — preparar\n7️⃣ *!repararcarro* — recuperar condição\n8️⃣ *!corrida rua cidade equilibrada* — corrida solo\n9️⃣ *!desafiocorrida @jogador reta* — PvP\n🔟 *!aceitarcorrida tecnica* — aceitar\n🏆 *!rankcorrida* • 📜 *!historicocorrida*\n\n🏁 Pistas: reta, cidade, serra\n🎯 Estratégias: equilibrada, agressiva, tecnica\n⭐ Ligas: rua, bairro, cidade, estadual, elite, lenda\n⏳ 10 min entre corridas; uma instalação por vez.\n💰 Carro competitivo exige peças caras, oficina e XP de piloto.");
+   await send("🏎️ *GARAGEM ALPHA — GUIA*\n\n1️⃣ *!corridacarros* — modelos e preços\n2️⃣ *!comprarcorrida gol* — comprar\n3️⃣ *!garagemcorrida* — status\n4️⃣ *!equiparcorrida ID* — carro ativo\n🎨 *!corescarro* — ver pinturas\n🖌️ *!pintarcarro ID azul* — personalizar (grátis)\n5️⃣ *!oficina* — peças e tempos\n6️⃣ *!melhorarcarro motor* — preparar\n7️⃣ *!repararcarro* — recuperar condição\n8️⃣ *!corrida rua cidade equilibrada* — corrida solo\n9️⃣ *!desafiocorrida @jogador reta* — PvP\n🔟 *!aceitarcorrida tecnica* — aceitar\n🏆 *!rankcorrida* • 📜 *!historicocorrida*\n\n🏁 Pistas: reta, cidade, serra\n🎯 Estratégias: equilibrada, agressiva, tecnica\n⭐ Ligas: rua, bairro, cidade, estadual, elite, lenda\n⏳ 10 min entre corridas; uma instalação por vez.\n🔒 Carro em melhoria não corre: equipe outro carro pronto.\n💰 Carro competitivo exige peças caras, oficina e XP de piloto.");
    return true
   }
   if(cmd==='corridacarros'){
@@ -59,7 +59,7 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
    const time=new Date(r.endsAt*1000).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
    await send('🔧 *INSTALAÇÃO INICIADA!*\n🚘 '+r.model+'\n'+r.part.name+' → Nv.'+r.next.level+' (*'+r.next.name+'*)'+
     '\n💸 '+raceMoney(r.cost)+(r.discount?' • 🎟️ Patrocinador: -'+raceMoney(r.discount):'')+'\n⏳ Termina às *'+time+'* (Brasília).'+
-    '\n🏁 Você pode correr normalmente durante a instalação, usando os atributos já concluídos. O tempo continua contando mesmo se o bot reiniciar.')
+    '\n🔒 Este carro não participa de corridas até concluir a instalação. Para continuar, equipe outro carro pronto: *!garagemcorrida* e *!equiparcorrida ID*.\n⏳ O tempo continua contando mesmo se o bot reiniciar.')
    return true
   }
   if(cmd==='repararcarro'){
