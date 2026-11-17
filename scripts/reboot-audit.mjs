@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 const ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const SCAN_DIRS=['src/neon','web'];
 const EXTENSIONS=new Set(['.js','.mjs','.json','.sql','.html','.css']);
-const COLLAB=/\b(?:collab(?:oration)?|pecados?|sete[\s_-]*pecados|seven[\s_-]*sins|essencia_pecado\w*|fragmento_ascensao_pecados\w*)\b|pecado_/i;
+const COLLAB=/collab|pecado|seven[\s_-]*sins|essencia_pecado|fragmento_ascensao_pecados/i;
 const ECONOMY=/\b(?:profitHour|cashPool|rewardCash|pocoCashForFloor|cashNetProfitBasisPoints|prize(?:s)?|reward(?:s)?Cash|levelReward|pay(?:out)?|credit|grantExpInTransaction|cash_bonus)\b/i;
 const SQL_TABLE=/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:"?public"?\.)?)("?\w+"?)/gi;
 
