@@ -1,6 +1,7 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled} from './reboot-economy-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -7852,7 +7853,7 @@ if(!/^([1-9])$/.test(input)){
 await reply('🏪 Escolha um negócio de *1 a 9* ou digite *0* para cancelar.')
 return true
 }
-const b=BUSINESSES[Number(input)-1]
+const b=candidateBusinessCatalog(BUSINESSES[Number(input)-1])
 if(!b){ await reply('❌ Negócio inválido.'); return true }
 const owned=await getBusinesses(sender)
 if(owned.some(x=>x.id===b.id)){
@@ -12029,11 +12030,11 @@ await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚲🏍️ ${selected.name}\n💰 Voc�
 const owned=await getBusinesses(sender)
 setQuickFlow(chat,sender,'business_buy_select',{},90000)
 let text='🏪 *NEGÓCIOS — RENDA PASSIVA*\n\n'
-BUSINESSES.forEach((b,i)=>{
+BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach((b,i)=>{
 const has=owned.some(x=>x.id===b.id)
 text+=`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
 })
-text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
+text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
 await reply(text)
 } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
 if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
@@ -12045,8 +12046,8 @@ if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Vej
 setQuickFlow(chat,sender,'business_manage_select',{ids:rows.map(b=>b.id)},90000)
 let text='🏢 *MEUS NEGÓCIOS*\n\n'
 rows.forEach((b,i)=>{
-const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*0.25
-text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+level-1}h\n`
+const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*(rebootEconomyEnabled()?.15:.25)
+text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+(rebootEconomyEnabled()?0:level-1)}h\n`
 })
 text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
 await reply(text.trim())
@@ -12088,7 +12089,7 @@ let text='💰 *LUCROS COLETADOS!*\n\n'
 const collectionTime=formatBusinessCollectionElapsed(r.collectionElapsedSeconds)
 if(collectionTime) text+=`⏱️ ${r.firstBusinessCollection?'Tempo desde a compra do primeiro negócio':'Tempo sem coletar'}: *${collectionTime}*\n\n`
 r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${r.operating?'\n🏭 Custos operacionais V2: *-R$ '+fmt(r.operating)+'*':''}\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
 await reply(text)
 } else if(['motos','motocicletas'].includes(cmd)){
 const owned=await getMotorcycleGarage(sender)
