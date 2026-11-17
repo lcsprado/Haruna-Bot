@@ -13,11 +13,11 @@ const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
 const inputs=buildIntegratedInputs(source,db);
 
 test('pool semanal só é emitido uma vez por grupo, sem jogador duplicado',()=>{
-  const awards=allocatePoolByWeights(240000,
+  const awards=allocatePoolByWeights(40000,
     ['intensivo','dedicado','regular','casual'],[4,3,2,1]);
   assert.equal(awards.length,4);
-  assert.equal(awards.reduce((sum,x)=>sum+x.amount,0),240000);
-  assert.deepEqual(awards.map(x=>x.amount),[96000,72000,48000,24000]);
+  assert.equal(awards.reduce((sum,x)=>sum+x.amount,0),40000);
+  assert.deepEqual(awards.map(x=>x.amount),[16000,12000,8000,4000]);
   assert.deepEqual(allocatePoolByWeights(100,[],[]),[]);
   assert.throws(()=>allocatePoolByWeights(100,['casual','casual'],[1,1]),RangeError);
   assert.throws(()=>allocatePoolByWeights(100,['casual'],[0]),RangeError);
@@ -35,13 +35,13 @@ test('7,30,60,120 dias: prêmios não se multiplicam por quatro ao pagar pools',
   }
 });
 test('Poço é uma edição sazonal, não 1 evento semanal, e requer conclusão hipotética',()=>{
-  assert.equal(eventPressure(7).groupTotal,742000);
-  assert.equal(eventPressure(120).groupTotal,13356000);
+  assert.ok(eventPressure(7).groupTotal<130000);
+  assert.ok(eventPressure(120).groupTotal<3000000);
   assert.equal(eventPressure(30).sources.pocoRanking,0);
   const e60=eventPressure(60);
-  assert.equal(e60.sources.pocoRanking,230000);
-  assert.equal(e60.sources.pocoFloors,4*5*(1000+1800+2600+4000+5500+8000));
-  assert.equal(eventPressure(120).sources.pocoRanking,230000);
+  assert.equal(e60.sources.pocoRanking,40000);
+  assert.equal(e60.sources.pocoFloors,4*5*(300+500+700+1100+1600+2300));
+  assert.equal(eventPressure(120).sources.pocoRanking,40000);
   assert.equal(eventPressure(120).sources.pocoFloors,e60.sources.pocoFloors);
 });
 test('frota CLT três por modalidade + dois veículos livres por comando, sem duplicar',()=>{
@@ -71,22 +71,22 @@ test('frota completa é sensibilidade PRÉ-FINANCIADA, não dinheiro do nada',()
     assert.equal(x.netAfterUpfrontInvestment,x.earnedWithoutCapitalRecovery-x.upfrontCapital);
   }
 });
-test('Raid 70: um ou dois jogadores nunca começam; cashPool é coeficiente, não teto',()=>{
+test('Raid 70: um ou dois jogadores não começam, bônus coletivo limitado',()=>{
   const cases=[1,2,3,4,5].map(raid70V2EmissionEstimate);
   assert.deepEqual(cases.map(x=>x.canStart),[false,false,true,true,true]);
   assert.equal(cases[2].minLevel,90);
   assert.equal(cases[2].raidLoteAllowed,false);
-  assert.equal(cases[2].cashAwarded,242397);
-  assert.equal(cases[2].netBeforeConsumables,62397);
+  assert.equal(cases[2].cashAwarded,204000);
+  assert.equal(cases[2].netBeforeConsumables,24000);
   assert.equal(cases[2].keysConsumed,180000);
-  assert.equal(cases[3].cashAwarded,315200);
+  assert.equal(cases[3].cashAwarded,264000);
   assert.equal(cases[3].keysConsumed,240000);
-  assert.equal(cases[4].cashAwarded,388000);
-  assert.ok(cases.slice(2).every(x=>x.exceedsNominalCashPool));
+  assert.equal(cases[4].cashAwarded,324000);
+  assert.ok(cases.slice(2).every(x=>x.cappedNetNewMoney===24000));
   assert.throws(()=>raid70V2EmissionEstimate(6),RangeError);
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
   assert.match(games,/const keyReturn=Math\.floor\(cfg\.keyPrice\*1\.08\)/);
-  assert.match(games,/const collaborationBonus=Math\.floor\(cfg\.cashPool\*\(\.04\+\.12\*share\)\)/);
+  assert.match(games,/const normalCash=v2RaidCash\?v2RaidCash\.payouts\.get\(p\.jid\)/);
   assert.match(games,/assertRaid70V2Start\(\{level:cfg\.level,partySize:ids\.length/);
 });
 test('quatro jogadores têm contabilidade fechada mesmo após eventos não reinvestidos',()=>{

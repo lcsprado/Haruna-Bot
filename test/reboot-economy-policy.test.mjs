@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
  V2_EVENT_BUDGET,V2_RAID_LEVELS,V2_BUSINESS_ECONOMY,V2_GOALS,
  budgetReport,candidateRaidConfig,candidateShopCatalogItem,candidateBusinessCatalog,businessIntervalGrossV2,raid70V2Policy,assertRaid70V2Start,
- raid70V2Contributors,rebootEconomyEnabled
+ raid70V2Contributors,raidCashSharesV2,rebootEconomyEnabled
 } from '../src/neon/reboot-economy-policy.js';
 import {gtRaceReward,gtEffectiveWeeklyPrizes} from '../src/neon/gt-alpha-rules.js';
 import {weeklyBossCashPoolShares} from '../src/neon/weekly-boss-prize-pool.js';
@@ -35,22 +35,22 @@ test('V1 mantém todos os valores originais, inclusive premiações antigas',()=
 test('V2 limita Boss semanal, ranking e etapas do GT, sem reduzir piloto',()=>{
  withMode('classes_only',()=>{
   assert.equal(rebootEconomyEnabled(),true);
-  assert.equal(budgetReport().weeklyBoss,240_000);
-  assert.equal(budgetReport().weeklyGt,145_000);
-  assert.equal(budgetReport().gtThreeHeatsFourPlayers,54_000);
+  assert.equal(budgetReport().weeklyBoss,40_000);
+  assert.equal(budgetReport().weeklyGt,20_000);
+  assert.equal(budgetReport().gtThreeHeatsFourPlayers,7_950);
   assert.deepEqual(gtEffectiveWeeklyPrizes(),V2_EVENT_BUDGET.gtWeeklyPrizes);
   const top=gtRaceReward(1,70);
-  assert.deepEqual(top,{cash:8000,pilotXp:750,playerXp:420,percent:6});
+  assert.deepEqual(top,{cash:1200,pilotXp:750,playerXp:420,percent:6});
   assert.equal(gtRaceReward(1,70).playerXp*3,1260);
   const winners=weeklyBossCashPoolShares('2026-11-20',[
    {jid:'a',damage:3},{jid:'b',damage:2},{jid:'c',damage:1}]);
-  assert.equal([...winners.values()].reduce((a,b)=>a+b,0),240_000);
+  assert.equal([...winners.values()].reduce((a,b)=>a+b,0),40_000);
  });
 });
 test('Economia V2 tem orçamentos explícitos para todos os principais eventos',()=>{
  const b=budgetReport();
- assert.equal(b.seasonalPocoRank,230_000);
- assert.equal(b.pocoAllFloors,114_500);
+ assert.equal(b.seasonalPocoRank,40_000);
+ assert.equal(b.pocoAllFloors,32_500);
  assert.equal(b.dailyThirtyDayLowLevel,140_000);
  assert.equal(b.topFiveMissions,19_500);
  assert.equal(Object.keys(V2_RAID_LEVELS).length,10);
@@ -135,11 +135,11 @@ test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da
  const v1=candidateBusinessCatalog(base,{enabled:false});
  const v2=candidateBusinessCatalog(base,{enabled:true});
  assert.equal(v1,base);
- assert.equal(v2.profitHour,42000);
+ assert.equal(v2.profitHour,27000);
  assert.equal(base.profitHour,110000);
  const now=1_900_000_000;
- assert.equal(businessIntervalGrossV2(base,{level:5,last_collected_at:now-48*3600},now),1_612_800);
- assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-2*3600},now),84_000);
+ assert.equal(businessIntervalGrossV2(base,{level:5,last_collected_at:now-48*3600},now),907_200);
+ assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-2*3600},now),54_000);
  assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now+3600},now),0);
  assert.throws(()=>businessIntervalGrossV2({id:'invalido',capacityHours:24},{level:1},now),/inválidos/);
  const progression=getSource('src/neon/progression.js');
@@ -149,4 +149,28 @@ test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da
  assert.ok(progression.includes("const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')"));
  const wa=getSource('src/neon/index.js');
  assert.ok(wa.includes('BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach'));
+});
+
+test('C4e limita lucro líquido de Raid por vitória sem depender de número de jogadores',()=>{
+ const cfg=V2_RAID_LEVELS[70];
+ const roster=n=>Array.from({length:n},(_,i)=>({jid:'j'+i,damage:1000}));
+ for(const n of [3,4,5]){
+  const result=raidCashSharesV2(cfg,roster(n),{enabled:true});
+  assert.equal(result.bonusBudget,24000);
+  assert.equal(result.keyReimbursements,n*60000);
+  assert.equal(result.awarded,n*60000+24000);
+  assert.equal([...result.payouts.values()].reduce((a,b)=>a+b,0),result.awarded);
+ }
+ const group=[{jid:'a',damage:7000},{jid:'b',damage:2500},{jid:'c',damage:500}];
+ const split=raidCashSharesV2(cfg,group,{enabled:true});
+ assert.ok(split.payouts.get('a')>split.payouts.get('c'));
+ assert.ok(split.payouts.get('c')>cfg.keyPrice);
+ assert.equal(raidCashSharesV2(cfg,group,{enabled:false}),null);
+ assert.throws(()=>raidCashSharesV2(cfg,[{jid:'a',damage:2},{jid:'a',damage:1}],{enabled:true}),RangeError);
+});
+test('Raid 70 exige terceira contribuição, suporte de classe conta',()=>{
+ const group={a:{jid:'a',damage:500000},b:{jid:'b',damage:400000},
+   c:{jid:'c',damage:0,classHealing:3000}};
+ assert.equal(raid70V2Contributors(group,{level:70,enabled:true}).valid,true);
+ assert.equal(raid70V2Contributors({...group,c:{jid:'c',damage:0}},{level:70,enabled:true}).valid,false);
 });

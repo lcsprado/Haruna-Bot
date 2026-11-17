@@ -17,8 +17,8 @@ export const WINDOWS=Object.freeze([7,30,60]);
 // PROPOSTA, NÃO APROVADA: renda menor nos 9 negócios, sem remover o catálogo.
 // Manter preços existentes para que a mudança possa ser simulada isoladamente.
 export const PROPOSED_HOURLY_RATES=Object.freeze({
-  carrinho_lanche:180,barbearia:450,loja_roupas:1100,restaurante:2200,
-  posto:4200,mercado:7200,hotel:13500,shopping:25000,tech:42000
+  carrinho_lanche:160,barbearia:400,loja_roupas:900,restaurante:1700,
+  posto:3000,mercado:4500,hotel:8000,shopping:14000,tech:27000
 });
 export const UPGRADE_RATES=Object.freeze([.20,.30,.40,.50]);
 const NON_BUSINESS_ASSUMPTIONS=Object.freeze({
@@ -68,7 +68,7 @@ export function forecastBusinessDay(business,level,version='proposed'){
   if(!['current','proposed'].includes(version))throw new RangeError('Cenário desconhecido');
   if(!Number.isInteger(level)||level<1||level>5)throw new RangeError('Nível de negócio inválido');
   const hours=Math.min(24,business.capacityHours+(version==='current'?level-1:0));
-  const multiplier=1+(level-1)*(version==='current'?.25:.15);
+  const multiplier=1+(level-1)*(version==='current'?.25:.10);
   const gross=Math.floor(business.profitHour*hours*multiplier);
   const tax=Math.floor(gross*NON_BUSINESS_ASSUMPTIONS.businessTaxFraction);
   const operating=version==='proposed'?
@@ -113,7 +113,7 @@ function collectOwned(owned,day,version){
     const elapsed=(day-row.lastCollectedDay)*24;
     const cap=row.business.capacityHours+(version==='current'?row.level-1:0);
     const hours=Math.min(cap,Math.max(0,elapsed));
-    const mult=1+(row.level-1)*(version==='current'?.25:.15);
+    const mult=1+(row.level-1)*(version==='current'?.25:.10);
     const earned=Math.floor(row.business.profitHour*hours*mult);
     const t=Math.floor(earned*NON_BUSINESS_ASSUMPTIONS.businessTaxFraction);
     const o=version==='proposed'?Math.floor(earned*NON_BUSINESS_ASSUMPTIONS.candidateBusinessOperatingFraction):0;

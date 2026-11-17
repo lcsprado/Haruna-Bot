@@ -8,7 +8,7 @@ import {resolve} from 'node:path';
 import {PROFILES} from './reboot-economy-sim.mjs';
 import {C4C_WINDOWS,PLAYER_BEHAVIOR,buildIntegratedInputs,
   simulateIntegrated} from './reboot-economy-integrated.mjs';
-import {V2_EVENT_BUDGET,V2_RAID_LEVELS,raid70V2Policy} from '../src/neon/reboot-economy-policy.js';
+import {V2_EVENT_BUDGET,V2_RAID_LEVELS,raid70V2Policy,raidCashSharesV2} from '../src/neon/reboot-economy-policy.js';
 import {V2_TRANSPORT} from '../src/neon/reboot-transport-policy.js';
 
 const RANKED=Object.freeze(['intensivo','dedicado','regular','casual']);
@@ -145,18 +145,16 @@ export function raid70V2EmissionEstimate(partySize){
   if(partySize<p.minPlayers)return {partySize,canStart:false,
     minPlayers:p.minPlayers,minLevel:p.minLevel,
     raidLoteAllowed:false,cashAwarded:0,keysConsumed:0,netBeforeConsumables:0};
-  // Em jogos.js, cashPool é coeficiente do bônus, NÃO teto de R$200.000.
-  const share=1/partySize,keyReturn=Math.floor(cfg.keyPrice*1.08);
-  const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share));
-  const perPlayerCash=Math.round(Math.max(250,keyReturn+collaborationBonus));
-  const cashAwarded=partySize*perPlayerCash;
-  const keysConsumed=partySize*cfg.keyPrice;
+  const members=Array.from({length:partySize},(_,i)=>({jid:'p'+i,damage:1000}));
+  const distribution=raidCashSharesV2(cfg,members,{enabled:true});
+  const cashAwarded=distribution.awarded,keysConsumed=distribution.keyReimbursements;
   return {partySize,canStart:true,minPlayers:p.minPlayers,minLevel:p.minLevel,
     raidLoteAllowed:false,nominalCashPool:cfg.cashPool,
-    keyPrice:cfg.keyPrice,perPlayerCash,cashAwarded,keysConsumed,
-    netBeforeConsumables:cashAwarded-keysConsumed,
+    keyPrice:cfg.keyPrice,perPlayerCash:distribution.payouts.get('p0'),
+    cashAwarded,keysConsumed,netBeforeConsumables:distribution.bonusBudget,
+    cappedNetNewMoney:distribution.bonusBudget,
     exceedsNominalCashPool:cashAwarded>cfg.cashPool,
-    caveat:'Vitória hipotética com dano dividido igualmente, multiplicador monetário=1. Não representa capacidade real de derrotar o Boss, drops, potes ou perdas. O cashPool atual NÃO é teto coletivo.'};
+    caveat:'Vitória hipotética sem consumíveis ou drops. Só o bônus coletivo 12% é dinheiro novo; reembolso de chaves não é lucro.'};
 }
 export function stressEconomyReport(progressionSource,dbSource){
   const inputs=buildIntegratedInputs(progressionSource,dbSource);

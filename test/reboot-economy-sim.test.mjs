@@ -17,7 +17,7 @@ test('confere os 9 negócios atuais e não modifica o catálogo da V1',()=>{
   assert.deepEqual(Object.keys(PROPOSED_HOURLY_RATES).sort(),
     catalog.current.map(x=>x.id).sort());
   assert.equal(catalog.current.find(x=>x.id==='tech').profitHour,110000);
-  assert.equal(catalog.proposed.find(x=>x.id==='tech').profitHour,42000);
+  assert.equal(catalog.proposed.find(x=>x.id==='tech').profitHour,27000);
   assert.equal(catalog.current.find(x=>x.id==='tech').price,30_000_000);
   assert.ok(NON_BUSINESS_ASSUMPTIONS.businessTaxFraction===.10);
 });
@@ -26,9 +26,9 @@ test('modelo não confunde receita bruta, imposto de 10% e manutenção proposta
   const proposed=forecastBusinessDay(catalog.proposed.find(x=>x.id==='tech'),5,'proposed');
   assert.equal(current.gross,5_280_000);
   assert.equal(current.net,4_752_000);
-  assert.equal(proposed.gross,1_612_800);
-  assert.equal(proposed.net,1_290_240);
-  assert.equal(proposed.operating,161_280);
+  assert.equal(proposed.gross,907_200);
+  assert.equal(proposed.net,725_760);
+  assert.equal(proposed.operating,90_720);
   assert.ok(proposed.net<current.net);
   assert.throws(()=>forecastBusinessDay(catalog.proposed[0],6,'proposed'),RangeError);
 });
