@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  V2_EVENT_BUDGET,V2_RAID_LEVELS,V2_BUSINESS_ECONOMY,V2_GOALS,
- budgetReport,candidateRaidConfig,raid70V2Policy,assertRaid70V2Start,
+ budgetReport,candidateRaidConfig,candidateShopCatalogItem,raid70V2Policy,assertRaid70V2Start,
  raid70V2Contributors,rebootEconomyEnabled
 } from '../src/neon/reboot-economy-policy.js';
 import {gtRaceReward,gtEffectiveWeeklyPrizes} from '../src/neon/gt-alpha-rules.js';
@@ -58,6 +58,21 @@ test('Economia V2 tem orçamentos explícitos para todos os principais eventos',
  assert.deepEqual(V2_GOALS,{freshPlayers:4,startingLevel:1,startingCash:0,startingCharacterXp:0,
   weeklyEmissionsRequireAggregateCap:true,noLegacyCollabRewards:true,
   noMaxedGearFromFreshEventDrops:true,preservePvERoles:true});
+});
+test('Preço de chave V2 coincide entre loja, catálogo e Raid sem alterar V1',()=>{
+ const old=['chave_raid_70','Chave de Raid', 'Entrada', 'special',390000,'legendary'];
+ assert.equal(candidateShopCatalogItem(old,{enabled:false}),old);
+ const patched=candidateShopCatalogItem(old,{enabled:true});
+ assert.notEqual(patched,old);
+ assert.equal(patched[4],V2_RAID_LEVELS[70].keyPrice);
+ assert.equal(old[4],390000);
+ assert.equal(candidateShopCatalogItem(['chave_raid_75','Collab','', 'special',480000,'event'],{enabled:true})[4],480000);
+ const source=getSource('src/neon/db.js');
+ assert.match(source,/candidateShopCatalogItem\(item\)/);
+ for(const level of Object.keys(V2_RAID_LEVELS)){
+  const id='chave_raid_'+level,updated=candidateShopCatalogItem([id,id,'','special',9999,'common'],{enabled:true});
+  assert.equal(updated[4],V2_RAID_LEVELS[level].keyPrice);
+ }
 });
 test('Raid 70 exige três jogadores, nível 90 e não pode entrar no lote',()=>{
  const old={level:70,hp:710000,atk:200,keyPrice:390000,cashPool:710000,xpPool:24000};
