@@ -50,6 +50,27 @@ export function gtRaceReward(place,startingLevel){
 }
 
 /**
+ * Retira XP creditado indevidamente, respeitando a curva de nível geral.
+ * Não altera a tabela de XP dos outros jogadores nem ignora a passagem de nível.
+ */
+export function gtRetractPlayerXp(level,exp,amount){
+ let currentLevel=Number(level),currentExp=Number(exp)
+ const debit=Number(amount)
+ if(!Number.isSafeInteger(currentLevel)||currentLevel<1||
+    !Number.isSafeInteger(currentExp)||currentExp<0||
+    !Number.isSafeInteger(debit)||debit<0)
+  throw Error('XP/nível inválidos para reversão do GT')
+ const originalLevel=currentLevel
+ currentExp-=debit
+ while(currentExp<0&&currentLevel>1){
+  currentLevel--
+  currentExp+=Math.max(100,currentLevel*100)
+ }
+ if(currentExp<0)throw Error('XP insuficiente para reversão do GT')
+ return {level:currentLevel,exp:currentExp,levelsLost:originalLevel-currentLevel}
+}
+
+/**
  * Reclassifica uma etapa quando um carro equipado foi excluído indevidamente
  * por uma melhoria em andamento. Preserva os desempenhos já registrados dos
  * demais pilotos e insere o carro omitido com fator neutro de sorte (1.00).
