@@ -5,12 +5,14 @@ on:
       - 'src/neon/racing-*.js'
       - 'src/neon/index.js'
       - 'test/racing-alpha.test.mjs'
+      - 'web/racing-ui.js'
       - '.github/workflows/racing-alpha-validation.yml'
   push:
     branches: [whatsapp-only]
     paths:
       - 'src/neon/racing-*.js'
       - 'test/racing-alpha.test.mjs'
+      - 'web/racing-ui.js'
 permissions:
   contents: read
 jobs:
@@ -27,6 +29,7 @@ jobs:
           node --check src/neon/racing-rules.js
           node --check src/neon/racing-alpha.js
           node --check src/neon/racing-commands.js
+          node --check web/racing-ui.js
           node --check src/neon/index.js
       - name: Balance, progression and safety
         run: node --test test/racing-alpha.test.mjs
