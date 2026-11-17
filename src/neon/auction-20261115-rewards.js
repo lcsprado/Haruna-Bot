@@ -1,6 +1,7 @@
 // Leilão 15/11 — direitos de escolha e passe Raid Lote; resgates atômicos.
 import {db} from './db.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {assertRebootItemAllowed} from './reboot-classes-policy.js'
 export const REWARDS_15=Object.freeze([
  {id:'voucher_arsenal_supremo_20261115',name:'Decreto do Arsenal Supremo',description:'Escolhe arma, armadura ou bota de drop de Raid, entregue FORJADA ★★★★★ Lv.1. Uso único.'},
  {id:'voucher_essencia_perfeicao_20261115',name:'Essência da Perfeição',description:'Eleva qualquer equipamento próprio para FORJADO ★★★★★ Lv.10. Uso único.'},
@@ -49,6 +50,7 @@ async function spendVoucher(c,jid,id){
 }
 const validId=id=>/^[a-z0-9_-]{2,100}$/.test(String(id||''))
 export async function redeemArsenal(jid,itemId){
+ assertRebootItemAllowed(itemId)
  if(!validId(itemId))throw Error('Informe o ID de um drop: !itensraid')
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
@@ -64,6 +66,7 @@ export async function redeemArsenal(jid,itemId){
  })
 }
 export async function redeemPerfection(jid,itemId){
+ assertRebootItemAllowed(itemId)
  if(!validId(itemId))throw Error('Informe o ID do equipamento de seu inventário.')
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
