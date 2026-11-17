@@ -89,7 +89,8 @@ test('premios do GT sao atomicos por prova; sem alterar semanal ou carros histor
  assert.match(src,/if\(\['completed','cancelled'\]\.includes\(s\.phase\)\)return/)
  assert.match(src,/await c\.query\('COMMIT'\)/)
  assert.match(src,/await c\.query\('ROLLBACK'\)/)
- assert.match(src,/GT_WEEKLY_PRIZES\[i\]/)
+ assert.match(src,/gtEffectiveWeeklyPrizes\(\)\[i\]/)
+ assert.match(source('gt-alpha-rules.js'),/rebootEconomyEnabled\(\)\?V2_EVENT_BUDGET\.gtWeeklyPrizes:GT_WEEKLY_PRIZES/)
  assert.ok(!src.includes('gt_alpha_heat_retroactive'))
 })
 test('upgrade completo vence carros sem preparação em todas pistas',()=>{
