@@ -5,7 +5,7 @@ import {randomInt} from 'node:crypto'
 import {db} from './db.js'
 import {POCO_SEASON,pocoSeasonActive} from './poco-abismo-rules.js'
 import {pocoExpStart,pocoExpDue,pocoExpResolve,pocoExpAdvance,pocoExpStop,pocoExpFloorMs,POCO_EXPEDITION} from './poco-abismo-expedition.js'
-import {pocoInitRewardLedger,pocoClaimCommandInTx,pocoClaimFloorInTx,pocoClaimExpeditionDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
+import {pocoInitRewardLedger,pocoEnsureExpeditionStones,pocoClaimCommandInTx,pocoClaimFloorInTx,pocoClaimExpeditionDropInTx,pocoOpenBoxInTx} from './poco-abismo-rewards.js'
 import {pocoGearById} from './poco-abismo-gear.js'
 import {pocoRunPlayerTransaction} from './poco-abismo-transaction.js'
 import {POCO_LIVE_SETTLEMENT_KEY} from './poco-abismo-settlement.js'
@@ -16,7 +16,7 @@ const fmt=x=>Number(x||0).toLocaleString('pt-BR')
 const duration=x=>{const m=Math.max(0,Math.ceil(x/60000));return m>=60?Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'):m+' min'}
 const UPGRADES='1❤️ Recuperar 25% HP  2⚔️ +25% ATK  3🛡️ +25% DEF  4🔰 +25% escudo'
 let readyPromise;
-const ensureReady=()=>readyPromise||(readyPromise=pocoInitRewardLedger(db).catch(err=>{readyPromise=null;throw err}))
+const ensureReady=()=>readyPromise||(readyPromise=(async()=>{await pocoInitRewardLedger(db);await pocoEnsureExpeditionStones(db)})().catch(err=>{readyPromise=null;throw err}))
 function empty(name){return {season:POCO_SEASON.id,name,attempts:0,active:null,best:null,last:null,cashEarned:0,xpEarned:0,drops:[],chat:null}}
 function mutate(jid,name,fn){
  return pocoRunPlayerTransaction(db,{jid,name,key:keyFor(jid),settlementKey:POCO_LIVE_SETTLEMENT_KEY,season:POCO_SEASON.id,empty},fn)
