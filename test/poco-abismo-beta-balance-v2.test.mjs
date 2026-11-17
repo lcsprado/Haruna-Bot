@@ -104,10 +104,10 @@ test('simulação determinística: sem bloquear rupturas, completar o Poço é r
  }
 })
 
-test('preview usa beta-v2 e nenhuma recompensa real; controlador oficial permanece independente',()=>{
+test('preview inicia beta-v3, preserva beta-v2 antigo e nenhuma recompensa real',()=>{
  const preview=readFileSync(new URL('../src/neon/poco-abismo-preview.js',import.meta.url),'utf8')
  const live=readFileSync(new URL('../src/neon/poco-abismo-live.js',import.meta.url),'utf8')
- assert.match(preview,/balanceVersion:BETA_ONLY\?'beta-v2':'legacy'/)
+ assert.match(preview,/balanceVersion:BETA_ONLY\?'beta-v3':'legacy'/)
  assert.match(preview,/\.sort\(BETA_ONLY\?pocoBetaRankingCompare:pocoRankingCompare\)/)
  assert.match(preview,/Defender'\+\(BETA_ONLY\?' \(reduz dano e contra-ataca\)'/)
  assert.doesNotMatch(preview,/pocoClaimFloorInTx|pocoClaimBossDropInTx|pocoSettleFinalRanking/)
