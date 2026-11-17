@@ -19,7 +19,7 @@ import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
-import {classesOnlyRebootEnabled,filterRebootStarterItems} from './reboot-classes-policy.js'
+import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget} from './reboot-classes-policy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -35,6 +35,8 @@ import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
 import {ascensionAwardedPlayerXp} from './ascension-week-20261102.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
+// Pré-condição offline: a V2 não pode apontar para alpha_prod* ou defaultdb.
+assertRebootDatabaseTarget()
 // For Neon, keep the existing connection settings unchanged.
 // For an explicitly configured Aiven cutover, verify its CA and cap the pool.
 // Merely deploying this code DOES NOT change the DB: DATABASE_URL still controls it.
