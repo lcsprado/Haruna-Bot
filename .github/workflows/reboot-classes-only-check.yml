@@ -13,6 +13,12 @@ on:
       - 'scripts/reboot-economy-flow-audit.mjs'
       - 'scripts/reboot-reset-manifest.mjs'
       - 'src/neon/reboot-classes-policy.js'
+      - 'src/neon/reboot-economy-policy.js'
+      - 'src/neon/gt-alpha-rules.js'
+      - 'src/neon/gt-alpha-event.js'
+      - 'src/neon/weekly-boss-prize-pool.js'
+      - 'src/neon/daily-v2.js'
+      - 'src/neon/raid-lote-store.js'
       - 'src/neon/playable-heroes.js'
       - 'src/neon/games.js'
       - 'src/neon/db.js'
@@ -30,6 +36,7 @@ on:
       - 'test/reboot-economy-flow-audit.test.mjs'
       - 'test/reboot-reset-manifest.test.mjs'
       - 'test/reboot-classes-policy.test.mjs'
+      - 'test/reboot-economy-policy.test.mjs'
       - 'test/reboot-web-collab.test.mjs'
       - '.github/workflows/reboot-classes-only-check.yml'
   workflow_dispatch:
@@ -56,6 +63,12 @@ jobs:
           node --check scripts/reboot-economy-flow-audit.mjs
           node --check scripts/reboot-reset-manifest.mjs
           node --check src/neon/reboot-classes-policy.js
+          node --check src/neon/reboot-economy-policy.js
+          node --check src/neon/gt-alpha-rules.js
+          node --check src/neon/gt-alpha-event.js
+          node --check src/neon/weekly-boss-prize-pool.js
+          node --check src/neon/daily-v2.js
+          node --check src/neon/raid-lote-store.js
           node --check src/neon/playable-heroes.js
           node --check src/neon/games.js
           node --check src/neon/db.js
@@ -68,7 +81,7 @@ jobs:
           node --check src/neon/npc-shops.js
           node --check src/neon/auction-20261115-rewards.js
       - name: Testes dedicados, sem dependencias ou credenciais
-        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs
       - name: Regressões do jogo anterior (sem DB)
         run: node --test test/regression-smoke.test.mjs test/playable-seven-sins-20261027.test.mjs
       - name: Auditorias somente leitura
