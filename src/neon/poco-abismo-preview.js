@@ -5,6 +5,7 @@ import {randomInt} from 'node:crypto'
 import {db,getCombatProfile,getPetTeam} from './db.js'
 import {getActivePlayableHero} from './playable-heroes.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
+import {handlePocoExpeditionCommand} from './poco-abismo-expedition-controller.js'
 import {pocoBetaCompactPrompt,pocoBetaCompactEnd} from './poco-abismo-beta-ui.js'
 import {
  POCO_SEASON,pocoStart,pocoDecision,pocoEnd,pocoScore,pocoBetter,
@@ -138,6 +139,9 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
  if(!ENABLED||!['poco','pocorank'].includes(cmd))return false
  // Piloto sem economia: só o grupo cuja identificação foi verificada pelo Baileys.
  if(BETA_ONLY&&!betaAllowed)return false
+ // O piloto novo substitui somente a interface antiga do Poço no grupo beta.
+ // Estados anteriores da prévia e prêmios oficiais não são apagados.
+ if(BETA_ONLY)return handlePocoExpeditionCommand({cmd,args,sender,name,reply,chat,messageId,betaAllowed})
  const option=cmd==='pocorank'?'ranking':String(args[0]||'').toLowerCase()
  if(option==='ranking'||option==='rank'){await reply(await ranking());return true}
  const now=Date.now()
@@ -235,6 +239,9 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
  return true
 }
 export function startPocoPreviewScheduler(sock){
+ // No novo modo o relógio é calculado por readyAt no banco, sem
+ // cronômetro global nem avisos antigos de timeout.
+ if(BETA_ONLY)return
  if(!ENABLED)return
  if(timer)clearInterval(timer)
  timer=setInterval(async()=>{

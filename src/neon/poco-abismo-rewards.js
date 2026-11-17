@@ -4,7 +4,8 @@
 // pode ser enviada se a gravação do estado/recorde falhar.
 import {randomInt,createHash} from 'node:crypto'
 import {POCO_SEASON,pocoCashForFloor,pocoRollDrop} from './poco-abismo-rules.js'
-import {POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
+import {POCO_ABISMO_GEAR_IDS,POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
+const POCO_EXPEDITION_GEAR_IDS=POCO_ABISMO_GEAR_IDS
 import {syncEffectiveGear} from './equipment-star-logic.js'
 export const POCO_BOX_EPIC_ID='caixa_epica_abissal_20261116'
 export const POCO_BOX_LEGEND_ID='caixa_lendaria_abissal_20261116'
@@ -125,6 +126,56 @@ export async function pocoClaimBossDropInTx(c,jid,floor,day,random=()=>randomInt
   throw new Error('Drop sem implementação: '+drop.kind)
  })
 }
+// Saque do novo modo de exploracao: um sorteio por ANDAR por jogador/temporada.
+// O resultado e persistido junto com o progresso na mesma transacao.
+// Os tipos de pedra abaixo sao os encantamentos ja presentes no jogo.
+export const POCO_EXPEDITION_STONES=Object.freeze([
+ 'pedra_furia_alpha','pedra_forca_alpha','pedra_fortaleza_alpha',
+ 'pedra_agilidade_alpha','pedra_precisao_alpha'
+]);
+// Se uma instalacao antiga ainda nao tiver catalogado as pedras, registra
+// somente os IDs ja suportados pelo sistema de encantamento.
+export async function pocoEnsureExpeditionStones(db){
+ const names=['Pedra da Fúria Alpha','Pedra da Força Alpha','Pedra da Fortaleza Alpha',
+  'Pedra da Agilidade Alpha','Pedra da Precisão Alpha'];
+ for(let i=0;i<POCO_EXPEDITION_STONES.length;i++){
+  await db.query(
+   "INSERT INTO items(id,name,description,category,price,sellable,stackable,rarity) "+
+   "VALUES($1,$2,$3,'special',0,FALSE,TRUE,'rare') ON CONFLICT(id) DO NOTHING",
+   [POCO_EXPEDITION_STONES[i],names[i],'Pedra de encantamento Alpha: material para aprimorar equipamento.'])
+ }
+}
+export async function pocoClaimExpeditionDropInTx(c,jid,floor,random=()=>randomInt(0,10000)/10000){
+ if(!Number.isInteger(floor)||floor<1||floor>30)throw new RangeError('Andar sem saque')
+ return claim(c,jid,'expedition:loot:'+floor,async()=>{
+  const n=Number(random());
+  if(!Number.isFinite(n)||n<0||n>=1)throw new RangeError('Sorteio invalido')
+  const roll=Math.floor(n*10000);
+  const key='expedition:loot:'+floor;
+  if(roll<80){
+   // 0,8% por andar para qualquer uma das cinco peças exclusivas.
+   const index=Math.min(4,Math.floor(roll/16));
+   return {...await grantExclusive(c,jid,POCO_EXPEDITION_GEAR_IDS[index],key),floor};
+  }
+  if(roll<2280){
+   // 22% para uma pedra, cada modelo com chance igual.
+   const index=Math.min(4,Math.floor((roll-80)/440));
+   const itemId=POCO_EXPEDITION_STONES[index];
+   await addItem(c,jid,itemId);
+   return {kind:'enchant_stone',itemId,quantity:1,floor}
+  }
+  if(roll<2680){await addItem(c,jid,POCO_BOX_LEGEND_ID);return {kind:'legendary_box',itemId:POCO_BOX_LEGEND_ID,quantity:1,floor}}
+  if(roll<3680){await addItem(c,jid,POCO_BOX_EPIC_ID);return {kind:'epic_box',itemId:POCO_BOX_EPIC_ID,quantity:1,floor}}
+  if(roll<5180){await addItem(c,jid,'fragmento_universal_raid',3);return {kind:'forge_materials',itemId:'fragmento_universal_raid',quantity:3,floor}}
+  if(roll<6180){
+   const cash=(10+Math.floor((roll-5180)/100))*1000;
+   await addCash(c,jid,cash,'poco_expedition_cash',key);
+   return {kind:'cash_bonus',cash,floor}
+  }
+  return {kind:'none',floor}
+ })
+}
+
 export async function pocoClaimRankPrizeInTx(c,jid,position){
  if(!Number.isInteger(position)||position<1||position>3)throw new RangeError('Classificação inválida')
  return claim(c,jid,'ranking',async()=>{

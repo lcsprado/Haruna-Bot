@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
  pocoClaimFloorInTx,pocoClaimBossDropInTx,pocoOpenBoxInTx,
  pocoClaimRankPrizeInTx,pocoXpForFloor,pocoBoxContents,
+ pocoClaimExpeditionDropInTx,POCO_EXPEDITION_STONES,
  POCO_BOX_EPIC_ID,POCO_BOX_LEGEND_ID
 } from '../src/neon/poco-abismo-rewards.js'
 import {POCO_ABISMO_GEAR} from '../src/neon/poco-abismo-gear.js'
@@ -14,6 +15,7 @@ function makeDb(){
  const claims=new Map(),items=new Map(),bound=new Map(),forged=new Map(),effective=new Map()
  const transactions=[],wallet={cash:0},registered=new Set([
  ...POCO_ABISMO_GEAR.map(g=>g.id),POCO_BOX_EPIC_ID,POCO_BOX_LEGEND_ID,
+ ...POCO_EXPEDITION_STONES,
  'fragmento_universal_raid','coroa_abissal','pocao_pet_epica',
  'caixa_rara','pergaminho_experiencia','pocao_pet_suprema','caixa_epica','caixa_lendaria'
  ])
@@ -214,4 +216,31 @@ test('expedição completa: 30 créditos únicos + 5 drops diários + ranking se
  const firstAgain=await pocoClaimFloorInTx(c,jid,1,{grantExp:()=>{throw new Error('exp duplicada')}})
  assert.equal(firstAgain.alreadyClaimed,true)
  assert.equal(c.wallet.cash,28500000+chest.cash)
+})
+
+test('expedição distribui pedras já existentes sem crédito repetido em 30 andares',async()=>{
+ const c=makeDb()
+ const stone=await pocoClaimExpeditionDropInTx(c,'a@jid',1,()=>.008)
+ assert.equal(stone.kind,'enchant_stone')
+ assert.equal(stone.itemId,'pedra_furia_alpha')
+ assert.equal(stone.quantity,1)
+ const duplicate=await pocoClaimExpeditionDropInTx(c,'a@jid',1,()=>0)
+ assert.equal(duplicate.alreadyClaimed,true)
+ assert.equal(c.items.get('pedra_furia_alpha'),1)
+ const lastStone=await pocoClaimExpeditionDropInTx(c,'a@jid',2,()=>.2279)
+ assert.equal(lastStone.kind,'enchant_stone')
+ assert.equal(lastStone.itemId,'pedra_precisao_alpha')
+})
+
+test('equipamento exclusivo do Poço pode cair de um chefe de qualquer andar',async()=>{
+ const c=makeDb()
+ const item=await pocoClaimExpeditionDropInTx(c,'a@jid',1,()=>0)
+ assert.equal(item.kind,'exclusive')
+ assert.equal(item.stars,5);assert.equal(item.level,10)
+ assert.equal(c.items.get('poco_lamina_abismo_20261116'),1)
+ const repeat=await pocoClaimExpeditionDropInTx(c,'a@jid',2,()=>0)
+ assert.equal(repeat.kind,'duplicate_converted')
+ assert.equal(c.items.get(POCO_BOX_LEGEND_ID),1)
+ const noDrop=await pocoClaimExpeditionDropInTx(c,'a@jid',30,()=>.99)
+ assert.equal(noDrop.kind,'none')
 })
