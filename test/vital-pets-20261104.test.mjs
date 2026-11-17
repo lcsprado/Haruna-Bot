@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {runInNewContext} from 'node:vm'
 import {VITAL_PETS,VITAL_PET_SPECIES,resolveVitalTeam,VITAL_TEAM_BONUS,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from '../src/neon/vital-pets.js'
 import {PET_STATUS_SPECIALTIES,petCombatSpecialty,petPvpSpecialty} from '../src/neon/game-catalog.js'
+import {classesOnlyRebootEnabled} from '../src/neon/reboot-classes-policy.js'
 
 const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const gameSource=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -78,6 +79,7 @@ test('Vínculo Vital se conecta ao motor antigo sem duplicar outros bônus',()=>
   const js=dbSource.slice(first,last).replace('export function petTeamSynergy','function petTeamSynergy')
   const fn=runInNewContext(js+'\npetTeamSynergy',{
     PECADOS_HERO_IDS:[],
+    classesOnlyRebootEnabled,
     resolveVitalTeam,
     resolveCollabWildcardTeam:()=>null,
     resolveAstralLynxWildcard:()=>null,

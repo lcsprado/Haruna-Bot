@@ -49,10 +49,17 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
-import {getAuctionWebStatus,placeAuctionWebBid} from './auction-bonus-20261101.js'
+import {getAuctionWebStatus as getLegacyAuctionWebStatus,placeAuctionWebBid as placeLegacyAuctionWebBid} from './auction-bonus-20261101.js'
 import {getAuctionWebStatus as getCurrentAuctionWebStatus,placeAuctionWebBid as placeCurrentAuctionWebBid} from './auction-bonus-20261101-1500.js'
 import {classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
+
+async function getAuctionWebStatus(args){
+  return classesOnlyRebootEnabled()?getCurrentAuctionWebStatus(args):getLegacyAuctionWebStatus(args)
+}
+async function placeAuctionWebBid(args){
+  return classesOnlyRebootEnabled()?placeCurrentAuctionWebBid(args):placeLegacyAuctionWebBid(args)
+}
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -1165,7 +1172,7 @@ async function startRaidServerRun(session,level){
 async function runAction(session,name,body={}){
   const jid=session.jid
   // This action is verified and executed by the same auction handler as WhatsApp.
-  if(name==='auction.bid')return (classesOnlyRebootEnabled()?placeCurrentAuctionWebBid:placeAuctionWebBid)({
+  if(name==='auction.bid')return placeAuctionWebBid({
     chat:requireGroup(session),sender:jid,name:await playerDisplayName(jid),amount:body.amount
   })
   await enforceWebActionPolicy(session,name)
@@ -1508,7 +1515,7 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/auction'){
-      const data=await (classesOnlyRebootEnabled()?getCurrentAuctionWebStatus:getAuctionWebStatus)({chat:requireGroup(session),sender:session.jid})
+      const data=await getAuctionWebStatus({chat:requireGroup(session),sender:session.jid})
       json(res,200,{ok:true,data})
       return true
     }

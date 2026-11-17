@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import {readFileSync} from 'node:fs'
+import {assertRebootItemAllowed} from '../src/neon/reboot-classes-policy.js'
 
 const source=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const a=source.indexOf('export async function buyMarketListing(')
@@ -33,7 +34,7 @@ function fixture({price=600,buyerCash=450,buyerBank=250,hasSeller=true,expired=f
   if(q.startsWith('UPDATE market_listings SET status=')){listing.status='sold';accountMutations.push('sold');return {rowCount:1}}
   throw Error('unknown SQL: '+q.slice(0,170))
  }}
- const ctx={ensureUser:async()=>{},expireMarketListings:async()=>{},transaction:async run=>run(client),nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT',Date}
+ const ctx={assertRebootItemAllowed,ensureUser:async()=>{},expireMarketListings:async()=>{},transaction:async run=>run(client),nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT',Date}
  const buy=vm.runInNewContext(body+'\nbuyMarketListing',ctx)
  return {buy:()=>buy('A',11),listing,wallet,queries,accountMutations}
 }
