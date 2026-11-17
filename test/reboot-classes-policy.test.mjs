@@ -5,7 +5,7 @@ import {
   REBOOT_MODE,REBOOT_CLASS_IDS,REBOOT_HERO_MESSAGE,
   classesOnlyRebootEnabled,eligiblePlayableHero,
   assertRebootHeroSelection,raidEnabledInReboot,filterRebootRaidCatalog,
-  isRebootCollabItemId,filterRebootStarterItems,
+  isRebootCollabItemId,filterRebootStarterItems,assertRebootItemAllowed,
   assertRebootDatabaseTarget,assertRebootWhatsappPermission
 } from '../src/neon/reboot-classes-policy.js';
 
@@ -74,6 +74,40 @@ test('catálogo inicial exclui somente materiais e equipamentos exclusivos da co
   assert.equal(isRebootCollabItemId('escudo_eternidade'),false);
   const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
   assert.match(db,/for \(const item of filterRebootStarterItems\(starterItems\)\)/);
+});
+
+test('A V2 impede geração, forja, uso e bônus de equipamentos da collab',()=>{
+  for(const id of ['pecados_courechouse','pecados_gideon','pecado_ban',
+    'chave_raid_75','fragmento_ascensao_pecados_20261024',
+    'insignia_sete_pecados','essencia_pecado_ira']){
+    assert.throws(()=>assertRebootItemAllowed(id,{enabled:true}),/indisponível/);
+    assert.equal(assertRebootItemAllowed(id,{enabled:false}),true);
+  }
+  for(const id of ['excalibur','armadura_divina','espada_eclipse','chave_raid_70']){
+    assert.equal(assertRebootItemAllowed(id,{enabled:true}),true);
+  }
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  for(const signature of [
+    'buyItem(jid, itemId, qty=1)',
+    'forgeEquipmentStar(jid,itemId,expectedStars=null)',
+    "upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal',payment='cash')",
+    'equipItem(jid, itemId)',
+    'ownerGrantItem(jid, itemId, qty=1)'
+  ])assert.ok(db.includes(signature),'API preservada: '+signature);
+  assert.match(db,/export async function equipItem\(jid, itemId\) \{\s*assertRebootItemAllowed\(itemId\)/);
+  assert.match(db,/export async function forgeEquipmentStar\(jid,itemId,expectedStars=null\)\{\s*assertRebootItemAllowed\(itemId\)/);
+  assert.match(db,/export function equipmentStatsAtLevel\(itemId,level=1,stars=1\)\{\s*if\(classesOnlyRebootEnabled\(\)&&isRebootCollabItemId\(itemId\)\)return null/);
+  assert.match(db,/export async function getInventory\(jid\)[\s\S]*?return rows\.filter\(r=>!classesOnlyRebootEnabled\(\)\|\|!isRebootCollabItemId\(r\.item_id\)\)/);
+});
+test('Eventos dos Pecados não retomam cron, mensagens ou boss antigos na V2',()=>{
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  const wa=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  assert.match(games,/tickCollabFragmentFarm\(now=Date\.now\(\)\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return \{due:false,disabled:true\}/);
+  assert.match(games,/tickSetePecados\(now=Date\.now\(\)\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return \{due:false,disabled:true\}/);
+  assert.match(wa,/async function recoverPecadosParticipantsStoppedByOldPhase\(\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return/);
+  assert.match(wa,/const setePecadosCorrectionTimer=classesOnlyRebootEnabled\(\)\?null:setInterval/);
+  assert.match(wa,/setePecadosCorrectionTimer\?\.unref\?\.\(\)/);
+  assert.match(wa,/if\(!classesOnlyRebootEnabled\(\)&&Date\.now\(\)<=PECADOS_EDITIONS/);
 });
 
 test('fluxos de combate e entrada de herói estão protegidos no modo V2',()=>{
