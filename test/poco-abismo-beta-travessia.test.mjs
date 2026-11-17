@@ -13,14 +13,14 @@ test('travessia automática nomeia apenas os quatro andares entre Guardiões',()
  }
 })
 
-test('cada balão continua com quatro linhas e explica uma ação por rodada',()=>{
+test('cada turno usa três linhas, identificando travessia e uma ação',()=>{
  const {state}=pocoStart({seed:21,now:10,balanceVersion:'beta-v3'})
  const msg=pocoBetaCompactPrompt({state,name:'LP',recap:'⚔️+600/-130'})
  assert.match(msg,/G5\/30/)
  assert.match(msg,/travessia automática 1–4/)
  assert.match(msg,/1 ação\/rodada/)
- assert.match(msg,/1⚔️ Atacar.*2🛡️ Defender.*3🧪 Curar.*4✨ Técnica/)
- assert.equal(msg.split('\n').length,4)
+ assert.match(msg,/1⚔️.*2🛡️.*3🧪.*4✨/)
+ assert.equal(msg.split('\n').length,3)
  assert.ok(msg.length<340,'O balão do WhatsApp não deve ficar muito longo')
  const step=pocoDecision(state,1,{now:100}).state
  assert.equal(step.boss.floor,5,'Um ataque não pode saltar até o próximo Guardião')

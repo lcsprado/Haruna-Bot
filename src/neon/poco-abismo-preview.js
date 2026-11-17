@@ -5,7 +5,7 @@ import {randomInt} from 'node:crypto'
 import {db,getCombatProfile,getPetTeam} from './db.js'
 import {getActivePlayableHero} from './playable-heroes.js'
 import {pocoBetaGroupAllowed} from './poco-abismo-beta-group.js'
-import {pocoBetaCompactPrompt,pocoBetaCompactEnd,pocoBetaEditTarget,pocoBetaDispatchPrompt} from './poco-abismo-beta-ui.js'
+import {pocoBetaCompactPrompt,pocoBetaCompactEnd} from './poco-abismo-beta-ui.js'
 import {
  POCO_SEASON,pocoStart,pocoDecision,pocoEnd,pocoScore,pocoBetter,
  pocoRankingCompare,pocoBetaRankingCompare,pocoRollDrop,pocoCashForFloor,pocoBossSkill,pocoSeasonActive
@@ -20,27 +20,17 @@ const keyFor=jid=>PREFIX+jid
 const label=n=>Number(n||0).toLocaleString('pt-BR')
 const OPTIONS='\n1️⃣ Atacar\n2️⃣ Defender'+(BETA_ONLY?' (reduz dano e contra-ataca)':'')+'\n3️⃣ Curar (poção)\n4️⃣ Técnica especial (interrompe habilidades)';
 async function sendActionPrompt(jid,name,reply,result){
- // Com beta, edita o balão do mesmo Guardião. Em falha de edição,
- // manda novo balão; 120s só começam após ACK do envio ou edição.
- if(BETA_ONLY){
-   return pocoBetaDispatchPrompt({
-     reply,message:result.message,token:result.promptToken,uiEdit:result.uiEdit,
-     confirm:(token,sentAt,ui)=>{
-       return mutate(jid,name,s=>{
-         if(!s.active)return false
-         const ok=pocoConfirmPrompt(s.active,token,sentAt)
-         if(ok&&ui?.key?.id&&ui.key.fromMe===true&&
-           ui.key.remoteJid===s.chat){
-           s.uiPrompt={key:ui.key,at:ui.at,floor:s.active.boss.floor}
-         }
-         return ok
-       })
-     }
-   })
- }
+ // Cada decisão cria uma nova mensagem visível. Editar balão não notifica
+ // o jogador no WhatsApp e causava timeout apesar do comando anterior
+ // ter sido recebido. A contagem de 120s começa só após ACK do novo envio.
  return pocoDispatchActionPrompt({
-  reply,message:result.message,token:result.promptToken,
-  confirm:(token,sentAt)=>mutate(jid,name,s=>s.active?pocoConfirmPrompt(s.active,token,sentAt):false)
+   reply,message:result.message,token:result.promptToken,
+   confirm:(token,sentAt)=>mutate(jid,name,s=>{
+     if(!s.active)return false
+     const ok=pocoConfirmPrompt(s.active,token,sentAt)
+     if(ok&&BETA_ONLY)s.uiPrompt=null // invalidar antiga chave de edição
+     return ok
+   })
  })
 }
 
@@ -224,14 +214,13 @@ export async function handlePocoCommand({cmd,args=[],sender,name,reply,chat,mess
        name:s.name,report:s.last,recap:shortRecap,defeated:progress.bossDefeated,drop:dropText
      }):recap+passed+loot+'\n'+report(s)}
    }
-   // O Guardião terminou? Novo balão. Mesma luta? Atualizar o anterior.
-   const uiEdit=BETA_ONLY?pocoBetaEditTarget(s,chat,s.active.boss.floor,now):null
+   // Uma nova mensagem para cada decisão: a notificação deve chegar
+   // ao WhatsApp antes da próxima janela de 120 segundos.
    const promptToken=pocoStagePrompt(s.active)
    return {message:BETA_ONLY?pocoBetaCompactPrompt({
       state:s.active,name:s.name,recap:shortRecap,
       defeated:progress.bossDefeated,drop:dropText
-    }):recap+passed+loot+'\n'+prompt(s.active),promptToken,
-    ...(uiEdit?{uiEdit}:{})}
+    }):recap+passed+loot+'\n'+prompt(s.active),promptToken}
   })
   await sendActionPrompt(sender,name,reply,result);return true
  }

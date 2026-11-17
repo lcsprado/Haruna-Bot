@@ -10523,14 +10523,10 @@ continue
 }
 timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
-// A resposta pertence primeiro ao menu individual (inclusive recuperado do banco).
-// O quiz é um prompt global e só pode consumi-la quando não há menu do jogador.
-const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
-  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
-// O número sozinho é uma resposta do Poço somente durante uma decisão
-// ativa deste jogador, neste chat, sem outro menu individual aberto.
-// Deve vir ANTES dos quizzes e do fallback do inventário.
-if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)&&!activeNumericMenu){
+// Durante uma decisão ativa do Poço, 1–4 pertencem ao combate do
+// próprio jogador e grupo. Menus e quizzes usam números apenas quando
+// não existe decisão ativa; menus anteriores não podem roubar o turno.
+if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
   const route=await pocoNumericRoute({db,sender,chat,body})
   if(route){
     const betaMeta=route==='beta'&&isGroup
@@ -10545,6 +10541,10 @@ if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)&&!activeNumericMenu){
     if(handled)continue
   }
 }
+// Fora de uma tentativa ativa, preservar prioridade do menu do jogador
+// sobre os quizzes globais, inclusive após reinício.
+const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
+  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
   if(await quizHandleChoice(chat,body,reply))continue
 }

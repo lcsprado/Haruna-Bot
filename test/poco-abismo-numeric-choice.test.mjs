@@ -52,13 +52,15 @@ test('piloto beta consulta somente ledger de prévia; sem flag não intercepta',
  assert.equal(off.calls.length,0)
 })
 
-test('roteador fica antes do quiz e mensagem de inventário, respeitando menu individual',()=>{
+test('Poço ativo precede menus antigos e quiz; fora dele menus continuam normais',()=>{
  const source=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  const route=source.indexOf('const route=await pocoNumericRoute({db,sender,chat,body})')
  const quiz=source.indexOf('if(shouldRouteQuizContinuation(',route)
  const missingMenu=source.indexOf('Não encontrei um menu ativo para essa escolha',route)
  assert.ok(route>0&&quiz>route&&missingMenu>quiz)
- assert.match(source,/if\(!body\.startsWith\(prefix\)&&\/\^\[1-4\]\$\/\.test\(body\)&&!activeNumericMenu\)/)
+ assert.match(source,/if\(!body\.startsWith\(prefix\)&&\/\^\[1-4\]\$\/\.test\(body\)\)\{/)
+ const menu=source.indexOf('const activeNumericMenu=!body.startsWith(prefix)',route)
+ assert.ok(menu>route&&quiz>menu,'Poço ativo precede recuperação de menus antigos')
  assert.match(source,/const betaAllowed=route==='beta'/)
  assert.match(source,/pocoBetaGroupAllowed\(\{chat,subject:betaMeta\?\.subject\}\)/)
  assert.match(source,/route==='live'\s*\? await handlePocoLiveCommand\(params\) : await handlePocoCommand\(params\)/)
