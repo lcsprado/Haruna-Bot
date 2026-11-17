@@ -5,8 +5,10 @@ on:
       - 'docs/reboot-classes-only-20261117.md'
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
+      - 'scripts/reboot-reset-manifest.mjs'
       - 'test/reboot-audit.test.mjs'
       - 'test/reboot-economy-baseline.test.mjs'
+      - 'test/reboot-reset-manifest.test.mjs'
       - '.github/workflows/reboot-classes-only-check.yml'
   workflow_dispatch:
 
@@ -28,10 +30,12 @@ jobs:
         run: |
           node --check scripts/reboot-audit.mjs
           node --check scripts/reboot-economy-baseline.mjs
+          node --check scripts/reboot-reset-manifest.mjs
       - name: Testes dedicados, sem dependencias ou credenciais
-        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-reset-manifest.test.mjs
       - name: Auditorias somente leitura
         run: |
           node scripts/reboot-audit.mjs --json > /tmp/reboot-dependencies.json
           node scripts/reboot-economy-baseline.mjs --json > /tmp/reboot-business-baseline.json
-          node -e "const d=require('/tmp/reboot-dependencies.json');const e=require('/tmp/reboot-business-baseline.json');if(!d.readOnly||d.sourceFilesScanned<1||e.length<1)process.exit(1);console.log('Auditados',d.sourceFilesScanned,'arquivos,',d.tablesFound.length,'tabelas e',e.length,'cenarios de negocio')"
+          node scripts/reboot-reset-manifest.mjs --json > /tmp/reboot-reset-manifest.json
+          node -e "const d=require('/tmp/reboot-dependencies.json');const e=require('/tmp/reboot-business-baseline.json');const r=require('/tmp/reboot-reset-manifest.json');if(!d.readOnly||!r.readOnly||!r.classes.valid||d.sourceFilesScanned<1||e.length<1||d.tablesFound.length!==r.total)process.exit(1);console.log('Auditados',d.sourceFilesScanned,'arquivos,',d.tablesFound.length,'tabelas e',e.length,'cenarios de negocio');console.log('CLASSES:',r.classes.actual.join(', '));console.log('TABELAS POR CATEGORIA:',JSON.stringify(r.counts));console.log('TABELAS A REVISAR:',r.groups.unclassified_blocker.join(', '));"
