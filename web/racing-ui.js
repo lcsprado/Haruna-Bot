@@ -57,7 +57,7 @@ function carTile(model,owned,equipped,catalog){
  '<div class="race-car-preview">'+carArt(model.id,owned?.upgrades||{},false,paintColor({catalog},owned))+'</div><h4>'+esc(model.name)+'</h4>'+
  '<div class="race-model-spec">⚡ '+model.stats.speed+' <span>•</span> 🚀 '+model.stats.accel+' <span>•</span> 🛞 '+model.stats.grip+'</div>'+
  '<div class="race-tile-bottom"><b>'+brl(model.price)+'</b>'+
- (owned?(equipped?'<span class="race-green">✓ Equipado</span>':button('Equipar','equip',owned.id))+button('Pintura','openPaint',owned.id):button('Comprar','buy',model.id,false,true))+
+ (owned?(equipped?'<span class="race-green">✓ Equipado</span>':owned.pending_part?'<span class="race-warning">🔒 Em melhoria</span>':button('Equipar','equip',owned.id))+button('Pintura','openPaint',owned.id):button('Comprar','buy',model.id,false,true))+
  '</div></div>'
 }
 function formatTab(ui,tab,label){return '<button class="race-tab '+(ui.racingTab===tab?'active':'')+'" data-race-tab="'+tab+'">'+label+'</button>'}
@@ -71,8 +71,8 @@ function garagePage(ui,r){
   '<div class="race-fleet-visual">'+carArt(car.model_id,car.upgrades,false,paintColor(r,car))+'</div>'+visualProgress(visual)+carStats(car,catalog)+
   '<div class="race-progress-line"><span>🔧 Preparação <b>'+st+'/42</b></span><span>❤️ Condição <b>'+car.condition+'%</b></span></div>'+
   bar(st,42,'upgrade')+'<div class="race-fleet-actions">'+
-  (car.pending_part?'<span class="race-warning">⏳ '+esc(partNames[car.pending_part]||car.pending_part)+' Nv.'+car.pending_level+' · '+clockNode(car.pending_until)+' · Pode correr</span>':'')+
-  (car.equipped?'<span class="race-green">✓ Carro equipado</span>':button('Equipar carro','equip',car.id,false,true))+
+  (car.pending_part?'<span class="race-warning">⏳ '+esc(partNames[car.pending_part]||car.pending_part)+' Nv.'+car.pending_level+' · '+clockNode(car.pending_until)+' · Não pode correr</span>':'')+
+  (car.equipped?'<span class="race-green">✓ Carro equipado</span>':car.pending_part?'<span class="race-warning">🔒 Aguarde terminar para equipar</span>':button('Equipar carro','equip',car.id,false,true))+
   button('Prévia visual e pintura','openPaint',car.id)+'</div></article>'
  }).join('')+'</div>':'<div class="race-empty">🏁 <b>Sua garagem está vazia.</b><p>Escolha o primeiro carro. O dinheiro investido na preparação faz a diferença nas pistas.</p></div>')+
  '<div class="race-section-heading race-gap"><div><small>02 / CONCESSIONÁRIA</small><h3>Escolha seu projeto</h3></div></div>'+
@@ -124,7 +124,7 @@ function optionButtons(items,key,selected){return '<div class="race-choice-grid"
 function racesPage(ui,r){
  const car=r.garage.cars?.find(c=>c.equipped),level=pilotLevel(r.garage.profile?.xp),tuning=racingTuning(car)
  const chosenTier=(r.catalog.tiers||[]).find(t=>t.id===ui.racingTier)||r.catalog.tiers?.[0]
- const able=Boolean(car&&Number(car.condition)>=35&&tuning>=chosenTier.minTuning&&level>=chosenTier.minDriver)
+ const able=Boolean(car&&!car.pending_part&&Number(car.condition)>=35&&tuning>=chosenTier.minTuning&&level>=chosenTier.minDriver)
  const roster=(ui.data?.group?.roster||[]).filter(m=>m.jid&&m.jid!==ui.data?.identity?.jid)
  return '<div class="race-section-heading"><div><small>03 / PISTAS E DISPUTAS</small><h3>Escolha sua corrida</h3></div><span class="race-subtle">⏱️ Recarga 10 min</span></div>'+
  '<div class="race-panel"><div class="race-panel-header"><h4>🏁 Modo carreira</h4><span>Piloto Nv.'+level+' • '+tuning+'/42</span></div>'+
@@ -133,7 +133,7 @@ function racesPage(ui,r){
  '<div class="race-mini-title">2. Escolha a pista</div>'+optionButtons(r.catalog.tracks||[],'track',ui.racingTrack)+
  '<div class="race-mini-title">3. Estilo de pilotagem</div>'+optionButtons(r.catalog.strategies||[],'strategy',ui.racingStrategy)+
  (!car?'<p class="race-warning">Você precisa comprar e equipar um carro antes de correr.</p>':car.condition<35?'<p class="race-warning">Repare seu carro: a condição está abaixo de 35%.</p>':'')+
- (car?.pending_part?'<p class="race-subtle">🔧 Melhoria em andamento · '+clockNode(car.pending_until)+' · Você pode correr com os atributos atuais.</p>':'')+
+ (car?.pending_part?'<p class="race-warning">🔒 Carro na oficina até '+clockNode(car.pending_until)+'. Equipe outro carro pronto na Garagem para correr.</p>':'')+
  '<button class="race-start" type="button" data-race-act="solo" '+(able?'':'disabled')+'>🏁 INICIAR CORRIDA <span>'+brl(chosenTier?.prize||0)+' em caso de vitória</span></button></div>'+
  '<div class="race-panel race-pvp"><div class="race-panel-header"><h4>⚔️ Desafie outro piloto</h4><span>Sem aposta</span></div>'+
  '<p>Corridas PvP usam os carros reais de cada jogador. Os dois recebem XP e desgaste. A classificação registra a vitória.</p>'+
