@@ -19,7 +19,7 @@ import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
-import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {classesOnlyRebootEnabled,filterRebootStarterItems} from './reboot-classes-policy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -574,7 +574,8 @@ starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragment
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
 starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 31/10 18h. '+g.short,g.category,0,'legendary']))
 starterItems.push(['insignia_primeiros_conquistadores_20261102','👑 Insígnia dos Primeiros Conquistadores','Relíquia da primeira Guerra de Clãs. +7% dano Boss/Raid, +3 p.p. CRIT Boss/Raid, -2% dano recebido Raid. Sem PvP.','special',0,'event'])
-for (const item of starterItems) {
+// O banco V2 nasce sem itens dos 7 Pecados; nenhuma exclusão em banco legado.
+for (const item of filterRebootStarterItems(starterItems)) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
 VALUES ($1,$2,$3,$4,$5,$6)
