@@ -8,6 +8,7 @@ import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,hero
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 import {formatHeroDailyXpReport} from './hero-daily-xp-report.js'
 import {profileHpLines} from './profile-pvp-hp.js'
+import {heroElement,heroElementLabel} from './hero-elements.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 async function transaction(fn){
@@ -129,6 +130,7 @@ export function formatPlayableHeroCombatSheet(sheet,{pvpHp=null}={}){
   return [
     '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*',
     '🎭 '+sheet.role+' • '+sheet.range,
+    '🧬 Elemento: *'+heroElementLabel(sheet.heroId)+'*',
     '🌟 Nível: *'+sheet.heroLevel+'/100*',
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
     profileHpLines({normalHp:sheet.hp,normalMaxHp:sheet.maxHp,pvpHp:pvpHp?.hp??sheet.hp,pvpMaxHp:pvpHp?.maxHp??sheet.maxHp,origin:origin('maxHp','hp')}),
@@ -149,6 +151,7 @@ export function formatPlayableHeroBaseSheet(sheet){
   return [
     '🌈⚔️ *STATUS BASE — '+sheet.name.toUpperCase()+'*',
     '🎭 '+sheet.role+' • '+sheet.range,
+    '🧬 Elemento: *'+heroElementLabel(sheet.heroId)+'*',
     '🌟 Nível: *'+sheet.heroLevel+'/100*',
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
     '❤️ HP: *'+heroNumbers(base.maxHp)+'*',
@@ -208,7 +211,7 @@ export async function listPlayableHeroes(jid){
   return PECADOS_HEROES.map(h=>{
     const pet=owned.rows.find(p=>p.species===h.species)
     const masteryXp=Number(mastery.rows.find(p=>p.hero_species===h.species)?.xp||0)
-    return {id:h.species,name:h.name,owned:Boolean(pet),petLevel:Number(pet?.level||0),petXp:Number(pet?.xp||0),
+    return {id:h.species,name:h.name,element:heroElement(h.species),owned:Boolean(pet),petLevel:Number(pet?.level||0),petXp:Number(pet?.xp||0),
       copies:Number(pet?.copies||0),masteryXp,masteryStage:Math.max(1,Number(mastery.rows.find(p=>p.hero_species===h.species)?.stage||1)),
       active:h.species===active&&Boolean(pet)}
   })
@@ -399,6 +402,18 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(['elemento','elementos'].includes(action)){
+    const all=await listPlayableHeroes(sender);
+    const active=all.find(h=>h.active);
+    const rows=all.map(h=>'• '+heroElementLabel(h.id)+' — *'+h.name+'*'+(h.active?' (ATIVO)':'')).join('\n');
+    await reply('🧬 *ELEMENTOS DOS SETE PECADOS*\n\n'+rows+
+      '\n\n⚔️ Seu elemento atual: *'+(active?heroElementLabel(active.id):'⚪ Neutro (classe)')+'*.'+
+      '\n🔁 Troque com *!heroi usar ban* ou outro Pecado já conquistado.'+
+      '\n🔥 Fogo > 🌪️ Vento > 💧 Água > 🔥 Fogo.'+
+      '\n☀️ Luz e 🌑 Escuridão são rivais.'+
+      '\n🧪 Afinidades cadastradas; bônus de combate ainda desativados até homologação.');
+    return true;
+  }
   if(action==='xp'){
     const raw=String(args[1]||'').trim().toLowerCase();
     const selected=raw?findHero(raw):null;
@@ -496,7 +511,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     await reply('🌈⚔️ *'+hero.name.toUpperCase()+' — HABILIDADES*\n'+
       (info?.owned?'✅ Desbloqueado • Nv.'+info.petLevel+'/100 • Maestria '+info.masteryStage+'/5 ('+info.masteryXp+' XP)':
         '🔒 Você ainda não desbloqueou este personagem.')+'\n\n'+
-      '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n\n'+
+      '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n🧬 *Elemento:* '+heroElementLabel(hero.species)+'\n\n'+
       '1️⃣ *Passiva — Maestria I:* '+guide.passive+'\n'+
       '2️⃣ *Especial — Maestria II (500 XP + R$ 2 mi):* '+guide.special+'\n'+
       '3️⃣ *Suprema — Maestria III (1.500 XP + R$ 5 mi):* '+guide.ultimate+'\n'+
@@ -510,7 +525,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!action||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
     const active=list.find(h=>h.active)
-    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Nv.${h.petLevel}/100 • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
+    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Nv.${h.petLevel}/100 • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill} • ${heroElementLabel(h.id)}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
       '👉 *!heroi xp* (farm de hoje) • *!heroi atributos* • *!heroi comparar paladin* • *!heroi evoluir* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
@@ -527,6 +542,6 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!hero){await reply('❌ Herói não encontrado. Use *!heroi* para consultar a coleção.');return true}
   const saved=await setPlayableHeroMode(sender,hero.species)
   await reply(saved.unchanged?'⚔️ '+hero.name+' já é seu combatente.':
-    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle agora luta em PvP, Boss e Raid no lugar da sua classe, sem apagar seu Despertar nem os pets comuns.\nVeja o HP, ATK, DEF e VEL com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
+    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle agora luta em PvP, Boss e Raid no lugar da sua classe, sem apagar seu Despertar nem os pets comuns.\nVeja o HP, ATK, DEF e VEL com *!heroi atributos*.\nUse *!heroi classe* para voltar.\n🧬 Elemento: *'+heroElementLabel(hero.species)+'* (sem bônus ativo).')
   return true
 }
