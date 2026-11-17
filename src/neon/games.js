@@ -11,6 +11,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
 import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
+import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -777,8 +778,9 @@ const RAID_CONFIGS=[
   {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level)&&raidEnabledInReboot(r))||null
+const raidEffectiveConfig=level=>candidateRaidConfig(raidConfig(level))
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
-export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
+export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...candidateRaidConfig(r),durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
@@ -843,7 +845,7 @@ export async function getRaidStatus(chat,level=null){
 }
 
 export async function createRaid(chat,host,name='Jogador',level=10){
-  const cfg=raidConfig(level)
+  const cfg=raidEffectiveConfig(level)
   if(!cfg) throw new Error(classesOnlyRebootEnabled()
     ?'Raid indisponível na nova temporada. Consulte !raid para os níveis válidos.'
     :'Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
@@ -905,11 +907,11 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const gameType=s.gameType
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const requiredRaidLevel=Number(raidConfig(s.level)?.minLevel||s.level)
+    const requiredRaidLevel=Number(raidEffectiveConfig(s.level)?.minLevel||s.level)
     if(Number(u?.level||1)<requiredRaidLevel) throw new Error(`Essa Raid exige nível ${requiredRaidLevel}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=$1 FOR UPDATE OF s',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     let autoKeyPurchased=false
     const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,cfg.keyId])).rows[0]
@@ -1167,12 +1169,14 @@ export async function startRaid(chat,host,level=null,options={}){
     }
     if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala expirou. Abra outra Raid.')
     const ids=Object.keys(s.players||{})
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     // Todas as Raids podem ser iniciadas solo. O tempo, HP e ATK da Raid
     // continuam sendo o desafio; entrar com mais jogadores segue opcional.
     const minPlayers=1
     if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos 1 jogador.`)
+    // V2: a Raid 70 exige cooperação. Validar antes de debitar chaves, buffs ou poções.
+    assertRaid70V2Start({level:cfg.level,partySize:ids.length,mode:loteAttemptId?'lote':'manual'})
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=ANY($1::text[]) FOR UPDATE OF s',[ids])).rows
@@ -1611,7 +1615,7 @@ export async function raidRound(chat,level){
     const s=rooms.find(r=>r.status==='active'&&(!level||Number(r.level)===Number(level)))
     if(!s) return {reason:'inactive'}
     const gameType=s.gameType
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     const roundNow=Date.now()
     const lastRoundAt=Number(s.lastRoundAt||0)
@@ -1804,6 +1808,15 @@ export async function raidRound(chat,level){
         player.heroLastHp=player.hp;
         player.heroHpRemainder=settled.remainder;
         await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[rebased.storedHp,player.jid]);
+      }
+      // Impede que um único jogador carregue dois participantes inativos na Raid 70.
+      // Nenhum saque é feito se menos de dois contribuírem pelo menos 5% de dano.
+      const cooperation=raid70V2Contributors(s.players,{level:cfg.level})
+      if(!cooperation.valid){
+        s.status='failed';s.failReason='insufficient_cooperation'
+        await saveGame(c,chat,gameType,s)
+        return {failed:true,reason:'insufficient_cooperation',config:cfg,raidId:s.startedAt,
+          round:s.round,hp:0,maxHp:s.maxHp,events}
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
