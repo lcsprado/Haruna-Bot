@@ -595,6 +595,7 @@ let bossAutoWatchdogBusy=false
 let bossAutoReply=null
 let legacyWeeklyBossRecoveredId=null
 async function recoverPecadosParticipantsStoppedByOldPhase(){
+if(classesOnlyRebootEnabled())return;
 const now=Date.now()
 if(now<Date.parse('2026-10-11T18:40:00-03:00')||
 now>=Date.parse('2026-10-11T20:40:00-03:00')) return
@@ -3603,6 +3604,7 @@ setePecadosBroadcaster=sendEventToGroups
 let setePecadosCorrectionBusy=false
 let setePecadosCorrectionDone=false
 async function resendCorrectedSetePecados25(){
+if(classesOnlyRebootEnabled())return;
 if(setePecadosCorrectionBusy||setePecadosCorrectionDone||trevoHealth.whatsapp!=='open')return
 setePecadosCorrectionBusy=true
 try{
@@ -3637,10 +3639,11 @@ try{
 }catch(err){console.error('[SETE PECADOS CORRECAO 25/10]',err?.stack||err)}
 finally{setePecadosCorrectionBusy=false}
 }
-const setePecadosCorrectionTimer=setInterval(()=>{void resendCorrectedSetePecados25()},30000)
+const setePecadosCorrectionTimer=classesOnlyRebootEnabled()?null:setInterval(()=>{void resendCorrectedSetePecados25()},30000)
 setePecadosCorrectionTimer.unref?.()
-setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
+if(!classesOnlyRebootEnabled())setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
 async function announceNextPecado(){
+if(classesOnlyRebootEnabled())return;
 if(trevoHealth.whatsapp!=='open') return
 const current=(await db.query(
 "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
@@ -3841,7 +3844,7 @@ for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,key,mess
 goldTimer.unref?.()
 }
 let setePecadosBusy=false
-if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
+if(!classesOnlyRebootEnabled()&&Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
 setePecadosScheduler=setInterval(async()=>{
 if(eventSchedulerClosed||setePecadosBusy)return
 const now=Date.now()
