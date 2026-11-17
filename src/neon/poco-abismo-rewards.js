@@ -4,7 +4,8 @@
 // pode ser enviada se a gravação do estado/recorde falhar.
 import {randomInt,createHash} from 'node:crypto'
 import {POCO_SEASON,pocoCashForFloor,pocoRollDrop} from './poco-abismo-rules.js'
-import {POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
+import {POCO_ABISMO_GEAR_IDS,POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
+const POCO_EXPEDITION_GEAR_IDS=POCO_ABISMO_GEAR_IDS
 import {syncEffectiveGear} from './equipment-star-logic.js'
 export const POCO_BOX_EPIC_ID='caixa_epica_abissal_20261116'
 export const POCO_BOX_LEGEND_ID='caixa_lendaria_abissal_20261116'
@@ -132,6 +133,18 @@ export const POCO_EXPEDITION_STONES=Object.freeze([
  'pedra_furia_alpha','pedra_forca_alpha','pedra_fortaleza_alpha',
  'pedra_agilidade_alpha','pedra_precisao_alpha'
 ]);
+// Se uma instalacao antiga ainda nao tiver catalogado as pedras, registra
+// somente os IDs ja suportados pelo sistema de encantamento.
+export async function pocoEnsureExpeditionStones(db){
+ const names=['Pedra da Fúria Alpha','Pedra da Força Alpha','Pedra da Fortaleza Alpha',
+  'Pedra da Agilidade Alpha','Pedra da Precisão Alpha'];
+ for(let i=0;i<POCO_EXPEDITION_STONES.length;i++){
+  await db.query(
+   "INSERT INTO items(id,name,description,category,price,sellable,stackable,rarity) "+
+   "VALUES($1,$2,$3,'special',0,FALSE,TRUE,'rare') ON CONFLICT(id) DO NOTHING",
+   [POCO_EXPEDITION_STONES[i],names[i],'Pedra de encantamento Alpha: material para aprimorar equipamento.'])
+ }
+}
 export async function pocoClaimExpeditionDropInTx(c,jid,floor,random=()=>randomInt(0,10000)/10000){
  if(!Number.isInteger(floor)||floor<1||floor>30)throw new RangeError('Andar sem saque')
  return claim(c,jid,'expedition:loot:'+floor,async()=>{
@@ -142,13 +155,7 @@ export async function pocoClaimExpeditionDropInTx(c,jid,floor,random=()=>randomI
   if(roll<80){
    // 0,8% por andar para qualquer uma das cinco peças exclusivas.
    const index=Math.min(4,Math.floor(roll/16));
-   return {...await grantExclusive(c,jid,POCO_ABISMO_GEAR_ID_SET.has(
-     ['poco_lamina_abismo_20261116','poco_armadura_eclipse_20261116',
-      'poco_elmo_soberano_20261116','poco_escudo_eternidade_20261116',
-      'poco_botas_vazio_20261116'][index])?
-     ['poco_lamina_abismo_20261116','poco_armadura_eclipse_20261116',
-      'poco_elmo_soberano_20261116','poco_escudo_eternidade_20261116',
-      'poco_botas_vazio_20261116'][index]:'',key),floor};
+   return {...await grantExclusive(c,jid,POCO_EXPEDITION_GEAR_IDS[index],key),floor};
   }
   if(roll<2280){
    // 22% para uma pedra, cada modelo com chance igual.
