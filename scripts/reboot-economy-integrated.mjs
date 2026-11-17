@@ -208,6 +208,46 @@ export function simulateIntegrated(profile,days,inputs,{
     accountingBalanced:generated-consumableSpent===cash+capitalPaid,
     purchases:picks};
 }
+
+export function assessIntegratedRisks(rows){
+ const thresholds=Object.freeze({
+  maxSuggestedWealthRatio:6,
+  maxSuggestedBusinessCashShare:.70,
+  minSuggestedLiquidityFraction:.03
+ });
+ const checks=C4C_WINDOWS.map(days=>{
+  const day=rows.filter(x=>x.days===days);
+  if(day.length!==PROFILES.length)throw Error('Perfil ausente na auditoria de risco');
+  const sorted=[...day].sort((a,b)=>a.invested.netWorthAtResaleAssumption-
+    b.invested.netWorthAtResaleAssumption);
+  const smallest=sorted[0],largest=sorted.at(-1);
+  const wealthRatio=largest.invested.netWorthAtResaleAssumption/
+    Math.max(1,smallest.invested.netWorthAtResaleAssumption);
+  const greatestBusinessShare=Math.max(...day.map(row=>{
+    const x=row.invested;
+    const earned=x.workNet+x.missionNet+x.manualNet+x.cltNet+x.businessNet;
+    return x.businessNet/Math.max(1,earned);
+  }));
+  const leastLiquid=[...day].sort((a,b)=>
+    a.invested.cash/Math.max(1,a.invested.netWorthAtResaleAssumption)-
+    b.invested.cash/Math.max(1,b.invested.netWorthAtResaleAssumption))[0];
+  const leastLiquidityFraction=leastLiquid.invested.cash/
+    Math.max(1,leastLiquid.invested.netWorthAtResaleAssumption);
+  const warnings=[];
+  if(wealthRatio>thresholds.maxSuggestedWealthRatio)warnings.push('wealth_inequality');
+  if(greatestBusinessShare>thresholds.maxSuggestedBusinessCashShare)warnings.push('business_dominance');
+  if(leastLiquidityFraction<thresholds.minSuggestedLiquidityFraction)warnings.push('low_liquidity');
+  return {days,wealthRatio:Number(wealthRatio.toFixed(2)),
+    lowestWealthProfile:smallest.profile,highestWealthProfile:largest.profile,
+    largestBusinessIncomeShare:Number(greatestBusinessShare.toFixed(3)),
+    leastLiquidProfile:leastLiquid.profile,
+    minimumLiquidityShare:Number(leastLiquidityFraction.toFixed(4)),
+    warnings};
+ });
+ return {thresholds,checks,
+  warning:'Limiares de análise propostos, NÃO política aplicada e NÃO garantia de equilíbrio.'};
+}
+
 export function integratedEconomyReport(progressionSource,dbSource){
   const inputs=buildIntegratedInputs(progressionSource,dbSource);
   const rows=PROFILES.flatMap(profile=>C4C_WINDOWS.map(days=>({
@@ -224,7 +264,8 @@ export function integratedEconomyReport(progressionSource,dbSource){
     eventsIncluded:false,raidAndBossIncluded:false,gtIncluded:false,
     manualCarFleetMaxModeledPerCommand:1,
     driverAndManualSameVehicleDoubleCounted:false,
-    plannedInvestmentSequence:INVESTMENT_SEQUENCE};
+    plannedInvestmentSequence:INVESTMENT_SEQUENCE,
+    riskSignals:assessIntegratedRisks(rows)};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');

@@ -23,3 +23,20 @@ O simulador lê `src/neon/progression.js`, `src/neon/db.js` e as políticas pura
 Não concluir que a economia está equilibrada apenas porque uma planilha fecha: ainda é preciso simular o teto real de **dois veículos por comando manual**, três motoristas em cada modalidade, preços de carros novos, ofertas do mercado e eventos. Deve ser construído um cenário adverso de quatro intensivos com chefes/GT/Poço e simulação de ganho individual versus custos de jogo, antes da homologação em ambiente isolado.
 
 Nenhuma alteração de carteira de jogadores, compra, revenda, limites CLT ou catálogo foi aplicada aqui. Só teste e simulação na branch.
+
+## Saída verificada da simulação C4c (GitHub Actions 17/11/2026)
+Patrimônio estimado = dinheiro disponível + investimento em negócios contabilizado a custo + 70% do custo de carros e motos (não inclui o custo irrecuperável de motoristas). Não é saldo real nem patrimônio realizável assegurado.
+
+| Dia | Casual | Regular | Dedicado | Intensivo |
+| --- | ---: | ---: | ---: | ---: |
+| 7 | R$ 26.102 | R$ 44.045 | R$ 79.226 | R$ 110.717 |
+| 30 | R$ 126.836 | R$ 295.403 | R$ 658.985 | R$ 1.131.903 |
+| 60 | R$ 397.245 | R$ 1.316.788 | R$ 3.016.057 | R$ 4.613.207 |
+| 120 | R$ 2.592.534 | R$ 7.927.211 | R$ 18.116.277 | R$ 25.205.674 |
+
+### Diagnóstico — os testes passaram, mas o balanceamento NÃO
+- Aos 60 dias a diferença patrimonial entre intensivo e casual é superior a 11 vezes. Aos 120 dias permanece perto de 10 vezes. Esses valores não devem ser tratados como metas desejáveis sem consenso explícito.
+- O intensivo gera cerca de **R$ 21.772.884 em lucros líquidos de negócios** em 120 dias, dos R$ 25.205.674 de patrimônio final. A carteira do regular cai para cerca de **R$ 8.162**, embora seu patrimônio estimado supere R$ 7,9 milhões. Excesso de investimento pode impedir chaves/consumíveis e manter jogadores ricos sem liquidez.
+- A simulação assume pagamento por apenas um veículo manual por comando e não inclui eventos de Boss, GT, Poço, Raids e premiações de caixas. A economia real da V2 pode crescer muito mais se a combinação de fontes não tiver limites.
+- O script agora calcula alertas para desigualdade de patrimônio acima de 6×, participação de negócios acima de 70% na renda do período e liquidez abaixo de 3%. Esses limites são **critérios candidatos para revisão**, não política do jogo nem bloqueio de usuário.
+- Recomendação: na Fase C4d, testar cenários adversos com dois veículos remunerados por comando, 3 funcionários por modalidade e os orçamentos de evento V2. Reavaliar duração de coleta de negócios, nível de entrada dos investimentos caros e reserva mínima para custos de Raids antes de publicar.

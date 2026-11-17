@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {C4C_WINDOWS,PLAYER_BEHAVIOR,C4C_ASSUMPTIONS,INVESTMENT_SEQUENCE,
- extractCareerRanks,buildIntegratedInputs,simulateIntegrated,integratedEconomyReport}
+ extractCareerRanks,buildIntegratedInputs,simulateIntegrated,integratedEconomyReport,
+ assessIntegratedRisks}
  from '../scripts/reboot-economy-integrated.mjs';
 import {PROFILES} from '../scripts/reboot-economy-sim.mjs';
 const prog=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');
@@ -93,4 +94,19 @@ test('código do simulador não possui conexão, transações ou credenciais',()
  assert.doesNotMatch(script,/DATABASE_URL|db\.query|client\.query|INSERT INTO|DELETE FROM|fetch\(|https?:\/\//);
  assert.equal(C4C_ASSUMPTIONS.consumptionPerActiveDay,1000);
  assert.ok(PLAYER_BEHAVIOR.casual.work<PLAYER_BEHAVIOR.intensivo.work);
+});
+
+test('alertas de concentração e liquidez não confundem fechar contas com economia equilibrada',()=>{
+ const report=integratedEconomyReport(prog,db);
+ assert.equal(report.riskSignals.checks.length,4);
+ const sixty=report.riskSignals.checks.find(x=>x.days===60);
+ const oneTwenty=report.riskSignals.checks.find(x=>x.days===120);
+ assert.ok(sixty.wealthRatio>6);
+ assert.ok(oneTwenty.wealthRatio>6);
+ assert.ok(oneTwenty.largestBusinessIncomeShare>.7);
+ assert.ok(oneTwenty.minimumLiquidityShare<.03);
+ assert.ok(oneTwenty.warnings.includes('wealth_inequality'));
+ assert.ok(oneTwenty.warnings.includes('business_dominance'));
+ assert.ok(oneTwenty.warnings.includes('low_liquidity'));
+ assert.match(report.riskSignals.warning,/NÃO política aplicada/);
 });
