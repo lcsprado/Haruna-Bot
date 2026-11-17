@@ -1,5 +1,6 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {classesOnlyRebootEnabled,assertRebootHeroSelection,REBOOT_HERO_MESSAGE} from './reboot-classes-policy.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
 import {classComparisonBonuses,classComparisonLevel} from './hero-class-comparison.js'
 import {formatActiveClassBaseStatus,formatSavedClassStatus} from './character-base-status-format.js'
@@ -52,11 +53,15 @@ export async function initPlayableHeroes(){
     created_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,award_key)
   )`)
+  // Schema legado mantido temporariamente para segurança dos demais módulos.
+  // Nunca migrar pets da collab durante o boot de uma temporada nova.
+  if(classesOnlyRebootEnabled())return;
   const conversion=await archiveSevenSinsPetAssignments()
   if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
 }
 
 export async function getActivePlayableHero(client,jid){
+  if(classesOnlyRebootEnabled())return null;
   const q=client||db
   const r=await q.query(`
     SELECT m.hero_species FROM player_hero_mode m
@@ -66,6 +71,7 @@ export async function getActivePlayableHero(client,jid){
 }
 
 export async function getPlayableHeroLevel(client,jid,heroId){
+  if(classesOnlyRebootEnabled())return 1;
   if(!playableHero(heroId))return 1
   const {rows}=await (client||db).query(
     'SELECT MAX(level)::int AS level FROM pet_collection WHERE jid=$1 AND species=$2',[jid,heroId])
@@ -73,6 +79,7 @@ export async function getPlayableHeroLevel(client,jid,heroId){
 }
 
 export async function getPlayableHeroMasteryStage(client,jid,heroId){
+  if(classesOnlyRebootEnabled())return 0;
   if(!playableHero(heroId))return 0
   const {rows}=await (client||db).query(
     'SELECT stage FROM player_hero_mastery_unlocks WHERE jid=$1 AND hero_species=$2',[jid,heroId])
@@ -198,6 +205,7 @@ export async function getCharacterBaseStatus(jid){
 }
 
 export async function listPlayableHeroes(jid){
+  if(classesOnlyRebootEnabled())return [];
   await ensureUser(jid)
   const [owned,mode,mastery]=await Promise.all([
     db.query('SELECT species,MAX(level)::int AS level,MAX(xp)::int AS xp,COUNT(*)::int AS copies FROM pet_collection WHERE jid=$1 AND species=ANY($2::text[]) GROUP BY species',[jid,PECADOS_HEROES.map(h=>h.species)]),
@@ -217,6 +225,7 @@ export async function listPlayableHeroes(jid){
 // Consulta historico diario de XP, sem modificar o personagem ou seus limites.
 // Usa a mesma virada de dia em America/Sao_Paulo dos creditos de XP.
 export async function getPlayableHeroDailyXp(jid,heroId=null){
+  if(classesOnlyRebootEnabled())return REBOOT_HERO_MESSAGE;
   const [all,history,player]=await Promise.all([
     listPlayableHeroes(jid),
     db.query(`SELECT hero_species,'nivel'::text AS kind,SUM(xp)::int AS gained,
@@ -246,6 +255,8 @@ export async function getPlayableHeroDailyXp(jid,heroId=null){
 }
 
 export async function setPlayableHeroMode(jid,heroId=null){
+  assertRebootHeroSelection(heroId);
+  if(classesOnlyRebootEnabled())return {unchanged:true,active:null,hero:null};
   await ensureUser(jid)
   const species=heroId==null||heroId==='class'?null:String(heroId||'').trim().toLowerCase()
   if(species&&!playableHero(species))throw new Error('Herói inválido. Use !heroi para ver os sete Pecados.')
@@ -277,6 +288,7 @@ export async function setPlayableHeroMode(jid,heroId=null){
 
 // Crédito independente da maestria, por herói e evento, sem XP de pet comum.
 export async function awardPlayableHeroLevel(client,{jid,heroId,awardKey,xp=55}={}){
+  if(classesOnlyRebootEnabled())return false;
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
   // A trava serializa Boss e Raid concorrentes para o mesmo jogador.
   const player=(await client.query('SELECT jid,level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -307,6 +319,7 @@ export async function awardPlayableHeroLevel(client,{jid,heroId,awardKey,xp=55}=
 }
 
 export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90,specialRaid75=false,progressReport=null}={}){
+  if(classesOnlyRebootEnabled())return false;
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
   // 400 XP/dia normal; até 600 combinados na semana especial da Raid 75.
   // Uma única trava por usuário evita ultrapassar a cota com Raid e Boss simultâneos.
@@ -352,6 +365,7 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90
 
 
 export async function evolvePlayableHeroMastery(jid,heroId){
+  if(classesOnlyRebootEnabled())throw new Error(REBOOT_HERO_MESSAGE);
   if(!playableHero(heroId))throw new Error('Personagem inválido.');
   await ensureUser(jid);
   return transaction(async c=>{
@@ -396,6 +410,10 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     return true;
   }
   if(!['heroi','herois','herói','heroes'].includes(String(cmd||'')))return false
+  if(classesOnlyRebootEnabled()){
+    await reply(REBOOT_HERO_MESSAGE);
+    return true;
+  }
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
