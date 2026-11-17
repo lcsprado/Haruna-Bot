@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs';
 import {
   REBOOT_MODE,REBOOT_CLASS_IDS,REBOOT_HERO_MESSAGE,
   classesOnlyRebootEnabled,eligiblePlayableHero,
-  assertRebootHeroSelection,raidEnabledInReboot,filterRebootRaidCatalog
+  assertRebootHeroSelection,raidEnabledInReboot,filterRebootRaidCatalog,
+  isRebootCollabItemId,filterRebootStarterItems
 } from '../src/neon/reboot-classes-policy.js';
 
 test('modo classes-only exige configuração exata, nunca é ligado acidentalmente',()=>{
@@ -33,6 +34,29 @@ test('Raid 75 ou qualquer Raid marcada como collab é excluída apenas na V2',()
   assert.equal(raidEnabledInReboot({level:75},{enabled:false}),true);
   assert.equal(raidEnabledInReboot(null,{enabled:true}),false);
 });
+test('catálogo inicial exclui somente materiais e equipamentos exclusivos da collab',()=>{
+  const items=[
+    ['espada_eclipse','Espada do Eclipse'],
+    ['pecados_courechouse','Arma de Ban'],
+    ['pecados_gideon','Arma de Diane'],
+    ['chave_raid_75','Chave da collab'],
+    ['insignia_sete_pecados','Relíquia exclusiva'],
+    ['titulo_conquistador_pecados','Título exclusivo'],
+    ['essencia_pecado_ira','Essência exclusiva'],
+    ['fragmento_ascensao_pecados_20261024','Material da collab'],
+    ['chave_raid_70','Chave Raid normal'],
+    ['excalibur','Arma lendária original'],
+    ['armadura_eclipse','Armadura épica original']
+  ];
+  assert.deepEqual(filterRebootStarterItems(items,{enabled:true}).map(x=>x[0]),
+    ['espada_eclipse','chave_raid_70','excalibur','armadura_eclipse']);
+  assert.deepEqual(filterRebootStarterItems(items,{enabled:false}),items);
+  assert.equal(isRebootCollabItemId('pecado_ban'),true);
+  assert.equal(isRebootCollabItemId('escudo_eternidade'),false);
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  assert.match(db,/for \(const item of filterRebootStarterItems\(starterItems\)\)/);
+});
+
 test('fluxos de combate e entrada de herói estão protegidos no modo V2',()=>{
   const contents=Object.fromEntries([
     'playable-heroes.js','games.js','db.js','index.js','game-catalog.js'
