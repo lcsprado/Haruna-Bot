@@ -90,3 +90,16 @@ Confirmado pelo dono: **somente Paladino (`paladin`), Necromante (`necromancer`)
 - Testes de política de classes, dados protegidos e falha fechada em `test/reboot-reset-manifest.test.mjs`.
 - Esse manifesto NÃO gera, executa nem recomenda executar `DELETE`, `TRUNCATE` ou `UPDATE`. Para a V2, a preferência é schema novo com inicialização limpa, não limpar o banco antigo via comandos administrativos.
 - Ações GitHub no PR **não** estão conectadas ao Aiven, Neon, Render, Web ou WhatsApp: somente checkout do código, testes Node e relatórios estáticos sem credenciais.
+
+
+## Marco B1 — bloqueio funcional de heróis (preparação, 17/11)
+- Novo módulo puro `src/neon/reboot-classes-policy.js`. Modo opt-in `ALPHA_REBOOT_MODE=classes_only`, **NÃO ativado**; ausência dessa variável preserva o Alpha Bot 1.x.
+- `playable-heroes.js`: em V2, `getActivePlayableHero` sempre retorna null; `listPlayableHeroes` retorna []; seleção/maestria/XP de hero são bloqueados; `!heroi` avisa o jogador para usar a classe; `!personagem status` continua funcionando.
+- `db.js`: o PvP ignora a consulta `player_hero_mode` no modo V2, prevenindo combatentes antigos de participar mesmo que uma tabela legada tenha resquícios.
+- `games.js`: `raidConfig` rejeita Raid 75 e outras marcadas `collab`; `getRaidCatalog` e `getRaidStatuses` ocultam Raid 75; `joinRaid` não aceita 75.
+- `index.js`: `!7pecados`, `!setepecados`, `!pecados7` deixam de executar abertura de caixas e compensações históricas em V2.
+- `game-catalog.js`: especialidades dos heróis da collab não são apresentadas como pets em V2.
+- `web-api.js` reutiliza `listPlayableHeroes`, `getPlayableHeroCombatSheet` e `setPlayableHeroMode`, portanto os heróis deixam de aparecer ou ser selecionáveis no Web no modo V2.
+- Testes: `test/reboot-classes-policy.test.mjs`; CI também executa regressão da versão antiga, com a variável **desativada**, para não prejudicar o funcionamento atual.
+- IMPORTANTE: essa é somente a camada de **bloqueio funcional**, não remoção física definitiva do código/itens. Ainda faltam catálogos/seed do banco, loot, lojas, forjas, imagens, eventos/agendamentos e testes integrados em base limpa. Não descrever a fase B como concluída.
+- Jamais definir `ALPHA_REBOOT_MODE` em Render/Vercel/Aiven reais enquanto PR for rascunho. A configuração somente será ligada em ambiente novo isolado, com WhatsApp e schedulers desligados.
