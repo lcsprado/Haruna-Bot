@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {
  GT_TRACK_IDS,GT_TIME,GT_GROUP,GT_WEEKLY_PRIZES,GT_MIN_DRIVERS,
  gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,
- gtPoints,gtLeaderboard,gtRunHeats,gtReplayWithEntrant,gtPartialStandings,gtRaceReward,
+ gtPoints,gtLeaderboard,gtRunHeats,gtReplayWithEntrant,gtRetractPlayerXp,gtPartialStandings,gtRaceReward,
  GT_RACE_XP_PERCENTS,GT_RACE_CASH_PRIZES,GT_RACE_PILOT_XP
 } from '../src/neon/gt-alpha-rules.js'
 
@@ -182,4 +182,40 @@ test('reparação de 16-11 atômica, não duplica prêmios e preserva histórico
  assert.match(src,/AND cash\+\$1>=0/)
  assert.match(src,/AND exp\+\$1>=0/)
  assert.match(src,/await c\.query\('ROLLBACK'\)/)
+})
+
+
+test('retirada de XP indevido volta níveis preservando progresso legítimo posterior',()=>{
+ assert.deepEqual(gtRetractPlayerXp(579,41838,103860),
+  {level:577,exp:53478,levelsLost:2})
+ assert.deepEqual(gtRetractPlayerXp(577,10000,0),
+  {level:577,exp:10000,levelsLost:0})
+ assert.deepEqual(gtRetractPlayerXp(3,300,500),
+  {level:2,exp:0,levelsLost:1})
+ assert.throws(()=>gtRetractPlayerXp(1,50,150),/insuficiente/)
+ assert.throws(()=>gtRetractPlayerXp(579,-1,103860),/inválidos/)
+ assert.throws(()=>gtRetractPlayerXp(579,0,-2),/inválidos/)
+})
+
+test('reversão pontual de 16/11 é transacional, idempotente e recupera a tabela original',()=>{
+ const src=source('gt-alpha-event.js')
+ assert.match(src,/async function restoreGtOriginal20261116\(\)/)
+ assert.match(src,/if\(preview\?\.correction\?\.reversal\?\.id===mark/)
+ assert.match(src,/if\(s\.correction\?\.reversal\?\.id===mark\)return/)
+ assert.match(src,/oldResults|const original=s\.correction\.originalResults/)
+ assert.match(src,/const originalParticipants=s\.correction\.originalParticipants/)
+ assert.match(src,/gtRetractPlayerXp\(user\.level,user\.exp,delta\.playerXp\)/)
+ assert.match(src,/grantExpInTransaction\(c,p\.jid,-delta\.playerXp/)
+ assert.match(src,/UPDATE racing_cars_alpha SET condition=condition\+\$1,races=races-3,wins=wins-\$2/)
+ assert.match(src,/gt_alpha_replay_reversal/)
+ assert.match(src,/UPDATE gt_sponsor_contracts_alpha SET progress=1,last_day=\$1,completed_at=0,reward_used_at=0/)
+ assert.match(src,/UPDATE gt_sponsor_contracts_alpha SET progress=1,last_day=\$1 WHERE/)
+ assert.match(src,/s\.results=JSON\.parse\(JSON\.stringify\(original\)\)/)
+ assert.match(src,/s\.participants=JSON\.parse\(JSON\.stringify\(originalParticipants\)\)/)
+ assert.match(src,/s\.correction\.reversal=\{/)
+ assert.match(src,/addNotice\(s,'original-restored:2026-11-16'/)
+ assert.match(src,/try\{await restoreGtOriginal20261116\(\)\}/)
+ assert.match(src,/await c\.query\('ROLLBACK'\)/)
+ // Não altera a rotina do GT das novas datas nem anula a semana já disputada.
+ assert.match(src,/const table=closed\?\.standings\|\|sumWeek\(await completedDays\(week\)\)/)
 })
