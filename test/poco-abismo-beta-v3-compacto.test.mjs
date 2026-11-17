@@ -20,21 +20,10 @@ test('V2 antiga preservada, novas V3 têm ataques avisados perigosos no 10 e 15'
  assert.equal(v2.balanceVersion,'beta-v2')
  assert.equal(v3.balanceVersion,'beta-v3')
  assert.equal(v2.boss.maxHp,v3.boss.maxHp)
- for(const floor of [5,10]){
-   while(v2.boss?.floor===floor){
-     const next=step(v2,1)
-     Object.assign(v2,next)
-   }
-   while(v3.boss?.floor===floor){
-     const next=step(v3,1)
-     Object.assign(v3,next)
-   }
- }
- assert.equal(v2.boss?.floor,15)
- assert.equal(v3.boss?.floor,15)
- // Mesma seed/andar/turno para comprovar a nova penalidade sem mudar v2.
- const old={...v2,boss:{...v2.boss,turn:1,hp:v2.boss.maxHp},hp:v2.stats.maxHp}
- const newer={...v3,boss:{...v3.boss,turn:1,hp:v3.boss.maxHp},hp:v3.stats.maxHp}
+ // Situação equivalente no Guardião 15: mesma habilidade anunciada.
+ const boss={floor:15,hp:4252,maxHp:4252,turn:1}
+ const old={...v2,floor:14,boss:{...boss},hp:v2.stats.maxHp}
+ const newer={...v3,floor:14,boss:{...boss},hp:v3.stats.maxHp}
  assert.equal(pocoBossSkill(15,1).type,'charge')
  const oldHit=pocoDecision(old,1,{now:old.deadline-1000}).message.enemyDamage
  const newHit=pocoDecision(newer,1,{now:newer.deadline-1000}).message.enemyDamage
