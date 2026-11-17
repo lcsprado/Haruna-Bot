@@ -110,6 +110,14 @@ test('Eventos dos Pecados não retomam cron, mensagens ou boss antigos na V2',()
   assert.match(wa,/if\(!classesOnlyRebootEnabled\(\)&&Date\.now\(\)<=PECADOS_EDITIONS/);
 });
 
+test('XP de classes, perfil e Boss ignoram heróis antigos preservados em banco ou sessão',()=>{
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  assert.match(db,/WHERE p\.jid=\$1 AND \(\$2::boolean OR NOT EXISTS/);
+  assert.match(db,/FOR UPDATE OF p`,\[jid,classesOnlyRebootEnabled\(\)\]/);
+  assert.match(db,/const activeHeroMode=classesOnlyRebootEnabled\(\)\?\{rows:\[\]\}:await db\.query/);
+  assert.match(games,/const heroId=eligiblePlayableHero\(Object\.hasOwn\(existingParticipant,'heroId'\)/);
+});
 test('fluxos de combate e entrada de herói estão protegidos no modo V2',()=>{
   const contents=Object.fromEntries([
     'playable-heroes.js','games.js','db.js','index.js','game-catalog.js'
