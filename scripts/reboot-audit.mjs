@@ -10,7 +10,7 @@ const SCAN_DIRS=['src/neon','web'];
 const EXTENSIONS=new Set(['.js','.mjs','.json','.sql','.html','.css']);
 const COLLAB=/collab|pecado|seven[\s_-]*sins|essencia_pecado|fragmento_ascensao_pecados/i;
 const ECONOMY=/\b(?:profitHour|cashPool|rewardCash|pocoCashForFloor|cashNetProfitBasisPoints|prize(?:s)?|reward(?:s)?Cash|levelReward|pay(?:out)?|credit|grantExpInTransaction|cash_bonus)\b/i;
-const SQL_TABLE=/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:"?public"?\.)?)("?\w+"?)/gi;
+const SQL_TABLE=/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:"?public"?\.)?)(?!IF\b|NOT\b|EXISTS\b)("?\w+"?)/gi;
 
 export function analyzeRebootSource(source,path){
   const collab=[],economy=[],tables=[];
