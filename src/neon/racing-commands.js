@@ -59,7 +59,7 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
    const time=new Date(r.endsAt*1000).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
    await send('🔧 *INSTALAÇÃO INICIADA!*\n🚘 '+r.model+'\n'+r.part.name+' → Nv.'+r.next.level+' (*'+r.next.name+'*)'+
     '\n💸 '+raceMoney(r.cost)+(r.discount?' • 🎟️ Patrocinador: -'+raceMoney(r.discount):'')+'\n⏳ Termina às *'+time+'* (Brasília).'+
-    '\n⚠️ O carro não pode correr enquanto estiver na oficina. O tempo fica salvo mesmo se o bot reiniciar.')
+    '\n🏁 Você pode correr normalmente durante a instalação, usando os atributos já concluídos. O tempo continua contando mesmo se o bot reiniciar.')
    return true
   }
   if(cmd==='repararcarro'){
