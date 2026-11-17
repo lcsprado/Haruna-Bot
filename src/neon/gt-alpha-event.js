@@ -3,7 +3,7 @@ import {db,grantExpInTransaction} from './db.js'
 import {racingDriverLevel,racingTuning,racingModel,RACING_MIN_CONDITION} from './racing-rules.js'
 import {
  GT_GROUP,GT_MIN_DRIVERS,GT_DAILY_WEAR,GT_WEEKLY_PRIZES,
- gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,
+ gtBrazilDay,gtWeekStart,gtWeekEnd,gtDayStartMs,gtDayIsSunday,GT_FIRST_SEASON_END,gtEffectiveWeeklyPrizes,
  gtRunHeats,gtReplayWithEntrant,gtRetractPlayerXp,gtCleanName,gtFormatCash,gtLeaderboard,gtTrackProgram,GT_WEATHER_LABELS,gtPartialStandings,gtRaceReward
 } from './gt-alpha-rules.js'
 import {initGtSponsors,gtSponsorProgressInTx,gtSponsorChoose,gtSponsorText,gtSponsorConfirmedText} from './gt-alpha-sponsors.js'
@@ -528,7 +528,7 @@ async function settleWeek(sunday){
   if(s.phase==='completed')return
   const table=sumWeek(await completedDays(week,c)),paid=[]
   if(table.length>=GT_MIN_DRIVERS)for(const [i,p] of table.slice(0,4).entries()){
-   const amount=GT_WEEKLY_PRIZES[i]
+   const amount=gtEffectiveWeeklyPrizes()[i]
    const r=await c.query('UPDATE wallets SET cash=cash+$1,updated_at=$2 WHERE jid=$3',[amount,nowSec(),p.jid])
    if(r.rowCount!==1)throw Error('Carteira não encontrada para premiação GT')
    await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'gt_alpha_weekly',$3)",[p.jid,amount,weekKey(week)+':place:'+String(i+1)])
