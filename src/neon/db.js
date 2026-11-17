@@ -32,6 +32,7 @@ import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, isSelectablePlayer
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
+import {careerWorkGross,careerWorkXp} from './reboot-career-policy.js'
 import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
 import {ascensionAwardedPlayerXp} from './ascension-week-20261102.js'
 const { Pool, Client } = pg
@@ -1150,9 +1151,9 @@ if(!cd.ok) return cd
 await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
 const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
-const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
-const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
+const moneyMultiplier=classesOnlyRebootEnabled()?1:(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
+const xpMultiplier=classesOnlyRebootEnabled()?1:await getDoubleEventMultiplier(client,'xp')
+const xpGain=careerWorkXp(Math.random(),{legacyXpMultiplier:xpMultiplier})
 const newXp=oldXp+xpGain, newRank=careerRank(newXp)
 const playerRow=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
 const level=Math.max(1,Number(playerRow?.level)||1)
@@ -1160,11 +1161,11 @@ const payCap=level<=20?1500:level<=50?3000:level<=100?5000:level<=150?7500:level
 // Preserve o salário anterior dos cargos até Gerente; Diretor/CEO evoluem proporcionalmente.
 let event=null, factor=1
 const roll=Math.random()
-if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
-else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
+if(roll<.08){event=classesOnlyRebootEnabled()?'🌟 Excelente desempenho! Bônus de 15%.':'🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
+else if(roll<.15){event=classesOnlyRebootEnabled()?'⏰ Hora extra! Bônus de 15%.':'⏰ Hora extra! Bônus de 25%.';factor=1.25}
 else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-const gross=careerGrossFromLevelCap(payCap,newRank.mult,{performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
-const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
+const gross=careerWorkGross({level,legacyPayCap:payCap,careerMultiplier:newRank.mult,performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
+const taxRate=classesOnlyRebootEnabled()?10:Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
 const tax=Math.floor(gross*(taxRate/100))
 const amount=gross-tax
 await client.query('UPDATE careers SET career_xp=$1,total_shifts=total_shifts+1,updated_at='+nowSql+' WHERE jid=$2',[newXp,jid])
@@ -1174,7 +1175,7 @@ await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) V
 if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
 const promoted=newRank.name!==oldRank.name
 const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
+return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:classesOnlyRebootEnabled()?1:Math.max(moneyMultiplier,xpMultiplier)}
 })
 }
 export async function deposit(jid, amount) {

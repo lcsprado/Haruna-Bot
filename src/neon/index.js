@@ -2,6 +2,7 @@ import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled} from './reboot-economy-policy.js'
+import {v2CareerRoleFactor} from './reboot-career-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -11990,7 +11991,7 @@ await reply(workResultText(r))
 }
 } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
 const r=await getCareer(sender)
-let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${r.rank.mult.toFixed(2)}*`
+let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${(rebootEconomyEnabled()?v2CareerRoleFactor(r.rank.mult):r.rank.mult).toFixed(2)}*`
 if(r.next) text+=`\n🎯 Próximo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-Number(r.career_xp))} XP.`
 else text+='\n🏆 Cargo máximo alcançado!'
 await reply(text)
