@@ -1,5 +1,6 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
+import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE} from './reboot-classes-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -10620,6 +10621,10 @@ if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,r
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
+if(classesOnlyRebootEnabled()&&['7pecados','setepecados','pecados7'].includes(cmd)){
+ await reply(REBOOT_HERO_MESSAGE)
+ continue
+}
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuction15RewardCommand({cmd,args,sender,reply})) continue
