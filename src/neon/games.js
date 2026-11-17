@@ -898,7 +898,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     if(globalRaid){
       throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${globalRaid.level}* em outro grupo.\n⚔️ Um personagem só pode participar de *1 Raid por vez* em todo o Alpha Bot, incluindo o RPG Web.\nConclua a Raid atual antes de entrar nesta.`)
     }
-    const rooms=(await resolveRaidRoom(c,chat,level||null)).filter(raidEnabledInReboot)
+    const rooms=(await resolveRaidRoom(c,chat,level||null)).filter(r=>raidEnabledInReboot(r))
     if(!rooms.length) throw new Error(raidJoinUnavailableMessage({rooms:await raidRows(c,chat,true),level,now:Date.now()}))
     if(!level&&rooms.length>1) throw new Error('Há mais de uma Raid aberta. Escolha uma: '+rooms.map(r=>`!entrar ${r.level}`).join(' • '))
     const s=rooms[0]
