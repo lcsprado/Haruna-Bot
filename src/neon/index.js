@@ -10320,7 +10320,7 @@ if(preSendMs>=1250){
 const sentAt=Date.now()
 const destination=routePrivateReply(chat,sender)
 if(destination.normalized) console.warn('[WhatsApp Reply] LID privado normalizado para PN; sem quoted cruzado')
-return Promise.resolve().then(()=>sock.sendMessage(destination.jid,{text,...extra},destination.quoted?{quoted:msg}:undefined))
+return Promise.resolve().then(()=>sock.sendMessage(destination.jid,{text,...extra},destination.quoted&&!extra?.edit?{quoted:msg}:undefined))
 .catch(err=>{
   // A venda ou ação pode JÁ TER sido confirmada pelo banco: nunca dizer
   // "operação falhou" por causa de transporte nem executá-la uma segunda vez.
