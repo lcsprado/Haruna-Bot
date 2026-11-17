@@ -78,3 +78,15 @@ Não criar novos sistemas, não reescrever eventos, não tocar no deploy ou DB. 
 - Preparar inventário de todas as ~117 tabelas detectadas estaticamente, com consulta do schema real APENAS em clone isolado e categorização: preservado operacional, histórico arquivado, jogo resetável, estado global encerrado.
 - Migração futura deve ser idempotente e transacional quando possível, com snapshot pré/pós, FK verificadas, isolamento de usuários-alvo, sem acionamento de eventos ou pagamentos antigos e aprovação explícita antes de tocar na produção.
 - Histórico de conversa e memórias do ChatGPT são independentes do banco do Alpha Bot: nenhuma migração do jogo deve tentar apagar conversas do ChatGPT.
+
+
+## Decisão fechada — 4 classes no lançamento (17/11)
+Confirmado pelo dono: **somente Paladino (`paladin`), Necromante (`necromancer`), Samurai (`samurai`) e Berserker (`berserker`)** são selecionáveis no Alpha Bot 2.0. As outras seis classes legadas não são opção de criação/seleção no lançamento. Nenhum dos 7 Pecados vira classe, pet jogável ou personagem. Expansões e sistema elemental ficam fora do escopo do reboot inicial.
+
+## Marco de implementação — classificação estática, sem reset
+- `scripts/reboot-reset-manifest.mjs` lista as tabelas encontradas estaticamente e divide em `selective_migration`, `auth_cutover_only`, `fresh_gameplay`, `reseed_catalog`, `manual_review` e `unclassified_blocker`.
+- `users` é migração SELETIVA, não cópia de linha inteira (contém nível e EXP); `auth_creds`/`auth_keys` só após desligar o WhatsApp antigo; `transactions`, `trevo_settings`, `trevo_games` exigem revisão manual, sem exclusão cega.
+- Tabela desconhecida fica em `unclassified_blocker`. A presença de qualquer tabela nessa categoria ou em `manual_review` bloqueia migração destrutiva, mesmo que testes de sintaxe passem.
+- Testes de política de classes, dados protegidos e falha fechada em `test/reboot-reset-manifest.test.mjs`.
+- Esse manifesto NÃO gera, executa nem recomenda executar `DELETE`, `TRUNCATE` ou `UPDATE`. Para a V2, a preferência é schema novo com inicialização limpa, não limpar o banco antigo via comandos administrativos.
+- Ações GitHub no PR **não** estão conectadas ao Aiven, Neon, Render, Web ou WhatsApp: somente checkout do código, testes Node e relatórios estáticos sem credenciais.
