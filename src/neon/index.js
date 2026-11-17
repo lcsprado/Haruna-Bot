@@ -5643,7 +5643,9 @@ await reply('📦 Você não possui outros itens no momento.')
 return
 }
 setQuickFlow(chat,sender,'inventory_materials_select',{itemIds:others.map(i=>i.item_id)},90000)
-let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
+let text=classesOnlyRebootEnabled()
+ ?'🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Itens exclusivos de evento não são vendidos.\n\n'
+ :'🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
 others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
 const collabEssences=others.filter(i=>String(i.item_id||'').startsWith('essencia_pecado_'))
 .reduce((sum,i)=>sum+Number(i.quantity||0),0)
@@ -12551,7 +12553,9 @@ await reply(text)
  return await reply(text)
 } else if(['forjar','forja','forjaestelar'].includes(cmd)){
 const list=await listStarForgeEquipment(sender)
-if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
+if(!list.length)return await reply(classesOnlyRebootEnabled()
+ ?'⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Equipamentos de Raid mantêm suas regras de forja.'
+ :'⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
 setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
 let result='⚒️ *FORJA ESTELAR*\n\nEscolha o equipamento:\n\n'
 for(const [i,r] of list.entries()){
@@ -13357,7 +13361,8 @@ const level=collabRaidNumber(confirmation?args[1]:args[0])
 const count=Number(confirmation?args[2]:args[1])
 const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
 if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
-  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.')
+  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.'
+    .replaceAll('75',classesOnlyRebootEnabled()?'70':'75'))
 if(confirmation){
   const messageId=String(msg?.key?.id||'')
   if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
@@ -13397,7 +13402,9 @@ if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
 return 0
 }
 const requested=resolveRaidLevel(args[0])
-if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
+if(args[0]&&!requested) return await reply(classesOnlyRebootEnabled()
+ ?'⚔️ Raid inválida. Consulte *!raid* para ver os níveis disponíveis.'
+ :'⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
 const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
@@ -13448,7 +13455,9 @@ if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
 const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
-if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
+if(raw&&!level) return await reply(classesOnlyRebootEnabled()
+ ?'⚔️ Escolha uma Raid válida no menu *!raid*.'
+ :'⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
 const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
