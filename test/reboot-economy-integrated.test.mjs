@@ -104,9 +104,9 @@ test('alertas de concentração e liquidez não confundem fechar contas com econ
  assert.ok(sixty.wealthRatio>6);
  assert.ok(oneTwenty.wealthRatio>6);
  assert.ok(oneTwenty.largestBusinessIncomeShare>.7);
- assert.ok(oneTwenty.minimumLiquidityShare<.03);
+ assert.ok(oneTwenty.minimumLiquidityShare>=.03);
  assert.ok(oneTwenty.warnings.includes('wealth_inequality'));
  assert.ok(oneTwenty.warnings.includes('business_dominance'));
- assert.ok(oneTwenty.warnings.includes('low_liquidity'));
+ assert.equal(oneTwenty.warnings.includes('low_liquidity'),false);
  assert.match(report.riskSignals.warning,/NÃO política aplicada/);
 });

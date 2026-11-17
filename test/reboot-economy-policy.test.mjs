@@ -174,3 +174,12 @@ test('Raid 70 exige terceira contribuição, suporte de classe conta',()=>{
  assert.equal(raid70V2Contributors(group,{level:70,enabled:true}).valid,true);
  assert.equal(raid70V2Contributors({...group,c:{jid:'c',damage:0}},{level:70,enabled:true}).valid,false);
 });
+
+test('Poço V2 reduz ranking/andares e não entrega equipamento ★5 Lv10 pronto',()=>{
+ const source=getSource('src/neon/poco-abismo-rewards.js');
+ assert.match(source,/if\(rebootEconomyEnabled\(\)\)return \{kind:'exclusive',itemId,stars:1,level:1,needsForja:true\}/);
+ assert.match(source,/V2_EVENT_BUDGET\.pocoRankPrizes\[position-1\]/);
+ const rules=getSource('src/neon/poco-abismo-rules.js');
+ assert.match(rules,/V2_EVENT_BUDGET\.pocoFloorBands/);
+ assert.ok(V2_EVENT_BUDGET.pocoFloorBands.reduce((a,b)=>a+b,0)*5===32500);
+});

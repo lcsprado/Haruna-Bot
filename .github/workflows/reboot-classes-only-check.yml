@@ -10,6 +10,7 @@ on:
       - 'docs/reboot-vehicle-roi-v2-20261117.md'
       - 'docs/reboot-economy-integrated-v2-20261117.md'
       - 'docs/reboot-economy-stress-v2-20261117.md'
+      - 'docs/reboot-economy-c4e-v2-20261117.md'
       - 'docs/reboot-isolated-db-runbook-20261117.md'
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
