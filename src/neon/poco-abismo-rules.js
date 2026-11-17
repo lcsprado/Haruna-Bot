@@ -19,6 +19,14 @@ export const POCO_DROP_WEIGHTS=Object.freeze([
   {kind:'forge_materials',weight:2000},{kind:'fragments',weight:2500},
   {kind:'cash_bonus',weight:1000},{kind:'none',weight:2840}
 ]);
+// Balanceamento experimental EXCLUSIVO das novas tentativas no grupo beta.
+// Nunca aplicado ao controlador de recompensas reais.
+export const POCO_BETA_BALANCE=Object.freeze({
+ id:'beta-v2',corridorMultiplier:.78,defendCounterMultiplier:.38,
+ unblockedChargeFactor:2.40,
+ specialAttackMultiplier:.85,
+ bossHpMultipliers:Object.freeze({10:1.25,15:1.35,20:1.30,25:1.20,30:1.15})
+});
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,Number(v)||0));
 const floorMoney=f=>[30_000,50_000,80_000,120_000,170_000,250_000][Math.floor((f-1)/5)];
 export function pocoCashForFloor(f){return Number.isInteger(f)&&f>=1&&f<=30?floorMoney(f):0}
@@ -81,7 +89,11 @@ function nextRandom(s){
   s.seed=(Math.imul((s.seed>>>0),1664525)+1013904223)>>>0;
   return s.seed/4294967296;
 }
-function newBoss(floor){return {floor,hp:1500+110*floor,maxHp:1500+110*floor,turn:0};}
+function newBoss(floor,balanceVersion='legacy'){
+ const factor=balanceVersion===POCO_BETA_BALANCE.id?(POCO_BETA_BALANCE.bossHpMultipliers[floor]||1):1;
+ const maxHp=Math.round((1500+110*floor)*factor);
+ return {floor,hp:maxHp,maxHp,turn:0};
+}
 function finish(state,reason,explanation,now){
   state.status=reason==='completed'?'completed':'ended';
   state.deadline=null;state.boss=null;state.endedAt=now;
@@ -93,7 +105,7 @@ function advance(state,now){
   let next=pocoNextBoss(state.floor);
   while(next!==null && state.floor+1<next){
     const f=state.floor+1;
-    const loss=Math.max(10,Math.round((45+f*2)*state.stats.mitigation));
+    const loss=Math.max(10,Math.round((45+f*2)*state.stats.mitigation*(state.balanceVersion===POCO_BETA_BALANCE.id?POCO_BETA_BALANCE.corridorMultiplier:1)));
     state.hp=Math.max(0,state.hp-loss);
     state.turns++;
     if(state.hp===0){finish(state,'death','Os inimigos comuns esgotaram seu HP antes do próximo Guardião.',now);return cleared;}
@@ -103,16 +115,17 @@ function advance(state,now){
     next=pocoNextBoss(state.floor);
   }
   if(next!==null){
-    state.boss=newBoss(next);
+    state.boss=newBoss(next,state.balanceVersion);
     state.deadline=now+POCO_SEASON.responseMs;
   }else finish(state,'completed','Você venceu todos os 30 andares.',now);
   return cleared;
 }
-export function pocoStart({profile={},attempt=1,seed=1,now=Date.now()}={}){
+export function pocoStart({profile={},attempt=1,seed=1,now=Date.now(),balanceVersion='legacy'}={}){
   if(!Number.isInteger(attempt)||attempt<1)throw new RangeError('Tentativa inválida');
   const stats=pocoNormalize(profile);
   const state={season:POCO_SEASON.id,attempt,status:'active',
     floor:0,turns:0,reachedAt:null,hp:stats.maxHp,potions:2,skillCharges:5,
+    ...(balanceVersion===POCO_BETA_BALANCE.id?{balanceVersion:POCO_BETA_BALANCE.id}:{}),
     stats,seed:Number(seed)>>>0,startedAt:now,deadline:null,boss:null,report:null};
   const cleared=advance(state,now);
   return {state,cleared,bossDefeated:null};
@@ -126,11 +139,18 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   if(action===3&&state.potions<=0)throw new Error('Sem poções disponíveis');
   if(action===4&&state.skillCharges<=0)throw new Error('Habilidade especial esgotada');
   const s=structuredClone(state),skill=pocoBossSkill(s.boss.floor,s.boss.turn);
+  const beta=s.balanceVersion===POCO_BETA_BALANCE.id;
   const beforeHp=s.hp;let damage=0,heal=0,enemyDamage=0,critical=false,interrupted=false;
   const variance=.90+nextRandom(s)*.20;
   if(action===1||action===4){
     critical=nextRandom(s)<s.stats.critChance;
-    damage=Math.max(1,Math.round(s.stats.atk*variance*(action===4 ? .70 : 1)*(critical?1.40:1)*(skill.type==='barrier' ? .65 : 1)));
+    damage=Math.max(1,Math.round(s.stats.atk*variance*(action===4 ? (beta?POCO_BETA_BALANCE.specialAttackMultiplier:.70) : 1)*(critical?1.40:1)*(skill.type==='barrier' ? .65 : 1)));
+    s.boss.hp=Math.max(0,s.boss.hp-damage);
+  }
+  // Defender também contra-ataca no beta: vale a pena bloquear golpes anunciados.
+  // Sem esse dano, gastar uma rodada defendendo é quase sempre pior que atacar.
+  if(action===2&&beta){
+    damage=Math.max(1,Math.round(s.stats.atk*POCO_BETA_BALANCE.defendCounterMultiplier*(skill.type==='barrier'?.65:1)));
     s.boss.hp=Math.max(0,s.boss.hp-damage);
   }
   if(action===3){
@@ -140,7 +160,10 @@ export function pocoDecision(state,choice,{now=Date.now()}={}){
   }
   if(action===4){s.skillCharges--;interrupted=skill.type!=='barrier';}
   if(s.boss.hp>0){
-    const factor={charge:1.8,drain:1.18,barrier:.80,bleed:1.28}[skill.type];
+    // No beta, ignorar a Ruptura Abissal avisada é caro; defender ainda reduz 75% do golpe.
+    const factor=beta&&skill.type==='charge'
+      ? POCO_BETA_BALANCE.unblockedChargeFactor
+      : {charge:1.8,drain:1.18,barrier:.80,bleed:1.28}[skill.type];
     const base=115+s.boss.floor*8;
     enemyDamage=Math.max(1,Math.round(base*factor*s.stats.mitigation*(action===2 ? .25 : 1)*(interrupted?0:1)));
     s.hp=Math.max(0,s.hp-enemyDamage);
@@ -170,8 +193,14 @@ export function pocoEnd(state,reason='abandoned',now=Date.now()){
 export function pocoScore(state,name='',jid=''){
   if(!state||!Number.isInteger(state.floor))throw new Error('Resultado inválido');
   return {jid,name,floor:state.floor,turns:state.turns,
-    hp:state.hp,potions:state.potions,endedAt:state.reachedAt||state.endedAt||state.startedAt,
+    hp:state.hp,...(state.balanceVersion===POCO_BETA_BALANCE.id?{maxHp:state.stats.maxHp}:{}),
+    potions:state.potions,endedAt:state.reachedAt||state.endedAt||state.startedAt,
     attempt:state.attempt,completed:state.status==='completed'};
+}
+export function pocoBetaRankingCompare(a,b){
+ const hpFraction=x=>Math.round(1e6*Math.max(0,Number(x.hp)||0)/Math.max(1,Number(x.maxHp)||4500));
+ return b.floor-a.floor || hpFraction(b)-hpFraction(a) || a.turns-b.turns ||
+   b.potions-a.potions || String(a.jid||'').localeCompare(String(b.jid||''));
 }
 export function pocoBetter(a,b){
   if(!b)return true;
