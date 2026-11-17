@@ -5,12 +5,12 @@
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
-  weeklyBossPool:240_000,                       // total coletivo, nunca por jogador
-  gtWeeklyPrizes:Object.freeze([70_000,40_000,25_000,10_000]),
-  gtHeatPrizes:Object.freeze([8_000,5_000,3_000,2_000,1_000]),
+  weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
+  gtWeeklyPrizes:Object.freeze([10_000,5_500,3_000,1_500]),
+  gtHeatPrizes:Object.freeze([1_200,750,450,250,100]),
   gtXpPercentPerHeat:Object.freeze([6,5,4,3,2]), // máximo 18% do próximo nível/3 vitórias
-  pocoRankPrizes:Object.freeze([120_000,70_000,40_000]), // só uma edição sazonal
-  pocoFloorBands:Object.freeze([1_000,1_800,2_600,4_000,5_500,8_000]),
+  pocoRankPrizes:Object.freeze([20_000,12_000,8_000]), // só uma edição sazonal
+  pocoFloorBands:Object.freeze([300,500,700,1_100,1_600,2_300]),
   dailyBaseByTier:Object.freeze([2_000,3_000,4_500,6_000,8_000]),
   dailyStreakMilestones:Object.freeze({3:5_000,7:10_000,14:15_000,21:20_000,30:30_000}),
   dailyMissionCash:Object.freeze({
@@ -33,10 +33,10 @@ export const V2_RAID_LEVELS=Object.freeze({
       minLevel:90,minPlayers:3,allowRaidLote:false}
 });
 export const V2_BUSINESS_ECONOMY=Object.freeze({
-  taxRate:.10,operatingCostRate:.10,levelBonus:.15,capacityExtraHoursPerLevel:0,
+  taxRate:.10,operatingCostRate:.10,levelBonus:.10,capacityExtraHoursPerLevel:0,
   hourlyRates:Object.freeze({
-    carrinho_lanche:180,barbearia:450,loja_roupas:1_100,restaurante:2_200,
-    posto:4_200,mercado:7_200,hotel:13_500,shopping:25_000,tech:42_000
+    carrinho_lanche:160,barbearia:400,loja_roupas:900,restaurante:1_700,
+    posto:3_000,mercado:4_500,hotel:8_000,shopping:14_000,tech:27_000
   })
 });
 export const V2_GOALS=Object.freeze({
@@ -55,6 +55,48 @@ export function candidateRaidConfig(base,{enabled=rebootEconomyEnabled()}={}){
   if(!patch)throw new Error('Raid sem orçamento aprovado na Economia 2.0.');
   return {...base,...patch};
 }
+
+// Pagamento coletivo V2: reembolsa a chave consumida por integrante
+// e limita o lucro NOVO a 12% do cashPool nominal por vitória (não por jogador).
+// Metade do bônus é igualitária (suporte) e metade por dano registrado.
+export function raidCashSharesV2(config,participants,{enabled=rebootEconomyEnabled()}={}){
+ if(!enabled)return null;
+ const key=Number(config?.keyPrice),pool=Number(config?.cashPool);
+ if(!Number.isSafeInteger(key)||key<=0||!Number.isSafeInteger(pool)||pool<0)
+   throw new RangeError('Configuração financeira da Raid inválida');
+ if(!Array.isArray(participants)||participants.length<1||participants.length>10)
+   throw new RangeError('Equipe inválida');
+ const seen=new Set();
+ const rows=participants.map(p=>{
+   const jid=String(p?.jid||''),damage=Number(p?.damage);
+   if(!jid||seen.has(jid)||!Number.isSafeInteger(damage)||damage<0)
+     throw new RangeError('Contribuição inválida ou duplicada');
+   seen.add(jid);
+   return {jid,damage};
+ });
+ const totalDamage=rows.reduce((a,p)=>a+BigInt(p.damage),0n);
+ if(totalDamage===0n)throw new RangeError('Raid sem dano');
+ const bonusBudget=Math.floor(pool*.12),equal=Math.floor(bonusBudget/2);
+ const damageBudget=bonusBudget-equal;
+ const shared=Math.floor(equal/rows.length),remaining=equal%rows.length;
+ const bonuses=rows.map((p,i)=>shared+(i<remaining?1:0));
+ let distributed=0;
+ const remainders=rows.map((p,i)=>{
+   const weighted=BigInt(damageBudget)*BigInt(p.damage);
+   const earned=Number(weighted/totalDamage);
+   bonuses[i]+=earned;distributed+=earned;
+   return {i,remainder:weighted%totalDamage};
+ });
+ remainders.sort((a,b)=>a.remainder===b.remainder?a.i-b.i:a.remainder>b.remainder?-1:1);
+ for(let i=0;i<damageBudget-distributed;i++)bonuses[remainders[i].i]++;
+ const payouts=new Map(rows.map((p,i)=>[p.jid,key+bonuses[i]]));
+ const keyReimbursements=key*rows.length;
+ const awarded=[...payouts.values()].reduce((a,b)=>a+b,0);
+ if(!Number.isSafeInteger(awarded)||awarded!==keyReimbursements+bonusBudget)
+   throw new Error('Prêmio da Raid fora do limite coletivo');
+ return {payouts,keyReimbursements,bonusBudget,awarded};
+}
+
 export function candidateShopCatalogItem(row,{enabled=rebootEconomyEnabled()}={}){
  if(!Array.isArray(row))throw new TypeError('Item de catálogo inválido');
  if(!enabled)return row;
@@ -65,7 +107,7 @@ export function candidateShopCatalogItem(row,{enabled=rebootEconomyEnabled()}={}
 
 export function raid70V2Policy(level,{enabled=rebootEconomyEnabled()}={}){
   return enabled&&Number(level)===70
-    ?{minPlayers:3,minLevel:90,allowRaidLote:false,minimumMeaningfulContributors:2}
+    ?{minPlayers:3,minLevel:90,allowRaidLote:false,minimumMeaningfulContributors:3}
     :{minPlayers:1,minLevel:null,allowRaidLote:true,minimumMeaningfulContributors:1};
 }
 export function assertRaid70V2Start({level,partySize,mode='manual',enabled=rebootEconomyEnabled()}={}){
@@ -81,10 +123,14 @@ export function raid70V2Contributors(players,{level,enabled=rebootEconomyEnabled
   if(!enabled||Number(level)!==70)return {valid:true,required:1,contributors:0};
   const participants=Object.values(players||{});
   const total=participants.reduce((a,p)=>a+Math.max(0,Number(p.damage||0)),0);
-  const qualified=participants.filter(p=>p.jid&&Number(p.damage||0)>0&&
-    Number(p.damage||0)>=total*.05);
-  return {valid:total>0&&new Set(qualified.map(p=>p.jid)).size>=2,
-    required:2,contributors:new Set(qualified.map(p=>p.jid)).size};
+  // Curadores e defensores contribuem com suporte, sem exigir dano igual ao DPS.
+  const minimumHealing=Math.max(200,total*.002);
+  const qualified=participants.filter(p=>p.jid&&(
+    (Number(p.damage||0)>0&&Number(p.damage||0)>=total*.05)||
+    (Number(p.classHealing||0)+Number(p.petSkillHealing||0)>=minimumHealing)
+  ));
+  const count=new Set(qualified.map(p=>p.jid)).size;
+  return {valid:total>0&&count>=3,required:3,contributors:count};
 }
 export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled()}={}){
  if(!business)return business;

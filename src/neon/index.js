@@ -1,7 +1,7 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
-import {candidateBusinessCatalog,rebootEconomyEnabled} from './reboot-economy-policy.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
 import {v2CareerRoleFactor} from './reboot-career-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
@@ -12047,7 +12047,7 @@ if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Vej
 setQuickFlow(chat,sender,'business_manage_select',{ids:rows.map(b=>b.id)},90000)
 let text='🏢 *MEUS NEGÓCIOS*\n\n'
 rows.forEach((b,i)=>{
-const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*(rebootEconomyEnabled()?.15:.25)
+const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25)
 text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+(rebootEconomyEnabled()?0:level-1)}h\n`
 })
 text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'

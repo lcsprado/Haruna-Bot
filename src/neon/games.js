@@ -11,7 +11,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
 import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
-import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors} from './reboot-economy-policy.js'
+import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,rebootEconomyEnabled} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -1303,16 +1303,17 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=lote?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
+  const moneyMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro')))
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
-  const petXpMultiplier=lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
-  const gearEventBonus=!lote&&raidEventActive?0.015:0
+  const xpMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp))
+  const petXpMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp)
+  const gearEventBonus=!rebootEconomyEnabled()&&!lote&&raidEventActive?0.015:0
   // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=!lote&&raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
   const rewards=[]
+  const v2RaidCash=raidCashSharesV2(cfg,ranked)
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
     const masteryReport=p.heroId?{heroId:p.heroId,earned:0,reason:'participacao_insuficiente'}:null
@@ -1331,7 +1332,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
-    const normalCash=Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
+    const normalCash=v2RaidCash?v2RaidCash.payouts.get(p.jid):Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
     const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))

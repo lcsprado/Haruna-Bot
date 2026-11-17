@@ -1,5 +1,6 @@
 // Poço do Abismo — regras puras da temporada 16–20/11/2026.
 // Não importa db, não concede recompensas e não publica eventos.
+import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 export const POCO_SEASON=Object.freeze({
   id:'poco-abismo-2026-11-16',startAt:Date.parse('2026-11-16T00:00:00-03:00'),
   endAt:Date.parse('2026-11-20T21:00:00-03:00'),floorLimit:30,
@@ -41,7 +42,7 @@ function betaConfig(version){
 }
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,Number(v)||0));
 const floorMoney=f=>[30_000,50_000,80_000,120_000,170_000,250_000][Math.floor((f-1)/5)];
-export function pocoCashForFloor(f){return Number.isInteger(f)&&f>=1&&f<=30?floorMoney(f):0}
+export function pocoCashForFloor(f){return Number.isInteger(f)&&f>=1&&f<=30?(rebootEconomyEnabled()?V2_EVENT_BUDGET.pocoFloorBands[Math.floor((f-1)/5)]:floorMoney(f)):0}
 export function pocoRewardTotal(){return Array.from({length:30},(_,i)=>pocoCashForFloor(i+1)).reduce((a,b)=>a+b,0)}
 export function pocoRollDrop(random=Math.random){
   const roll=Number(random());
