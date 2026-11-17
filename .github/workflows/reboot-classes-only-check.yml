@@ -48,6 +48,8 @@ jobs:
           node --check src/neon/game-catalog.js
       - name: Testes dedicados, sem dependencias ou credenciais
         run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs
+      - name: Regressões do jogo anterior (sem DB)
+        run: node --test test/regression-smoke.test.mjs test/playable-seven-sins-20261027.test.mjs
       - name: Auditorias somente leitura
         run: |
           node scripts/reboot-audit.mjs --json > /tmp/reboot-dependencies.json
