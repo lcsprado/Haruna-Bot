@@ -101,26 +101,33 @@ test('persistent transactional safety, independent of Uber',()=>{
 })
 
 
-test('oficina pendente não bloqueia PvE PvP, equipar ou Web e não antecipa atributos',()=>{
+test('somente carro equipado e fora da oficina pode correr PvE e PvP, inclusive no Web',()=>{
  const src=source('racing-alpha.js')
  const ui=readFileSync(new URL('../web/racing-ui.js',import.meta.url),'utf8')
  const commands=source('racing-commands.js')
- // Mecanismo de bloqueios preserva condição mínima e cooldown.
  const check=src.slice(src.indexOf('export function checkRace('),src.indexOf('const raceShape='))
- assert.ok(check.includes('RACING_MIN_CONDITION'))
- assert.ok(check.includes('RACING_COOLDOWN_SECONDS'))
- assert.doesNotMatch(check,/pending_part/)
- // O motor PvE e PvP usa somente o nível consolidado em upgrades, sem pending_level.
- assert.match(src,/const raceShape=\(car,profile,strategy\)=>\(\{modelId:car\.model_id,upgrades:car\.upgrades,condition:/)
- assert.doesNotMatch(src.slice(src.indexOf('export async function raceEquip('),src.indexOf('export async function racePaint(')),/if\(car\.pending_part\)/)
+ // O mesmo checkRace é aplicado em PvE, em desafios e em ambos os pilotos PvP.
+ assert.match(check,/if\(!car\)throw Error/)
+ assert.match(check,/if\(car\.pending_part\)throw Error\('Carro na oficina/)
+ assert.match(check,/RACING_MIN_CONDITION/)
+ assert.match(check,/RACING_COOLDOWN_SECONDS/)
+ assert.match(src,/checkRace\(car,s\.profile\)/)
+ assert.match(src,/checkRace\(activeCar\(s\),s\.profile\)/)
+ assert.match(src,/checkRace\(ac,a\.profile\);checkRace\(bc,b\.profile\)/)
+ // Para trocar para outro carro, a oficina do carro anterior segue em andamento.
+ assert.match(src,/UPDATE racing_cars_alpha SET equipped=FALSE WHERE jid=\$1 AND equipped=TRUE/)
+ assert.match(src,/if\(car\.pending_part\)throw Error\('Este carro está em melhoria/)
  assert.match(src,/if\(s\.cars\.some\(x=>x\.pending_part\)\)/)
- assert.match(src,/if\(car\.pending_part\)throw Error\('Aguarde a instalação para reparar/);
- assert.match(commands,/Você pode correr normalmente durante a instalação/)
- assert.doesNotMatch(commands,/O carro não pode correr enquanto estiver na oficina/)
- assert.match(ui,/const able=Boolean\(car&&Number\(car\.condition\)>=35/)
- assert.doesNotMatch(ui,/const able=Boolean\(car&&!car\.pending_part/)
- assert.match(ui,/Você pode correr com os atributos atuais/)
- // Alterar apenas pending_part/pending_level não pode modificar a física.
+ assert.match(src,/const pending=s\.cars\.find\(x=>x\.pending_part\)/)
+ assert.match(src,/if\(car\.pending_part\)throw Error\('Aguarde a instalação para reparar/)
+ // Web também respeita o bloqueio, inclusive botões solo e PvP.
+ assert.match(ui,/const able=Boolean\(car&&!car\.pending_part&&Number\(car\.condition\)>=35/)
+ assert.match(ui,/Equipe outro carro pronto na Garagem para correr/)
+ assert.match(ui,/Não pode correr/)
+ assert.match(ui,/car\.pending_part\?'<span class="race-warning">🔒 Aguarde terminar para equipar/)
+ assert.match(commands,/Este carro não participa de corridas até concluir a instalação/)
+ assert.doesNotMatch(commands,/Você pode correr normalmente durante a instalação/)
+ // Instalação NÃO modifica os atributos até ser concluída.
  const ready={modelId:'gol',upgrades:{motor:4,pneus:2},condition:80,driverLevel:10}
  const installing={...ready,pending_part:'motor',pending_level:5,pending_until:9999999999}
  assert.equal(racingPower(ready,'cidade'),racingPower(installing,'cidade'))

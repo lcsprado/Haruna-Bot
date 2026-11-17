@@ -36,8 +36,8 @@ async function read(key){return (await db.query('SELECT value FROM trevo_setting
 async function eligible(c){
  await c.query("UPDATE racing_cars_alpha SET upgrades=jsonb_set(upgrades,ARRAY[pending_part],to_jsonb(pending_level),TRUE), pending_part=NULL,pending_level=NULL,pending_until=0 WHERE equipped=TRUE AND pending_part IS NOT NULL AND pending_until>0 AND pending_until<=$1",[nowSec()])
  const rows=(await c.query("SELECT c.id AS car_id,c.jid,c.model_id,c.condition,c.upgrades,c.pending_part,p.xp,u.push_name,u.level AS player_level FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid JOIN users u ON u.jid=c.jid WHERE c.equipped=TRUE ORDER BY c.jid FOR UPDATE OF c")).rows
- // A oficina NÃO bloqueia a participação; apenas os upgrades já concluídos contam.
- return rows.filter(r=>Number(r.condition)>=RACING_MIN_CONDITION)
+ // O carro deve estar equipado, com manutenção encerrada e condição mínima.
+ return rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
   .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp),playerLevel:Number(r.player_level)}))
 }
 function rankText(rows,title){
@@ -65,7 +65,7 @@ async function prepNotice(day){
    '🏎️ *GT ALPHA BOT — HOJE ÀS 20H30!*\n\n'+
    '🏁 Três corridas automáticas, com pistas e condições do dia:\n'+
    gtTrackProgram(day).map((track,i)=>'• '+(i+1)+'ª '+track.name+' — '+GT_WEATHER_LABELS[track.weather]).join('\n')+'\n'+
-   '🚘 *SOMENTE O CARRO EQUIPADO* às 20h30 participará, inclusive se estiver em melhoria (usando o nível já instalado).\n'+
+   '🚘 *SOMENTE O CARRO EQUIPADO E FORA DA OFICINA* às 20h30 participa. Se estiver melhorando, equipe outro carro pronto.\n'+
    '🔧 Prepare agora: *!garagemcorrida* • *!oficina* • *!equiparcorrida ID* • *!repararcarro*.\n'+
    '⚙️ Quanto mais preparado o carro, maior a vantagem.\n'+
    '📊 Pontuação: 1º 10 | 2º 7 | 3º 5 | 4º 3 | demais 1.\n'+
@@ -458,7 +458,7 @@ export async function getGtAlphaCar(jid){
   '\n🔧 Preparação: '+racingTuning(r.upgrades)+'/42'+
   '\n👨‍✈️ Piloto Nv.'+racingDriverLevel(r.xp)+'\n❤️ Condição: '+r.condition+'/100\n'+
   (Number(r.condition)<RACING_MIN_CONDITION?'🔒 Reparo necessário.':
-   r.pending_part&&Number(r.pending_until)>nowSec()?'✅ Apto: melhoria em andamento não impede a corrida. Peça nova ainda não conta.':'✅ Apto, se mantiver equipado até 20h30.')
+   r.pending_part&&Number(r.pending_until)>nowSec()?'🔒 Em melhoria. Equipe outro carro pronto antes das 20h30.':'✅ Apto, se mantiver equipado até 20h30.')
 }
 export async function handleGtAlphaCommand({cmd,args=[],sender,reply,openSponsorFlow,closeSponsorFlow}){
  if(!['gttabela','gtcarro','gt','gtclima','gtpistas','gtpatrocinio'].includes(cmd))return false
@@ -485,7 +485,7 @@ export async function handleGtAlphaCommand({cmd,args=[],sender,reply,openSponsor
     '\n\n🔧 Pneus, freios e suspensão melhorados aumentam desempenho em condições difíceis.')
    return true
   }
-  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Carro equipado participa mesmo durante melhorias.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🌦️ *!gtclima* • 🤝 *!gtpatrocinio*\n🏆 Semanal: 1º R$15M, 2º R$8M, 3º R$5M, 4º R$1M.');return true}
+  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Só o carro equipado e fora da oficina participa.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🌦️ *!gtclima* • 🤝 *!gtpatrocinio*\n🏆 Semanal: 1º R$15M, 2º R$8M, 3º R$5M, 4º R$1M.');return true}
   await reply(await getGtAlphaTable(String(args[0]||'').toLowerCase()==='semana'?'semana':'dia'))
  }catch(e){console.error('[GT] comando',e?.message||e);await reply('⚠️ GT Alpha indisponível. Tente novamente.')}
  return true

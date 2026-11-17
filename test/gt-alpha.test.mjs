@@ -138,11 +138,14 @@ test('motor isolado e seguro contra troca de carro depois da largada',()=>{
 })
 
 
-test('carro em melhoria continua elegível e usa as peças já concluídas',()=>{
+test('GT automático só inscreve carro equipado, com oficina livre e condição mínima',()=>{
  const src=source('gt-alpha-event.js')
- assert.match(src,/rows\.filter\(r=>Number\(r\.condition\)>=RACING_MIN_CONDITION\)/)
- assert.doesNotMatch(src,/rows\.filter\(r=>!r\.pending_part/)
- assert.match(src,/melhoria em andamento não impede a corrida/)
+ assert.match(src,/WHERE c\.equipped=TRUE ORDER BY c\.jid FOR UPDATE OF c/)
+ assert.match(src,/rows\.filter\(r=>!r\.pending_part&&Number\(r\.condition\)>=RACING_MIN_CONDITION\)/)
+ assert.match(src,/pending_part IS NOT NULL AND pending_until>0 AND pending_until<=\$1/)
+ assert.match(src,/SOMENTE O CARRO EQUIPADO E FORA DA OFICINA/)
+ assert.match(src,/Em melhoria\. Equipe outro carro pronto/)
+ assert.doesNotMatch(src,/melhoria em andamento não impede a corrida/)
 })
 test('correção da etapa preserva desempenho dos adversários e reapura quatro carros',()=>{
  const base=gtRunHeats([
