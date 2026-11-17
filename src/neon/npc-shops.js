@@ -1,4 +1,5 @@
 import { db, ensureUser } from './db.js'
+import {assertRebootItemAllowed} from './reboot-classes-policy.js'
 import { alphaReputationTitle } from './progression.js'
 import { getCityMerchantModifier } from './city.js'
 
@@ -182,6 +183,7 @@ export async function buyNpcShopItem(jid,npcRef,number){
   if(!Number.isInteger(index)||index<1||index>npc.goods.length)
     throw new Error('Item inválido. Abra !npc '+(NPC_CATALOG.indexOf(npc)+1)+' para ver as opções.')
   const selected=npc.goods[index-1]
+  assertRebootItemAllowed(selected.id)
   const client=await db.connect()
   try{
     await client.query('BEGIN')
