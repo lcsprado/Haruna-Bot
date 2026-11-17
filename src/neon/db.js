@@ -5580,7 +5580,8 @@ const team=(Array.isArray(pets)?pets:[]).filter(p=>p&&!PECADOS_HERO_IDS.includes
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const vital=team.length===3&&unique?resolveVitalTeam(species):null
-const collab=!vital&&team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
+const collab=!classesOnlyRebootEnabled()&&!vital&&team.length===3&&unique
+  ?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
 // Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
 const wildcard=!vital&&!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
