@@ -20,6 +20,7 @@ import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
+import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -584,7 +585,7 @@ VALUES ($1,$2,$3,$4,$5,$6)
 ON CONFLICT(id) DO UPDATE
 SET name=EXCLUDED.name, description=EXCLUDED.description,
 category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
-`, item)
+`, candidateShopCatalogItem(item))
 }
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
