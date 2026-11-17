@@ -40,3 +40,25 @@ test('Leilão da collab não compete com o leilão Alpha atual na V2',()=>{
   assert.match(legacy,/handleAuctionAlphaCommand\(\{cmd,args,sender,name,chat,reply,web=false\}\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return false/);
   assert.match(legacy,/async function tick\(sock\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return/);
 });
+
+
+test('Troca, venda, mercado, NPCs e vouchers não transportam equipamento de outra temporada',()=>{
+  const db=source('src/neon/db.js');
+  const npc=source('src/neon/npc-shops.js');
+  const rewards=source('src/neon/auction-20261115-rewards.js');
+  for(const guard of [
+    "createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1) {\\nassertRebootItemAllowed(offerItemId)",
+    "acceptItemTradeOffer(jid,offerId,requestItemId) {\\nassertRebootItemAllowed(requestItemId)",
+    "sellItem(jid, itemId, qty=1) {\\nassertRebootItemAllowed(itemId)",
+    "createMarketListing(jid,itemId,qty,price){\\nassertRebootItemAllowed(itemId)",
+    "const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')\\nassertRebootItemAllowed(x.item_id)"
+  ]){
+    assert.ok(db.includes(guard.replaceAll('\\n','\n')),guard);
+  }
+  assert.match(db,/for\(const row of normalized\)assertRebootItemAllowed\(row\.itemId\)/);
+  assert.match(db,/assertRebootItemAllowed\(t\.offer_item_id\)/);
+  assert.equal((db.match(/return rows\.filter\(row=>!classesOnlyRebootEnabled\(\)\|\|!isRebootCollabItemId\(row\.item_id\)\)/g)||[]).length,2);
+  assert.match(npc,/const selected=npc\.goods\[index-1\]\s+assertRebootItemAllowed\(selected\.id\)/);
+  assert.match(rewards,/redeemArsenal\(jid,itemId\)\{\s+assertRebootItemAllowed\(itemId\)/);
+  assert.match(rewards,/redeemPerfection\(jid,itemId\)\{\s+assertRebootItemAllowed\(itemId\)/);
+});
