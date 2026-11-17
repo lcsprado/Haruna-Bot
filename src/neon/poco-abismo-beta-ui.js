@@ -6,7 +6,7 @@ import {pocoDispatchActionPrompt} from './poco-abismo-delivery.js'
 // Preserve a mesma mensagem original entre edições. Uma edição produz sua
 // própria chave Baileys, mas a próxima edição deve mirar o balão ORIGINAL.
 // Caso a edição não seja aceita, envia nova mensagem (deadline só após ACK).
-export async function pocoBetaDispatchPrompt({reply,message,token,uiEdit,confirm}){
+export async function pocoBetaDispatchPrompt({reply,message,token,uiEdit,confirm,clock=Date.now}){
  let lastKey=null,edited=false
  const send=async text=>{
    if(uiEdit?.key?.id){
@@ -27,7 +27,7 @@ export async function pocoBetaDispatchPrompt({reply,message,token,uiEdit,confirm
    return sent
  }
  return pocoDispatchActionPrompt({
-   reply:send,message,token,
+   reply:send,message,token,clock,
    confirm:(tok,sentAt)=>confirm(tok,sentAt,lastKey?.id?{
      key:lastKey,at:edited?uiEdit.at:sentAt
    }:null)
