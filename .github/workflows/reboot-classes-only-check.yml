@@ -18,6 +18,7 @@ on:
       - 'src/neon/gt-alpha-event.js'
       - 'src/neon/weekly-boss-prize-pool.js'
       - 'src/neon/daily-v2.js'
+      - 'src/neon/progression.js'
       - 'src/neon/raid-lote-store.js'
       - 'src/neon/playable-heroes.js'
       - 'src/neon/games.js'
@@ -68,6 +69,7 @@ jobs:
           node --check src/neon/gt-alpha-event.js
           node --check src/neon/weekly-boss-prize-pool.js
           node --check src/neon/daily-v2.js
+          node --check src/neon/progression.js
           node --check src/neon/raid-lote-store.js
           node --check src/neon/playable-heroes.js
           node --check src/neon/games.js

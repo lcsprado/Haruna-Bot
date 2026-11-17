@@ -20,7 +20,7 @@ Ignorar a telemetria e as movimentações dos jogadores reais nas últimas 12 ho
 | Diário nível inicial, 30 resgates + marcos | R$ 2.450.000 | R$ 140.000 | Conectado ao resgate V2; não altera V1 |
 | Cinco missões de maiores prêmios | R$ 155.000 sem multiplicadores de nível | R$ 19.500 | Conectado às missões V2, com orçamento por tipo sem multiplicador de moeda por nível |
 | Missão especial | R$ 25.000 | R$ 7.000 | Conectado à V2 |
-| Negócios — nove Lv5, uma coleta 24h | ~R$ 8,33 milhões líquidos | ~R$ 2,37 milhões líquidos (cenário C1) | Ainda NÃO conectado ao coletor; validar preço, lucro e impostos em conjunto |
+| Negócios — nove Lv5, uma coleta 24h | ~R$ 8,33 milhões líquidos | ~R$ 2,37 milhões líquidos (cenário C1) | Conectado à coleta/upgrades da V2: operação 10% + TAXADE 10%, sem evento multiplicador |
 | Raids 10–70 — chaves, pool e XP | Altos | Tabela abaixo | Conectado ao catálogo, lobby, entrada, combate e loja no modo V2 |
 
 A política pura central fica em `src/neon/reboot-economy-policy.js`. `ALPHA_REBOOT_MODE=classes_only` é exigido; desativado por padrão. Não reutilizar nem fundir bancos. `src/neon/weekly-boss-prize-pool.js`, `src/neon/gt-alpha-rules.js`, `src/neon/gt-alpha-event.js`, `src/neon/daily-v2.js` e `src/neon/games.js` têm caminhos opt-in. O Poço histórico não foi alterado.
@@ -53,7 +53,7 @@ Os pools não são dinheiro individual garantido: o motor calcula o prêmio usan
 ## Ainda fora do runtime econômico V2
 Esta política não completa a reforma da economia. Os principais sistemas pendentes são:
 - Uber, iFood e motoristas CLT: tarifa/rota, compra e reparo de veículo, efetividade, comissões, máximo de turno e ganho por hora.
-- Negócios: aplicar as nove taxas C1, +15% por nível, capacidade fixa, operação de 10%, TAXADE de 10%, custos/reinvestimento; impedir pagamento retroativo de V1.
+- Negócios: taxas C1, +15% por nível, capacidade fixa, operação 10% e TAXADE 10% já estão ligados ao modo V2; ainda validar o retorno das compras e rentabilidade de cada upgrade.
 - Novos calendários de Poço e Boss comuns: excluir sessões/premiações antigas, redefinir drops sem peças ★5 Lv10 grátis e garantir idempotência.
 - Casas, veículos, garagem GT, tuning, manutenção, forja, lojas, relíquias, banco/empréstimos, leilão, bingo, cofres, eventos bônus, PvP e clãs: rever gastos/retornos.
 - Progressão de níveis e atributos das quatro classes: estimar curva 7/30/60/120 dias após consolidar EXP, stamina, cooldown e frequência.
@@ -68,3 +68,9 @@ Esta política não completa a reforma da economia. Os principais sistemas pende
 6. Suite integral verde, teste em banco clone independente e aprovação separada antes de qualquer deploy.
 
 **Não usar a economia atual como dados históricos de benchmark: movimentações e saldos recentes estão sendo manipulados por jogadores/testes.** 
+
+### Marco C3b — coleta de negócios isolada
+- `businessIntervalGrossV2` ignora as mudanças históricas de tarifas de novembro de 2026 e limita a coleta pela capacidade própria, sem bônus de horas por nível.
+- Compra, catálogo, upgrade, listagem e coleta usam o mesmo valor por hora no modo V2; a V1 mantém suas tarifas originais.
+- A coleta registra 10% TAXADE + 10% de custo operacional, sem multiplicador de evento ou correção antiga de jogador. Custos de aquisição e upgrades ainda precisam de análise de payback para aprovação.
+- Nunca copiar `user_businesses` nem `accrued_gross` da V1 para o banco limpo da V2.

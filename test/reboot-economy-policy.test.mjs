@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  V2_EVENT_BUDGET,V2_RAID_LEVELS,V2_BUSINESS_ECONOMY,V2_GOALS,
- budgetReport,candidateRaidConfig,candidateShopCatalogItem,raid70V2Policy,assertRaid70V2Start,
+ budgetReport,candidateRaidConfig,candidateShopCatalogItem,candidateBusinessCatalog,businessIntervalGrossV2,raid70V2Policy,assertRaid70V2Start,
  raid70V2Contributors,rebootEconomyEnabled
 } from '../src/neon/reboot-economy-policy.js';
 import {gtRaceReward,gtEffectiveWeeklyPrizes} from '../src/neon/gt-alpha-rules.js';
@@ -128,4 +128,25 @@ test('Missões e bônus da V2 têm valores menores sem alterar regras da versão
  assert.match(daily,/V2_EVENT_BUDGET\.dailyStreakMilestones\[d\]/);
  assert.match(daily,/if\(rebootEconomyEnabled\(\)\)\{/);
  assert.ok(daily.includes("Caixa Épica"));
+});
+
+test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da V1',()=>{
+ const base={id:'tech',price:30000000,profitHour:110000,capacityHours:24};
+ const v1=candidateBusinessCatalog(base,{enabled:false});
+ const v2=candidateBusinessCatalog(base,{enabled:true});
+ assert.equal(v1,base);
+ assert.equal(v2.profitHour,42000);
+ assert.equal(base.profitHour,110000);
+ const now=1_900_000_000;
+ assert.equal(businessIntervalGrossV2(base,{level:5,last_collected_at:now-48*3600},now),1_612_800);
+ assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-2*3600},now),84_000);
+ assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now+3600},now),0);
+ assert.throws(()=>businessIntervalGrossV2({id:'invalido',capacityHours:24},{level:1},now),/inválidos/);
+ const progression=getSource('src/neon/progression.js');
+ assert.ok(progression.includes('businessIntervalGrossV2(b,row,now)'));
+ assert.ok(progression.includes('operating=rebootEconomyEnabled()?Math.floor(gross*V2_BUSINESS_ECONOMY.operatingCostRate):0'));
+ assert.ok(progression.includes('const recovery=rebootEconomyEnabled()?null:'));
+ assert.ok(progression.includes("const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')"));
+ const wa=getSource('src/neon/index.js');
+ assert.ok(wa.includes('BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach'));
 });
