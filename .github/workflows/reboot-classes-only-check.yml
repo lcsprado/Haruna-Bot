@@ -8,9 +8,16 @@ on:
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
       - 'scripts/reboot-reset-manifest.mjs'
+      - 'src/neon/reboot-classes-policy.js'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/games.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/game-catalog.js'
       - 'test/reboot-audit.test.mjs'
       - 'test/reboot-economy-baseline.test.mjs'
       - 'test/reboot-reset-manifest.test.mjs'
+      - 'test/reboot-classes-policy.test.mjs'
       - '.github/workflows/reboot-classes-only-check.yml'
   workflow_dispatch:
 
@@ -33,8 +40,14 @@ jobs:
           node --check scripts/reboot-audit.mjs
           node --check scripts/reboot-economy-baseline.mjs
           node --check scripts/reboot-reset-manifest.mjs
+          node --check src/neon/reboot-classes-policy.js
+          node --check src/neon/playable-heroes.js
+          node --check src/neon/games.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/game-catalog.js
       - name: Testes dedicados, sem dependencias ou credenciais
-        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-reset-manifest.test.mjs
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs
       - name: Auditorias somente leitura
         run: |
           node scripts/reboot-audit.mjs --json > /tmp/reboot-dependencies.json
