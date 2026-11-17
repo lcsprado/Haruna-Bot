@@ -22,6 +22,9 @@ test('autenticação, licenças e direitos jamais entram em reset de gameplay',(
   assert.equal(rebootTableDecision('subscription_orders'),'selective_migration');
   assert.equal(rebootTableDecision('web_sessions'),'selective_migration');
   assert.equal(rebootTableDecision('support_tickets'),'selective_migration');
+  assert.equal(rebootTableDecision('web_password_accounts'),'selective_migration');
+  assert.equal(rebootTableDecision('verified_whatsapp_lid_links'),'selective_migration');
+  assert.equal(rebootTableDecision('whatsapp_outbound_retry'),'manual_review');
   assert.equal(rebootTableDecision('transactions'),'manual_review');
   assert.equal(rebootTableDecision('trevo_settings'),'manual_review');
 });
@@ -33,6 +36,12 @@ test('ativos e progresso iniciam limpos; catálogo de itens é reconstruído',()
     assert.equal(rebootTableDecision(table),'fresh_gameplay',table);
   }
   assert.equal(rebootTableDecision('items'),'reseed_catalog');
+  assert.equal(rebootTableDecision('equipment_enchantments'),'fresh_gameplay');
+  assert.equal(rebootTableDecision('racing_cars_alpha'),'fresh_gameplay');
+  assert.equal(rebootTableDecision('gt_sponsor_contracts_alpha'),'fresh_gameplay');
+  assert.equal(rebootTableDecision('halloween_rewards_2026'),'archive_only');
+  assert.equal(rebootTableDecision('hero_legacy_pet_audit'),'archive_only');
+  assert.equal(rebootTableDecision('web_auth_rate_limits'),'fresh_volatile');
 });
 
 test('tabela desconhecida bloqueia migração; jamais inventar comandos SQL',()=>{
