@@ -6,6 +6,7 @@ import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissions
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
 import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2} from './reboot-economy-policy.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
+import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -899,7 +900,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
   const busy=(await db.query('SELECT motorcycle_id FROM clt_ifood_drivers WHERE jid=$1 AND shift_ends_at>$2',[jid,Math.floor(Date.now()/1000)])).rows
   const busyIds=new Set(busy.map(x=>x.motorcycle_id))
-  const freeGarage=garage.filter(x=>!busyIds.has(x.id))
+  const freeGarage=v2ManualPaidFleet(garage.filter(x=>!busyIds.has(x.id)))
   if(!freeGarage.length)throw new Error('Todas as motos estão em turno CLT iFood.')
   const tiers={
     bicicleta:{category:'Bike',min:45,max:95}, moto_125:{category:'Básica',min:130,max:230},
@@ -917,18 +918,19 @@ export async function deliverIfood(jid,taxMultiplier=1){
       const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
       const fare=Math.max(1,Math.round(base*delivery.factor))
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
-      return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
+      const paidFare=v2TransportFare(fare,'ifood'),paidTip=v2TransportFare(tip,'ifood')
+      return {vehicle:v,category:tier.category,delivery:delivery.name,fare:paidFare,tip:paidTip,total:paidFare+paidTip}
     })
-    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
+    const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
-    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
+    const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | iFood`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -939,7 +941,7 @@ export async function driveUber(jid,taxMultiplier=1){
   const now=Math.floor(Date.now()/1000)
   const active=(await db.query('SELECT car_id FROM clt_uber_drivers WHERE jid=$1 AND car_id IS NOT NULL AND shift_ends_at>$2',[jid,now])).rows
   const busy=new Set(active.map(x=>x.car_id))
-  const garage=fullGarage.filter(x=>!busy.has(x.id))
+  const garage=v2ManualPaidFleet(fullGarage.filter(x=>!busy.has(x.id)))
   if(!garage.length) throw new Error('Todos os seus carros estão em turno no CLT Uber. Use !centraluber para acompanhar.')
   const tiers=UBER_TIERS
   return tx(async client=>{
@@ -953,18 +955,19 @@ export async function driveUber(jid,taxMultiplier=1){
       const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
       const fare=Math.max(1,Math.round(base*ride.factor))
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
-      return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
+      const paidFare=v2TransportFare(fare,'uber'),paidTip=v2TransportFare(tip,'uber')
+      return {car:v,category:tier.category,ride:ride.name,fare:paidFare,tip:paidTip,total:paidFare+paidTip}
     })
-    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
+    const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
-    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
+    const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | Uber`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -997,7 +1000,7 @@ function cltUberTripNet(carId,driverType){
   const avgRideFactor=(.85+1+1.25+1.6)/4
   const avgTipFactor=1+(.22*.125)
   const gross=avgBase*avgRideFactor*avgTipFactor*d.efficiency
-  return Math.max(1,Math.round(gross*(1-d.commission)*.90))
+  return v2CltTripNet(gross,d.commission,'uber')
 }
 
 async function accrueCltUber(client,jid){
@@ -1239,7 +1242,7 @@ function cltIfoodNet(motoId,typeId){
   const fare=IFOOD_FARES[motoId]||IFOOD_FARES.bicicleta
   const d=CLT_IFOOD_TYPES.find(x=>x.id===typeId)||CLT_IFOOD_TYPES[0]
   const gross=((fare[0]+fare[1])/2)*1.15*1.018*d.efficiency
-  return Math.max(1,Math.round(gross*(1-d.commission)*.9))
+  return v2CltTripNet(gross,d.commission,'ifood')
 }
 async function accrueCltIfood(c,jid){
   const now=Math.floor(Date.now()/1000)
