@@ -103,3 +103,12 @@ Confirmado pelo dono: **somente Paladino (`paladin`), Necromante (`necromancer`)
 - Testes: `test/reboot-classes-policy.test.mjs`; CI também executa regressão da versão antiga, com a variável **desativada**, para não prejudicar o funcionamento atual.
 - IMPORTANTE: essa é somente a camada de **bloqueio funcional**, não remoção física definitiva do código/itens. Ainda faltam catálogos/seed do banco, loot, lojas, forjas, imagens, eventos/agendamentos e testes integrados em base limpa. Não descrever a fase B como concluída.
 - Jamais definir `ALPHA_REBOOT_MODE` em Render/Vercel/Aiven reais enquanto PR for rascunho. A configuração somente será ligada em ambiente novo isolado, com WhatsApp e schedulers desligados.
+
+
+## Marco B4 — arquivo de outras collabs sem destruir minijogos (17/11)
+- Auditoria da árvore GitHub completa (826 arquivos, somente leitura) encontrou, além de 7 Pecados, o antigo evento **Quiz Pokémon de 30/10** em `src/neon/pokemon-quiz.js`.
+- O Quiz Pokémon é conteúdo temático de uma franquia externa, com perguntas e pagamentos próprios. No modo `ALPHA_REBOOT_MODE=classes_only`, a inicialização do seu runner e a retomada automática ficam desabilitadas, assim como seus comandos `!pk`, `!respostapokemon`, `!quizpokemon` e `!pokemonquiz`.
+- A versão V1 mantém o mesmo funcionamento; o código antigo fica preservado para auditoria/arquivo, mas não é carregado como evento ativo da V2.
+- **Não confundir com minijogos genéricos**: quiz comum, torneios, GT, Cerco, Boss, Raid, Poço e missões são sistemas próprios, não devem ser removidos.
+- O bloqueio do evento temático também impede que ele reabra débitos e recompensas de 2026 na nova temporada.
+- Teste de regressão dentro de `test/reboot-classes-policy.test.mjs`. Nenhuma cópia de banco, configuração de deploy ou agendamento adicional foi criada.

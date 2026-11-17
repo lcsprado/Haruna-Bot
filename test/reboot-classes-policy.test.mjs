@@ -133,3 +133,13 @@ test('fluxos de combate e entrada de herói estão protegidos no modo V2',()=>{
   assert.match(contents['index.js'],/classesOnlyRebootEnabled\(\)&&\['7pecados','setepecados','pecados7'\]/);
   assert.match(contents['game-catalog.js'],/classesOnlyRebootEnabled\(\)\?\[\]:PECADOS_HEROES/);
 });
+
+
+test('Quiz Pokémon histórico não executa timers, créditos ou respostas na V2',()=>{
+  const app=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  assert.match(app,/pokemonQuizEngine\?\.stop\(\)\s*pokemonQuizEngine=null\s*if\(!classesOnlyRebootEnabled\(\)\)\{/);
+  assert.match(app,/if\(!classesOnlyRebootEnabled\(\)&&isGroup &&/);
+  assert.match(app,/if\(classesOnlyRebootEnabled\(\)&&\['quizpokemon','pokemonquiz','pk','respostapokemon'\].includes\(cmd\)\)/);
+  assert.match(app,/startPocoLiveScheduler\(sock\)/);
+  assert.match(app,/startGtAlphaScheduler\(sock/);
+});

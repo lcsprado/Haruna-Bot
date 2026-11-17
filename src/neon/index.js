@@ -9932,6 +9932,8 @@ startPocoPreviewScheduler(sock)
 startPocoLiveScheduler(sock)
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
+pokemonQuizEngine=null
+if(!classesOnlyRebootEnabled()){
 pokemonQuizEngine=createPokemonQuizEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open',
@@ -9940,6 +9942,7 @@ pokemonQuizEngine=createPokemonQuizEngine({db,
 })
 void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
   .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
+}
 // Disputa unica nos dois grupos oficiais: estado e saldos compartilhados.
 apostaEngine?.stop()
 apostaEngine=createApostaEngine({db,
@@ -10357,7 +10360,7 @@ setPlayerGroupContext(sender,isGroup?chat:null)
 // Respostas erradas nao geram spam no WhatsApp; resultado vai aos dois grupos.
 const pokemonAnswerTokens=body.startsWith(prefix)
   ?body.slice(prefix.length).trim().toLowerCase().split(/\s+/):[]
-if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(chat)
+if(!classesOnlyRebootEnabled()&&isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(chat)
    && pokemonAnswerTokens[0]==='pk' && pokemonAnswerTokens.length===2
    && /^[1-4]$/.test(pokemonAnswerTokens[1])){
   const now=Date.now()
@@ -10668,6 +10671,10 @@ if(['aposto','apostoq','apostoquenao'].includes(cmd)){
     continue
   }
   await reply(await apostaEngine.status())
+  continue
+}
+if(classesOnlyRebootEnabled()&&['quizpokemon','pokemonquiz','pk','respostapokemon'].includes(cmd)){
+  await reply('🧠 O evento histórico Quiz Pokémon não faz parte da nova temporada. Os minijogos originais continuam disponíveis.')
   continue
 }
 if(['quizpokemon','pokemonquiz'].includes(cmd)){
