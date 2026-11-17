@@ -10,6 +10,7 @@ import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExp
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
+import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog} from './reboot-classes-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -775,9 +776,9 @@ const RAID_CONFIGS=[
   {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse','egide_celestial'],gearChance:.003},
   {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
 ]
-const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
+const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level)&&raidEnabledInReboot(r))||null
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
-export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
+export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
@@ -830,12 +831,12 @@ async function resolveGlobalPlayerRaid(c,jid){
 
 
 export async function getRaidStatuses(chat){
-  return tx(async c=>(await raidRows(c,chat,false)).filter(raidIsOpen))
+  return tx(async c=>(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r)))
 }
 
 export async function getRaidStatus(chat,level=null){
   return tx(async c=>{
-    const rooms=(await raidRows(c,chat,false)).filter(raidIsOpen)
+    const rooms=(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r))
     if(level) return rooms.find(r=>Number(r.level)===Number(level))||null
     return rooms[0]||null
   })
@@ -843,7 +844,9 @@ export async function getRaidStatus(chat,level=null){
 
 export async function createRaid(chat,host,name='Jogador',level=10){
   const cfg=raidConfig(level)
-  if(!cfg) throw new Error('Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
+  if(!cfg) throw new Error(classesOnlyRebootEnabled()
+    ?'Raid indisponível na nova temporada. Consulte !raid para os níveis válidos.'
+    :'Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
   const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
@@ -881,6 +884,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
 }
 
 export async function joinRaid(chat,jid,name='Jogador',level=null){
+  if(classesOnlyRebootEnabled()&&Number(level)===75)throw new Error('Essa Raid não existe na nova temporada.');
   await ensureUser(jid,name)
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${jid}`])
@@ -894,7 +898,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     if(globalRaid){
       throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${globalRaid.level}* em outro grupo.\n⚔️ Um personagem só pode participar de *1 Raid por vez* em todo o Alpha Bot, incluindo o RPG Web.\nConclua a Raid atual antes de entrar nesta.`)
     }
-    const rooms=await resolveRaidRoom(c,chat,level||null)
+    const rooms=(await resolveRaidRoom(c,chat,level||null)).filter(raidEnabledInReboot)
     if(!rooms.length) throw new Error(raidJoinUnavailableMessage({rooms:await raidRows(c,chat,true),level,now:Date.now()}))
     if(!level&&rooms.length>1) throw new Error('Há mais de uma Raid aberta. Escolha uma: '+rooms.map(r=>`!entrar ${r.level}`).join(' • '))
     const s=rooms[0]
