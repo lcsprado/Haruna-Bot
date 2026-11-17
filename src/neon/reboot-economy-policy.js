@@ -55,6 +55,14 @@ export function candidateRaidConfig(base,{enabled=rebootEconomyEnabled()}={}){
   if(!patch)throw new Error('Raid sem orçamento aprovado na Economia 2.0.');
   return {...base,...patch};
 }
+export function candidateShopCatalogItem(row,{enabled=rebootEconomyEnabled()}={}){
+ if(!Array.isArray(row))throw new TypeError('Item de catálogo inválido');
+ if(!enabled)return row;
+ const match=String(row[0]||'').match(/^chave_raid_(\\d+)$/);
+ const price=match?V2_RAID_LEVELS[Number(match[1])]?.keyPrice:undefined;
+ return price===undefined?row:[...row.slice(0,4),price,...row.slice(5)];
+}
+
 export function raid70V2Policy(level,{enabled=rebootEconomyEnabled()}={}){
   return enabled&&Number(level)===70
     ?{minPlayers:3,minLevel:90,allowRaidLote:false,minimumMeaningfulContributors:2}
