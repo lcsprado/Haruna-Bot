@@ -9,6 +9,7 @@ on:
       - 'docs/reboot-career-v2-20261117.md'
       - 'docs/reboot-vehicle-roi-v2-20261117.md'
       - 'docs/reboot-economy-integrated-v2-20261117.md'
+      - 'docs/reboot-economy-stress-v2-20261117.md'
       - 'docs/reboot-isolated-db-runbook-20261117.md'
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
@@ -16,6 +17,7 @@ on:
       - 'scripts/reboot-economy-flow-audit.mjs'
       - 'scripts/reboot-vehicle-roi.mjs'
       - 'scripts/reboot-economy-integrated.mjs'
+      - 'scripts/reboot-economy-stress.mjs'
       - 'scripts/reboot-reset-manifest.mjs'
       - 'src/neon/reboot-classes-policy.js'
       - 'src/neon/reboot-economy-policy.js'
@@ -46,6 +48,7 @@ on:
       - 'test/reboot-career-policy.test.mjs'
       - 'test/reboot-vehicle-roi.test.mjs'
       - 'test/reboot-economy-integrated.test.mjs'
+      - 'test/reboot-economy-stress.test.mjs'
       - 'test/reboot-economy-flow-audit.test.mjs'
       - 'test/reboot-reset-manifest.test.mjs'
       - 'test/reboot-classes-policy.test.mjs'
@@ -93,6 +96,7 @@ jobs:
           node --check src/neon/reboot-vehicle-roi.js
           node --check scripts/reboot-vehicle-roi.mjs
           node --check scripts/reboot-economy-integrated.mjs
+          node --check scripts/reboot-economy-stress.mjs
           node --check src/neon/web-event-center.js
           node --check src/neon/web-api.js
           node --check src/neon/relics.js
@@ -100,7 +104,7 @@ jobs:
           node --check src/neon/npc-shops.js
           node --check src/neon/auction-20261115-rewards.js
       - name: Testes dedicados, sem dependencias ou credenciais
-        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-transport-policy.test.mjs test/reboot-career-policy.test.mjs test/reboot-vehicle-roi.test.mjs test/reboot-economy-integrated.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-transport-policy.test.mjs test/reboot-career-policy.test.mjs test/reboot-vehicle-roi.test.mjs test/reboot-economy-integrated.test.mjs test/reboot-economy-stress.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs
       - name: Regressões do jogo anterior (sem DB)
         run: node --test test/regression-smoke.test.mjs test/playable-seven-sins-20261027.test.mjs
       - name: Auditorias somente leitura
@@ -111,6 +115,8 @@ jobs:
           node scripts/reboot-economy-flow-audit.mjs --json > /tmp/reboot-flow-audit.json
           node scripts/reboot-vehicle-roi.mjs --json > /tmp/reboot-vehicle-roi.json
           node scripts/reboot-economy-integrated.mjs --json > /tmp/reboot-economy-integrated.json
+          node scripts/reboot-economy-stress.mjs --json > /tmp/reboot-economy-stress.json
+          node scripts/reboot-economy-stress.mjs
           node scripts/reboot-economy-integrated.mjs
           node scripts/reboot-economy-sim.mjs
           node scripts/reboot-reset-manifest.mjs --json > /tmp/reboot-reset-manifest.json
