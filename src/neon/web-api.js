@@ -50,6 +50,8 @@ import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } fro
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-bonus-20261101.js'
+import {getAuctionWebStatus as getCurrentAuctionWebStatus,placeAuctionWebBid as placeCurrentAuctionWebBid} from './auction-bonus-20261101-1500.js'
+import {classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
@@ -619,7 +621,7 @@ async function publicCatalog(){
     if(!['weapon','armor','boots'].includes(item.category)) return true
     return Boolean(getEquipmentInfo(item.id))
   })
-  const allItems=(allItemRows.rows||[]).map(item=>({
+  const allItems=(allItemRows.rows||[]).filter(item=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(item.id)).map(item=>({
     ...item,
     equipment:['weapon','armor','boots'].includes(item.category)?getEquipmentInfo(item.id):null
   }))
@@ -627,7 +629,9 @@ async function publicCatalog(){
     generatedAt:now(),
     pets:petCatalog(),
     raids:getRaidCatalog(),
-    relics:relicCatalog,
+    relics:classesOnlyRebootEnabled()
+      ?Object.fromEntries(Object.entries(relicCatalog).filter(([id])=>!isRebootCollabItemId(id)))
+      :relicCatalog,
     shop,
     allItems,
     houses:HOUSES,
@@ -1161,7 +1165,7 @@ async function startRaidServerRun(session,level){
 async function runAction(session,name,body={}){
   const jid=session.jid
   // This action is verified and executed by the same auction handler as WhatsApp.
-  if(name==='auction.bid')return placeAuctionWebBid({
+  if(name==='auction.bid')return (classesOnlyRebootEnabled()?placeCurrentAuctionWebBid:placeAuctionWebBid)({
     chat:requireGroup(session),sender:jid,name:await playerDisplayName(jid),amount:body.amount
   })
   await enforceWebActionPolicy(session,name)
@@ -1504,7 +1508,7 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/auction'){
-      const data=await getAuctionWebStatus({chat:requireGroup(session),sender:session.jid})
+      const data=await (classesOnlyRebootEnabled()?getCurrentAuctionWebStatus:getAuctionWebStatus)({chat:requireGroup(session),sender:session.jid})
       json(res,200,{ok:true,data})
       return true
     }
