@@ -145,9 +145,10 @@ export async function handlePocoExpeditionCommand({cmd,args=[],sender,name,reply
    if(!s.active)return {msg:'Use !poco iniciar.'}
    if(s.active.phase!=='choose')return {msg:status(s,at)}
    if(at>=POCO_SEASON.endAt)return {msg:'⛔ Encerrado o prazo da temporada.'}
-   const prior=s.active.floor
+   const prior=s.active.floor,earned=s.active.last
    s.active=pocoExpAdvance(s.active,choice,{now:at})
-   return {msg:'⬇️ Andar '+prior+' → '+s.active.floor+' • '+POCO_EXPEDITION.upgrades[choice]+
+   return {msg:'✅ G'+prior+' vencido • R$ '+fmt(earned?.cash)+' • '+fmt(earned?.xp)+' EXP • '+lootName(earned?.drop)+
+    '\n⬇️ Andar '+prior+' → '+s.active.floor+' • '+POCO_EXPEDITION.upgrades[choice]+
     '\n'+status(s,at)}
   })
   await reply(r.msg);return true
