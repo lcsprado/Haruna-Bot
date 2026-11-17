@@ -58,12 +58,14 @@ export function pocoBetaCompactPrompt({state,name,recap='',defeated=0,drop=''}={
  if(state?.status!=='active'||!state?.boss)return '🏁 Combate encerrado.'
  const b=state.boss
  const skill=pocoBossSkill(b.floor,b.turn)
- const head='🏰 *POÇO* • '+shortName(name)+' • G'+b.floor+'/30 • '+pocoBetaTraversalLabel(b.floor)
+ const crossing=b.turn===0?' • '+pocoBetaTraversalLabel(b.floor):''
+ const head='🏰 *POÇO* • '+shortName(name)+' • G'+b.floor+'/30'+crossing
  const summary='❤️'+fmt(state.hp)+'/'+fmt(state.stats.maxHp)+
-   ' 🧪'+state.potions+' ✨'+state.skillCharges+' • 👹'+fmt(b.hp)+'/'+fmt(b.maxHp)
- const notice=(defeated?'✅ G'+defeated+' vencido • ':'')+(recap?recap+' • ':'')+(drop?'🎲'+drop+' • ':'')
- return head+'\n'+summary+'\n'+notice+'⚠️ *'+skill.name+'*'+
-   '\n1⚔️ Atacar  2🛡️ Defender  3🧪 Curar  4✨ Técnica  • 1 ação/rodada • 120s'
+   ' 👹'+fmt(b.hp)+'/'+fmt(b.maxHp)+
+   ' 🧪'+state.potions+' ✨'+state.skillCharges
+ const notice=(defeated?'✅G'+defeated+' ':'')+(recap?recap+' ':'')+(drop?'🎲'+drop+' ':'')
+ return head+'\n'+summary+' • '+notice+'⚠️*'+skill.name+'*'+
+   '\n1⚔️ 2🛡️ 3🧪 4✨ • 1 ação • 120s'
 }
 
 export function pocoBetaCompactEnd({name,report,recap='',defeated=0,drop=''}={}){
