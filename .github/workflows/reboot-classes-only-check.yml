@@ -1,0 +1,37 @@
+name: Reboot Alpha — auditoria isolada sem banco
+on:
+  pull_request:
+    paths:
+      - 'docs/reboot-classes-only-20261117.md'
+      - 'scripts/reboot-audit.mjs'
+      - 'scripts/reboot-economy-baseline.mjs'
+      - 'test/reboot-audit.test.mjs'
+      - 'test/reboot-economy-baseline.test.mjs'
+      - '.github/workflows/reboot-classes-only-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check scripts/reboot-audit.mjs
+          node --check scripts/reboot-economy-baseline.mjs
+      - name: Testes dedicados, sem dependencias ou credenciais
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs
+      - name: Auditorias somente leitura
+        run: |
+          node scripts/reboot-audit.mjs --json > /tmp/reboot-dependencies.json
+          node scripts/reboot-economy-baseline.mjs --json > /tmp/reboot-business-baseline.json
+          node -e "const d=require('/tmp/reboot-dependencies.json');const e=require('/tmp/reboot-business-baseline.json');if(!d.readOnly||d.sourceFilesScanned<1||e.length<1)process.exit(1);console.log('Auditados',d.sourceFilesScanned,'arquivos,',d.tablesFound.length,'tabelas e',e.length,'cenarios de negocio')"
