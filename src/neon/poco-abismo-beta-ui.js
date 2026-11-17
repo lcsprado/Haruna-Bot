@@ -65,7 +65,7 @@ export function pocoBetaCompactPrompt({state,name,recap='',defeated=0,drop=''}={
    ' 🧪'+state.potions+' ✨'+state.skillCharges
  const notice=(defeated?'✅G'+defeated+' ':'')+(recap?recap+' ':'')+(drop?'🎲'+drop+' ':'')
  return head+'\n'+summary+' • '+notice+'⚠️*'+skill.name+'*'+
-   '\n1⚔️ 2🛡️ 3🧪 4✨ • 1 ação • 120s'
+   '\n1⚔️ 2🛡️ 3🧪 4✨ • 1 ação/rodada • 120s'
 }
 
 export function pocoBetaCompactEnd({name,report,recap='',defeated=0,drop=''}={}){
