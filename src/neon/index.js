@@ -3640,7 +3640,7 @@ try{
 finally{setePecadosCorrectionBusy=false}
 }
 const setePecadosCorrectionTimer=classesOnlyRebootEnabled()?null:setInterval(()=>{void resendCorrectedSetePecados25()},30000)
-setePecadosCorrectionTimer.unref?.()
+setePecadosCorrectionTimer?.unref?.()
 if(!classesOnlyRebootEnabled())setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
 async function announceNextPecado(){
 if(classesOnlyRebootEnabled())return;
