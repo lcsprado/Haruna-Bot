@@ -13,7 +13,8 @@ export const REBOOT_CLASS_IDS=Object.freeze(['paladin','necromancer','samurai','
 const SELECTIVE=new Set([
   'users','group_licenses','group_settings','subscription_orders',
   'support_tickets','group_warnings','web_sessions','web_link_codes',
-  'web_pending_group_links','profile_avatars'
+  'web_pending_group_links','profile_avatars',
+  'verified_whatsapp_lid_links','web_password_accounts'
 ]);
 // Autenticação do WhatsApp deve ser transferida somente na janela de corte,
 // após parar o serviço anterior. Nunca copiar sessão ativa para homologação.
@@ -35,22 +36,47 @@ const FRESH_GAMEPLAY=new Set([
   'group_events','clt_uber_drivers','clt_ifood_drivers',
   'player_hero_mode','player_hero_mastery','player_hero_mastery_unlocks',
   'hero_mastery_awards','hero_level_awards','player_damage_stats',
-  'player_damage_hits','player_loans'
+  'player_damage_hits','player_loans',
+  'alpha_city_encounters','alpha_city_flags','alpha_city_incidents',
+  'alpha_city_reputation','alpha_city_responses','alpha_city_rumors',
+  'alpha_city_talks','alpha_dark_contracts','alpha_dark_purchases',
+  'alpha_npc_purchases','alpha_npc_reputation','alpha_npc_robbery',
+  'daily_activity_events','daily_reward_claims','equipment_enchantments',
+  'gt_sponsor_contracts_alpha','mimic_hunt_sessions',
+  'player_active_relics','player_awakenings','poco_abismo_claims',
+  'racing_cars_alpha','racing_challenges_alpha','racing_profiles_alpha',
+  'racing_results_alpha','raid_lote_attempts','raid_lote_jobs',
+  'raid_lote_municipality'
 ]);
 // Essas tabelas misturam temporadas, sessões globais, mensagens ou trilhas
 // contábeis; exige inspeção específica — nunca copiar a tabela inteira.
 const MANUAL=new Set([
   'transactions','trevo_settings','trevo_games','boss_auto_sessions',
-  'snipe_messages','quick_flows'
+  'snipe_messages','quick_flows',
+  'auction_bid_notice_outbox','raid_lote_notice_outbox',
+  'whatsapp_outbound_retry','awakening_migrations'
 ]);
 const RESEED=new Set(['items']);
+// Eventos históricos: preservar somente no arquivo da temporada antiga.
+// O código de evento pode continuar disponível, mas sessões antigas não.
+const ARCHIVE_ONLY=new Set([
+  'cofre_sombras_events','cofre_sombras_sessions',
+  'halloween_boss_days_2026','halloween_drops_2026',
+  'halloween_players_2026','halloween_rewards_2026',
+  'halloween_shop_2026','hero_legacy_pet_audit',
+  'madrugada_boss_20261031','madrugada_players_20261031',
+  'madrugada_rewards_20261031'
+]);
+const FRESH_VOLATILE=new Set(['web_auth_rate_limits']);
 
 const GROUPS=Object.freeze({
   selective_migration:SELECTIVE,
   auth_cutover_only:CUTOVER_ONLY,
   fresh_gameplay:FRESH_GAMEPLAY,
   manual_review:MANUAL,
-  reseed_catalog:RESEED
+  reseed_catalog:RESEED,
+  archive_only:ARCHIVE_ONLY,
+  fresh_volatile:FRESH_VOLATILE
 });
 const NAMES=Object.entries(GROUPS);
 export function rebootTableDecision(table){
@@ -64,7 +90,8 @@ export function rebootTableDecision(table){
 export function classifyRebootTables(names){
   const unique=[...new Set((Array.isArray(names)?names:[]).map(String))].sort();
   const groups={selective_migration:[],auth_cutover_only:[],fresh_gameplay:[],
-    manual_review:[],reseed_catalog:[],unclassified_blocker:[]};
+    manual_review:[],reseed_catalog:[],archive_only:[],fresh_volatile:[],
+    unclassified_blocker:[]};
   for(const table of unique)groups[rebootTableDecision(table)].push(table);
   return {total:unique.length,counts:Object.fromEntries(Object.entries(groups)
     .map(([k,v])=>[k,v.length])),groups,
