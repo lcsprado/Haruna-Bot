@@ -6,6 +6,7 @@ import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
 import {PECADOS_ESSENCES} from './sete-pecados-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
@@ -155,6 +156,7 @@ async function finishLot(state,c){
   return report
 }
 async function tick(sock){
+  if(classesOnlyRebootEnabled())return
   if(busy)return
   busy=true
   try{
@@ -236,6 +238,7 @@ async function tick(sock){
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
+  if(classesOnlyRebootEnabled())return
   console.info('[LEILAO BONUS] scheduler chamado',JSON.stringify({now:Date.now(),start:START,end:END,socket:!!sock?.sendMessage}))
   auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT||timer||Date.now()>END)return
@@ -252,6 +255,7 @@ function parseAmount(raw){
   return Number.isSafeInteger(value)&&value>0?{relative:Boolean(match[1]),value}:null
 }
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply,web=false}){
+  if(classesOnlyRebootEnabled())return false
   if(!['leilao','lance'].includes(cmd))return false
   if(AUCTION_PAUSED_FOR_AUDIT){
     await reply('🔒 Os leilões de hoje foram cancelados e estão pausados até a auditoria. Lances foram estornados; prêmios serão revisados. Nenhuma nova cobrança será feita.')
@@ -349,6 +353,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
 // The Web API uses the same locked bidding path as WhatsApp; never a second auction.
 // Exposição pública das descrições dos prêmios, sem salt nem dados privados dos jogadores.
 export async function getAuctionWebStatus({chat,sender}){
+  if(classesOnlyRebootEnabled())throw Error('Esta edição histórica da collab não existe na nova temporada.')
   if(!String(chat||'').endsWith('@g.us'))throw Error('Vincule seu Web a um grupo com !web no WhatsApp.')
   if(!EVENT_GROUPS.has(chat))throw Error('Esta edição é exclusiva do AlphaBot.')
   const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value||stateDefault()
@@ -376,6 +381,7 @@ export async function getAuctionWebStatus({chat,sender}){
 }
 
 export async function placeAuctionWebBid({chat,sender,name,amount}){
+  if(classesOnlyRebootEnabled())throw Error('Leilão da collab indisponível na nova temporada.')
   const raw=String(amount??'')
   if(!/^\+?\d{1,10}$/.test(raw))throw Error('Informe um valor inteiro válido em reais.')
   let confirmation=''
