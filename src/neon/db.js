@@ -14,6 +14,7 @@ import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
 import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
+import {rebootResaleUnit,rebootBoxCashRange,rebootBoxBatchLimit} from './reboot-sale-policy.js'
 import {WEEKLY_GOLEM_V2_GEAR,WEEKLY_GOLEM_V2_GEAR_IDS,WEEKLY_GOLEM_V2_VOUCHER} from './weekly-golem-v2-20261113.js'
 import {POCO_ABISMO_GEAR,POCO_ABISMO_GEAR_IDS} from './poco-abismo-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
@@ -1620,6 +1621,7 @@ END DESC,
 it.name
 `,[jid])
 return rows.filter(r=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id)).map(r=>{
+if(classesOnlyRebootEnabled())r.sell_unit=rebootResaleUnit(r,{enabled:true})
 const upgradeRows=Array.isArray(r.upgraded_copies)?r.upgraded_copies:[]
 const upgradedQuantity=upgradeRows.reduce((n,c)=>n+Number(c.quantity||0),0)
 const sale=equipmentSalePolicy({quantity:r.quantity,equipped:r.equipped,boundQuantity:r.bound_quantity,upgradedQuantity,hasForge:Number(r.forged_level||0)>0,sellable:r.sellable!==false})
@@ -1722,7 +1724,8 @@ if(qty>sellable){
 throw new Error(`Você pode vender no máximo ${sellable} unidade(s); 1 cópia está equipada.`)
 }
 let unit
-if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
+if(classesOnlyRebootEnabled())unit=rebootResaleUnit(item,{enabled:true})
+else if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
 else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
 else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
 else if(item.rarity==='epic') unit=25000
@@ -1823,7 +1826,8 @@ throw new Error(equipped
 : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
 }
 let unit
-if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
+if(classesOnlyRebootEnabled())unit=rebootResaleUnit(item,{enabled:true})
+else if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
 else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
 else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
 else if(item.rarity==='epic') unit=25000
@@ -4212,7 +4216,7 @@ await ensureUser(jid)
 qty=Number(qty)
 const config=BOX_CONFIG[boxId]
 if(!config) throw new Error('Essa caixa não pode ser aberta.')
-if(!Number.isInteger(qty) || qty<1 || qty>5000) throw new Error('Quantidade inválida de caixas.')
+if(!Number.isInteger(qty) || qty<1 || qty>rebootBoxBatchLimit()) throw new Error('Quantidade inválida de caixas.')
 return transaction(async client=>{
 const inv=await client.query(
 'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
@@ -4234,7 +4238,7 @@ const luckyMultiplier=await getLuckyBoxMultiplier(client)
 for(let i=0;i<qty;i++){
 const utilityRoll=Math.random()
 if(utilityRoll<config.cashChance){
-const [min,max]=config.cash
+const [min,max]=rebootBoxCashRange(boxId,config.cash)
 cash+=min+Math.floor(Math.random()*(max-min+1))
 continue
 }
@@ -4297,7 +4301,7 @@ WHERE id = ANY($1::text[])`,
 )
 for(const row of itemRows.rows){
 names.set(row.id,row.name)
-rarities.set(row.id,{rarity:row.rarity,sellUnit:Number(row.sell_unit||0)})
+rarities.set(row.id,{rarity:row.rarity,sellUnit:classesOnlyRebootEnabled()?rebootResaleUnit(row,{enabled:true}):Number(row.sell_unit||0)})
 }
 if(names.size!==itemIds.length){
 throw new Error('Catálogo de itens incompleto: abertura cancelada sem consumir caixas.')
