@@ -129,7 +129,8 @@ export function raidV2MeaningfulContribution(p,total,minShare=.02){
  if(!p?.jid||!Number.isFinite(total)||total<=0)return false;
  const damage=Math.max(0,Number(p.damage||0));
  const healing=Math.max(0,Number(p.classHealing||0))+Math.max(0,Number(p.petSkillHealing||0));
- return (damage>0&&damage>=total*minShare)||healing>=Math.max(200,total*.002);
+ const support=Math.max(0,Number(p.alliedProtection||0))+Math.max(0,Number(p.alliedHealing||0))+Math.max(0,Number(p.curseTeamDamage||0));
+ return (damage>0&&damage>=total*minShare)||healing>=Math.max(200,total*.002)||support>=Math.max(200,total*.002);
 }
 export function raidV2EligibleRewards(players,{enabled=rebootEconomyEnabled()}={}){
  const rows=Array.isArray(players)?players:Object.values(players||{});

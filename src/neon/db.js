@@ -25,6 +25,7 @@ import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTa
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
 import {dungeonCashV2} from './reboot-pve-policy.js'
+import {activeCombatPetTeam} from './reboot-pet-team.js'
 import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-combat-progression.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
@@ -3255,7 +3256,7 @@ ORDER BY t.jid,t.slot`,
 const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
 const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
 const petFor=jid=>petsR.rows.find(r=>r.jid===jid)
-const teamFor=jid=>petTeamR.rows.filter(r=>r.jid===jid)
+const teamFor=jid=>activeCombatPetTeam(petTeamR.rows.filter(r=>r.jid===jid),petFor(jid)?[{...petFor(jid),teamSlot:1}]:[])
 const synergySpeedFor=jid=>{
 const team=teamFor(jid)
 const synergy=petTeamSynergy(team)

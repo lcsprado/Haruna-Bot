@@ -44,11 +44,11 @@ export function raidPaladinProtection(players,target,incoming){
   return {damage:amount-absorbed,absorbed,source:guardian.jid}
 }
 
-export function raidNecromancerCurse(players,attacker,damage){
+export function raidNecromancerCurse(players,attacker,damage,remainingHp=Infinity){
   const amount=Math.max(0,Math.floor(Number(damage)||0))
   const source=(players||[]).find(p=>isAwakened(p,'necromancer',4))
   if(!source||!attacker||attacker.jid===source.jid)return {damage:amount,bonus:0,source:null}
-  const bonus=Math.round(amount*RAID_ROLE_RULES.necromancerCurse)
+  const bonus=Math.max(0,Math.min(Math.round(amount*RAID_ROLE_RULES.necromancerCurse),Math.floor(Number(remainingHp))-amount))
   source.curseTeamDamage=Number(source.curseTeamDamage||0)+bonus
   return {damage:amount+bonus,bonus,source:source.jid}
 }
@@ -59,4 +59,12 @@ export function raidRoleReport(p){
     alliedProtection:Math.max(0,Math.floor(Number(p?.alliedProtection)||0)),
     curseTeamDamage:Math.max(0,Math.floor(Number(p?.curseTeamDamage)||0))
   }
+}
+
+// Aura IV existente: mede mitigação bruta sem redirecionar HP ou empilhar guardiões.
+export function recordRaidAuraProtection(guardian,target,before,after,defense){
+ if(!isAwakened(guardian,'paladin',4)||!target||guardian.jid===target.jid||!defense||defense.dodged||Number(defense.damage)<=0)return 0;
+ const amount=Math.max(0,Math.min(Math.floor(Number(before)-Number(after)),Math.floor(Number(target.hp)||0),Math.floor(Number(defense.damage)||0)));
+ if(amount>0)guardian.alliedProtection=Number(guardian.alliedProtection||0)+amount;
+ return amount;
 }

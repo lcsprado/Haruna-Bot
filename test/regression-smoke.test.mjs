@@ -338,7 +338,7 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
   assert.ok(db.includes("if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0)"),'direct purchase of drop-only items must be blocked')
   assert.ok(games.includes("if(Number(user?.level||1)<100) return null"),'reclass scroll must require level 100')
   assert.ok(games.includes("const chance=mode==='weekly'?.03:.01"),'Boss drop chances must be 3% weekly and 1% common/event')
-  assert.ok(games.includes("const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
+  assert.ok(games.includes("const reclassDrop=s.eventId===NIGHT_EVENT_ID||(commonV2&&commonV2.xp===0)?null:await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
 })
 
 

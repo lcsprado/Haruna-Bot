@@ -14,6 +14,8 @@ import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eli
 import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
+import {activeCombatPetTeam} from './reboot-pet-team.js'
+import {raidNecromancerCurse,recordRaidAuraProtection,raidRoleReport} from './raid-cooperative-roles.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
@@ -975,7 +977,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       jid,name:name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
-      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
+      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(activeCombatPetTeam(teamPassives,[combatPet,reservePet])),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1245,7 +1247,7 @@ export async function startRaid(chat,host,level=null,options={}){
         'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
         [jid]
       )).rows,heroId)
-      const teamSynergy=petTeamSynergy(teamPets)
+      const teamSynergy=petTeamSynergy(activeCombatPetTeam(teamPets,[combatPet,reservePet]))
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
@@ -1559,6 +1561,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
     }
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
+      ...(rebootEconomyEnabled()?raidRoleReport(p):{}),
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
       playerClassId:p.classId,playerClassApplied:Boolean(p.classApplied),activeHeroId:p.heroId||null,
@@ -1656,8 +1659,8 @@ export async function raidRound(chat,level){
       if(PECADOS_HERO_IDS.includes(String(p.pet?.species||'')))p.pet=null
       if(PECADOS_HERO_IDS.includes(String(p.reservePet?.species||'')))p.reservePet=null
       let pb={damage:0,crit:0}
-      const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
-      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
+      let baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
+      let teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
 
@@ -1722,7 +1725,13 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
-      if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,p.teamPassives||[])
+      const combatTeam=activeCombatPetTeam(p.teamPassives||[],[p.pet,p.reservePet],{lastEnergyActive:true})
+      if(rebootEconomyEnabled()){
+        baseTeamSynergy=petTeamSynergy(combatTeam)||{attack:0,defense:0,crit:0}
+        teamSynergy=baseTeamSynergy
+        p.teamSynergy=teamSynergy
+      }
+      if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,combatTeam)
       const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
@@ -1758,7 +1767,9 @@ export async function raidRound(chat,level){
       if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
-      const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const baseRaidDamage=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const curse=rebootEconomyEnabled()?raidNecromancerCurse(alive,p,baseRaidDamage,Number(s.hp)):{damage:baseRaidDamage,bonus:0,source:null}
+      const dmg=curse.damage
       const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
       if(p.classId==='paladin'&&p.classApplied&&Number(p.awakeningStage||0)>=1&&s.round%8===0){
         p.classHealingOpportunities=Number(p.classHealingOpportunities||0)+1
@@ -1859,8 +1870,8 @@ export async function raidRound(chat,level){
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
-      const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
-      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
+      const baseTeamSynergy=petTeamSynergy(activeCombatPetTeam(p.teamPassives||[],[p.pet,p.reservePet],{lastEnergyActive:true}))||{attack:0,defense:0,crit:0}
+      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+(rebootEconomyEnabled()?0:halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length}))}
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
@@ -1886,6 +1897,10 @@ export async function raidRound(chat,level){
       if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
+      if(rebootEconomyEnabled()&&guardianAura){
+        const guardian=alive.find(ally=>ally.jid!==p.jid&&ally.alive&&Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&Number(ally.awakeningStage||0)>=4)
+        recordRaidAuraProtection(guardian,p,hitDamage,protectedDamage,passiveDefense)
+      }
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
       const heart=vitalPulseHeal(p.hp,p.maxHp,p.vitalPulseUsed,Number(p.teamSynergy?.vitalPulse||0))
       if(heart.used&&!p.vitalPulseUsed){
@@ -3506,8 +3521,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=excludeActiveHeroPet(combatSnapshot?.team_pets||[],heroId)
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
-    const baseTeamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
-    const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:baseTeamSynergy.style,teamCount:teamPets.length})}
+    const baseTeamSynergy=petTeamSynergy(activeCombatPetTeam(teamPets,pet?[{...pet,teamSlot:activePetSlot,roundActive:true}]:[],{lastEnergyActive:true}))||{attack:0,defense:0,crit:0}
+    const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+(rebootEconomyEnabled()?0:halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:baseTeamSynergy.style,teamCount:teamPets.length}))}
     const upgradeRows=combatSnapshot?.upgrade_rows||[]
     const enchanted=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
