@@ -110,3 +110,22 @@ test('alertas de concentração e liquidez não confundem fechar contas com econ
  assert.equal(oneTwenty.warnings.includes('low_liquidity'),false);
  assert.match(report.riskSignals.warning,/NÃO política aplicada/);
 });
+
+import {candidateEconomyReport,candidateEventCash} from '../scripts/reboot-economy-candidate.mjs';
+test('simulação candidata usa os preços V2 atuais e reinveste prêmios hipotéticos sem criar saldo',()=>{
+ const input=buildIntegratedInputs(prog,db,{currentV2Prices:true});
+ assert.equal(input.vehicles.cars.find(x=>x.id==='sedan_esportivo').price,75000);
+ assert.equal(input.vehicles.motorcycles.find(x=>x.id==='moto_125').price,8000);
+ const report=candidateEconomyReport(prog,db);
+ assert.equal(report.profiles.length,16);
+ assert.equal(report.soloRaid70Blocked,true);
+ for(const row of report.profiles){
+  for(const r of [row.invested,row.withConditionalEvents])assert.equal(r.accountingBalanced,true);
+  assert.equal(row.invested.extraCash,0);
+  assert.ok(row.withConditionalEvents.extraCash>0);
+ }
+ const totals=Object.values(candidateEventCash(30)).flatMap(x=>Object.values(x)).reduce((a,b)=>a+b,0);
+ assert.equal(totals,4*40000+2*1440);
+ assert.equal(report.xpSensitivity.intensivo.creditedPerActiveDay,12000);
+ assert.equal(report.xpSensitivity.casual.creditedPerActiveDay,2000);
+});

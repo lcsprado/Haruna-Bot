@@ -69,9 +69,9 @@ function targetProduct(row,businesses,vehicles){
   }
   return null;
 }
-export function buildIntegratedInputs(progressionSource,dbSource){
+export function buildIntegratedInputs(progressionSource,dbSource,{currentV2Prices=false}={}){
   const biz=getBusinessVersions(progressionSource).proposed;
-  const cars=auditVehicleRoi(progressionSource);
+  const cars=auditVehicleRoi(progressionSource,{currentV2Prices});
   const ranks=extractCareerRanks(dbSource);
   for(const b of biz)
     if(b.profitHour!==V2_BUSINESS_ECONOMY.hourlyRates[b.id])
@@ -129,7 +129,7 @@ function maybeInvest({day,cash,step,businesses,vehicles,ranks,ownedBusiness,owne
   return {cash:currentCash,nextStep,decision};
 }
 export function simulateIntegrated(profile,days,inputs,{
-  strategy='invest',characterLevel=1
+  strategy='invest',characterLevel=1,dailyExtraCash={}
 }={}){
   if(!PROFILES.some(p=>p.id===profile?.id)||!PLAYER_BEHAVIOR[profile.id])
     throw TypeError('Perfil desconhecido');
@@ -139,11 +139,14 @@ export function simulateIntegrated(profile,days,inputs,{
     throw RangeError('Nível inválido');
   const actions=PLAYER_BEHAVIOR[profile.id],{businesses,vehicles,ranks}=inputs;
   const ownedBusiness=[],ownedVehicle=[],hired=[];
-  let cash=0,careerXp=0,careerRank='Ajudante',step=0,workNet=0,missionNet=0,
+  let extraCash=0,cash=0,careerXp=0,careerRank='Ajudante',step=0,workNet=0,missionNet=0,
     manualNet=0,cltNet=0,businessNet=0,consumableSpent=0,capitalPaid=0,
     businessTax=0,businessOperating=0,workTax=0,activeDays=0,workShifts=0;
   const picks=[];
   for(let day=1;day<=days;day++){
+    const extra=dailyExtraCash[day]??0;
+    if(!Number.isSafeInteger(extra)||extra<0)throw RangeError('Prêmio hipotético inválido');
+    cash+=extra;extraCash+=extra;
     if((day-1)%7>=profile.daysPerWeek)continue;
     activeDays++;
     for(const row of ownedBusiness){
@@ -188,7 +191,7 @@ export function simulateIntegrated(profile,days,inputs,{
     }
     if(cash<0)throw Error('Saldo negativo: cenário inválido');
   }
-  const generated=workNet+missionNet+manualNet+cltNet+businessNet;
+  const generated=workNet+missionNet+manualNet+cltNet+businessNet+extraCash;
   const businessBook=ownedBusiness.reduce((a,b)=>a+b.capital,0);
   const vehicleBook=ownedVehicle.reduce((a,b)=>a+b.capital,0);
   const driverHiring=hired.reduce((a,b)=>a+b.paid,0);
@@ -202,7 +205,7 @@ export function simulateIntegrated(profile,days,inputs,{
     businessLevels:ownedBusiness.map(r=>({id:r.business.id,level:r.level})),
     vehicleIds:ownedVehicle.map(r=>r.id),driverAssignments:hired.map(r=>({mode:r.mode,id:r.id,vehicleId:r.vehicleId})),
     workNet,missionNet,manualNet,cltNet,businessNet,businessTax,businessOperating,workTax,
-    consumableSpent,capitalPaid,businessBook,vehicleBook,driverHiring,
+    extraCash,consumableSpent,capitalPaid,businessBook,vehicleBook,driverHiring,
     residualVehicleValue,netWorthAtResaleAssumption,totalAssetsBook,
     netGenerated:generated-consumableSpent,
     accountingBalanced:generated-consumableSpent===cash+capitalPaid,

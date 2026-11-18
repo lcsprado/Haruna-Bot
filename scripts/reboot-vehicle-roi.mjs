@@ -3,6 +3,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
+import {effectiveAsset} from '../src/neon/reboot-assets-policy.js';
 import {expectedManualVehicleNet,expectedCltVehicleNet} from '../src/neon/reboot-vehicle-roi.js';
 
 function block(source,begin,end){
@@ -12,7 +13,7 @@ function block(source,begin,end){
  if(b<0)throw new Error('Fim do catálogo não encontrado: '+begin);
  return source.slice(a,b);
 }
-export function auditVehicleRoi(source){
+export function auditVehicleRoi(source,{currentV2Prices=false}={}){
  const cars=block(source,'export const CARS=[','\n]');
  const motos=block(source,'export const MOTORCYCLES=[','\n]');
  const faresUber=block(source,'export const UBER_TIERS={','\n}');
@@ -28,7 +29,7 @@ export function auditVehicleRoi(source){
  const drivers=s=>[...s.matchAll(/\{id:'([^']+)',name:'([^']+)',price:(\d+),intervalMin:(\d+),efficiency:([\d.]+),commission:([\d.]+)\}/g)]
    .map(m=>({id:m[1],name:m[2],price:Number(m[3]),intervalMin:Number(m[4]),
      efficiency:Number(m[5]),commission:Number(m[6])}));
- const c=catalog(cars),m=catalog(motos),du=drivers(cltUber),di=drivers(cltIfood);
+ const c=catalog(cars).map(row=>effectiveAsset(row,{enabled:currentV2Prices})),m=catalog(motos).map(row=>effectiveAsset(row,{enabled:currentV2Prices})),du=drivers(cltUber),di=drivers(cltIfood);
  if(c.length!==13||m.length!==6||Object.keys(uberFares).length!==13||
   Object.keys(ifoodFares).length!==6||du.length!==3||di.length!==3)
    throw new Error('Quantidade de modelos alterada: exigir revisão');
@@ -41,9 +42,9 @@ export function auditVehicleRoi(source){
        ...expectedCltVehicleNet({...vehicle,...fare,kind,driver})}))
    };
  });
- return {readOnly:true,catalogPricesChanged:false,actualPlayerRevenueUsed:false,
+ return {readOnly:true,catalogPricesChanged:currentV2Prices,actualPlayerRevenueUsed:false,
    cars:calc(c,uberFares,'uber',du),motorcycles:calc(m,ifoodFares,'ifood',di),
-   warning:'Retorno teórico em dias ATIVOS, não receita garantida; taxa de operação e impostos já descontados. Preços permanecem como estão.'};
+   warning:'Retorno teórico em dias ATIVOS, não receita garantida; taxa de operação e impostos já descontados. '+(currentV2Prices?'Preços V2 candidatos.':'Preços legados de referência.')};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const source=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');
