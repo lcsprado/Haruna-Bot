@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {rebootEventsSchedulerAuthorized,tickRebootEventsV2,startRebootEventsScheduler}
+ from '../src/neon/reboot-events-scheduler.js';
 import {bingoV2Status,createBingoV2Edition,buyBingoV2Ticket,stepBingoV2Draw,
  auctionV2Status,createAuctionV2Edition,bidAuctionV2,closeAuctionV2Lot}
  from '../src/neon/reboot-events-service.js';
@@ -158,4 +160,119 @@ test('WA e Web chamam o mesmo serviço, sem agendamento e sem mudar V1',()=>{
  assert.match(engine,/ON CONFLICT\(key\) DO NOTHING RETURNING key/);
  assert.doesNotMatch(bot,/startRebootBingoV2Scheduler\(/);
  assert.doesNotMatch(bot,/startRebootAuctionV2Scheduler\(/);
+});
+
+// Adversarial, deterministic simulated multi-connection serialisation:
+// reproduces the exclusive advisory lock, but NOT a real PostgreSQL server.
+function serializeFakeTransactions(pool){
+ const original=pool.connect.bind(pool);
+ let tail=Promise.resolve();
+ pool.connect=async()=>{
+   let unlock;
+   const current=new Promise(resolve=>unlock=resolve);
+   const previous=tail;
+   tail=current;
+   await previous;
+   const c=await original();
+   const release=c.release.bind(c);
+   c.release=()=>{release();unlock();};
+   return c;
+ };
+}
+test('C4i: dois compradores concorrentes do mesmo JID não debitam duas vezes',async()=>{
+ const pool=new FakeDB();
+ pool.wallets.set('one',{cash:1200,bank:0});
+ await createBingoV2Edition(pool,{id:'bingo_v2_20261123_1930',
+  startAt:T,endAt:T+3600000,now:T-60000,env:bEnv});
+ serializeFakeTransactions(pool);
+ const [a,b]=await Promise.all([
+  buyBingoV2Ticket(pool,'one',{now:T-30000,env:bEnv,rng:()=>0}),
+  buyBingoV2Ticket(pool,'one',{now:T-30000,env:bEnv,rng:()=>0})
+ ]);
+ assert.deepEqual([a.alreadyOwned,b.alreadyOwned],[false,true]);
+ assert.equal(pool.wallets.get('one').cash,700);
+ assert.equal(pool.transactions.filter(row=>row.sql.includes('bingo_v2_card')).length,1);
+});
+test('C4i: dois workers concorrentes pagam somente o marco aplicável',async()=>{
+ const pool=new FakeDB();
+ pool.wallets.set('one',{cash:1000,bank:0});
+ await createBingoV2Edition(pool,{id:'bingo_v2_20261123_1930',
+  startAt:T,endAt:T+3600000,now:T-60000,env:bEnv});
+ await buyBingoV2Ticket(pool,'one',{now:T-30000,env:bEnv,rng:()=>0});
+ serializeFakeTransactions(pool);
+ const [a,b]=await Promise.all([
+  stepBingoV2Draw(pool,{now:T,env:bEnv,rng:()=>0}),
+  stepBingoV2Draw(pool,{now:T,env:bEnv,rng:()=>0})
+ ]);
+ assert.equal([a,b].filter(x=>Number.isInteger(x.number)).length,1);
+ assert.equal(pool.settings.get('alpha_reboot_v2_bingo_active').drawn.length,1);
+ assert.equal(pool.transactions.filter(x=>x.sql.includes('bingo_v2_reward')).length,0);
+});
+test('C4i: lances concorrentes e dois fechamentos não duplicam prêmio ou débito',async()=>{
+ const pool=new FakeDB();pool.wallets.set('a',{cash:5000,bank:0});
+ pool.wallets.set('b',{cash:5000,bank:0});
+ await createAuctionV2Edition(pool,{id:'auction_v2_20261123_1930',
+  startAt:T,now:T-60000,env:aEnv});
+ serializeFakeTransactions(pool);
+ const bids=await Promise.allSettled([
+  bidAuctionV2(pool,'a',1000,{now:T+1000,env:aEnv}),
+  bidAuctionV2(pool,'b',1000,{now:T+1000,env:aEnv})
+ ]);
+ assert.deepEqual(bids.map(x=>x.status),['fulfilled','rejected']);
+ assert.equal(pool.wallets.get('a').cash,4000);
+ assert.equal(pool.wallets.get('b').cash,5000);
+ const closed=await Promise.all([
+  closeAuctionV2Lot(pool,{now:T+310000,env:aEnv}),
+  closeAuctionV2Lot(pool,{now:T+310000,env:aEnv})
+ ]);
+ assert.equal(closed.filter(x=>x.settled).length,1);
+ assert.equal(pool.inventory.get('a:pocao_g'),2);
+ assert.equal(pool.transactions.filter(x=>x.sql.includes('auction_v2_settled')).length,1);
+});
+test('C4i: agendador não abre conexão nem cria timer sem aprovação conjunta e cutover',async()=>{
+ const pool=new FakeDB();
+ assert.equal(rebootEventsSchedulerAuthorized({}),false);
+ const never=startRebootEventsScheduler(pool,{env:{},
+  schedule:()=>{throw Error('Timer proibido');}});
+ assert.equal(never.enabled,false);
+ assert.equal((await tickRebootEventsV2(pool,{env:{}})).queries,0);
+ assert.equal(pool.connections,0);
+ assert.throws(()=>startRebootEventsScheduler(pool,{env:{...aEnv,
+  ALPHA_REBOOT_EVENTS_SCHEDULER:'approved-isolated-v2'}}),/WhatsApp real proibido/);
+ assert.equal(pool.connections,0);
+});
+test('C4i: tick revisa estado com duas consultas somente após autorização; um timer por pool',async()=>{
+ const pool=new FakeDB();
+ const env={...aEnv,ALPHA_REBOOT_EVENTS_SCHEDULER:'approved-isolated-v2',
+  ALPHA_REBOOT_ALLOW_WHATSAPP:'cutover-approved'};
+ const result=await tickRebootEventsV2(pool,{env,now:T-60000});
+ assert.equal(result.enabled,true);
+ assert.equal(result.queries,2);
+ assert.equal(result.nextInMs,5*60*1000);
+ assert.equal(pool.connections,2);
+ const scheduled=[];
+ const h=startRebootEventsScheduler(pool,{env,now:()=>T,
+  schedule:(fn,ms)=>{scheduled.push({fn,ms});return {unref(){}};},
+  cancel:()=>{}});
+ assert.equal(h.enabled,true);
+ assert.equal(scheduled.length,1);
+ assert.equal(startRebootEventsScheduler(pool,{env}).enabled,true);
+ assert.equal(scheduled.length,1);
+ h.stop();
+});
+test('C4i: cliente Web V2 tem cards e botoes, e a tela V1 ainda existe',()=>{
+ const ui=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
+ const service=readFileSync(new URL('../src/neon/reboot-events-service.js',import.meta.url),'utf8');
+ const idx=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+ assert.match(ui,/function renderBingoV2Card\(\)/);
+ assert.match(ui,/function renderAuctionV2\(\)/);
+ assert.match(ui,/data-bingo-v2-buy/);
+ assert.match(ui,/\/api\/v1\/action\/bingoV2\.buy/);
+ assert.match(ui,/\/api\/v1\/action\/auctionV2\.bid/);
+ assert.match(ui,/if\(ui\.auction\?\.enabled\|\|ui\.auction\?\.requiresApproval\)return renderAuctionV2/);
+ assert.match(ui,/function renderAuction\(\)/);
+ assert.match(service,/acceptingBids:\['pending','active'\]/);
+ assert.match(idx,/startRebootEventsScheduler\(db\)/);
+ assert.doesNotMatch(idx,/createBingoV2Edition\(/);
+ assert.doesNotMatch(idx,/createAuctionV2Edition\(/);
 });
