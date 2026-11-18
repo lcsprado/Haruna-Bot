@@ -6,7 +6,7 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
-import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
+import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
@@ -3804,7 +3804,13 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
-        const commonV2=rebootEconomyEnabled()&&!weekly&&!eventMode?commonBossRewardV2(p.damage,total):null
+        let commonV2=rebootEconomyEnabled()&&!weekly&&!eventMode?commonBossRewardV2(p.damage,total):null
+        // Recompensa global por jogador: trocar de grupo não reinicia a janela.
+        // Cooldown e pagamento são atômicos na mesma transação de liquidação.
+        if(commonV2&&commonV2.xp>0){
+          const cd=await claimCooldown(c,`v2:common-boss-reward:${p.jid}`,3600)
+          if(!cd.ok) commonV2={cash:0,xp:0,boxChance:0}
+        }
         const tier=weekly?((upgradedWeeklyEdition(s.weekendKey)?BOSS_PLACEMENT:OLD_BOSS_PLACEMENT)[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
@@ -3891,8 +3897,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             :weeklyNov13Xp
           exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
-          await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-          await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
+          if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
+          if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp&&(!commonV2||commonV2.xp>0)){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))
@@ -3900,7 +3906,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
           if(commonV2){
-            if(Math.random()<commonV2.boxChance)drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+            if(commonV2.boxChance>0&&Math.random()<commonV2.boxChance)drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
           }else if(v2Reward){
             const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
             if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
