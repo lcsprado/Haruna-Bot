@@ -77,6 +77,8 @@ function bingoPublic(state,jid){
 }
 export async function bingoV2Status(pool,jid,{env=process.env}={}){
   if(!classesOnlyRebootEnabled(env))return {enabled:false,available:false};
+  if(env.ALPHA_REBOOT_BINGO_RELEASE!=='approved-isolated-v2')
+    return {enabled:false,available:false,requiresApproval:true};
   check(env,'bingo');
   const s=await readSetting(pool,BINGO_KEY);
   return bingoPublic(s,jid);
@@ -209,6 +211,8 @@ function selectCardSequence(rng){
 }
 export async function auctionV2Status(pool,{env=process.env}={}){
   if(!classesOnlyRebootEnabled(env))return {enabled:false,available:false};
+  if(env.ALPHA_REBOOT_AUCTION_RELEASE!=='approved-isolated-v2')
+    return {enabled:false,available:false,requiresApproval:true};
   check(env,'auction');
   const s=await readSetting(pool,AUCTION_KEY);
   if(!s)return {enabled:true,available:false};
