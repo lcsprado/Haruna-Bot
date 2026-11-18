@@ -18,7 +18,7 @@ Atualizado em 18/11/2026. Registro de preparação, não autorização de lança
 - Ver docs/reboot-*.md para hipóteses e limites de cada ensaio.
 
 ## Ponto de retomada
-1. CI de `c19167d` confirmado: 67/67 workflows retornados com sucesso. Após a correção de recompensas coletivas (`99834d5`) e testes offline (`945ff9f`), CI do novo HEAD precisa ser confirmado antes de avançar.
+1. CI de `c19167d` confirmado: 67/67 workflows retornados com sucesso. Após a correção de recompensas coletivas, `159dd85`: 65/67 workflows aprovados, 2 falharam pelo mesmo teste VM de eventos-relâmpago (dependência rebootEconomyEnabled ausente). Correção do fixture e cobertura adicional V2 em `61131f8`; confirmar CI do HEAD antes de avançar.
 2. Homologação integrada offline: revisar todas as rotas e menus restantes, comandos diretos/admin, eventos ativos, mecanismos de economia e farm entre grupos; simular ciclo de combate completo (HP/energia, equipamentos reais, pets, poções, sinergia e recompensas), e paridade WA/Web; conferir SQL e limites de infraestrutura sem tocar produção. Não declarar homologação com apenas testes estáticos.
 3. Backup V1 do Aiven alpha_prod_v2 via pgAdmin em E:\AlphaBot-Backups (pendente); SHA-256 e restauração em ambiente autorizado (pendentes). Não copiar segredos.
 4. Só com aprovação explícita, parar V1, reset manual pelo dono, verificar banco limpo, ativar V2 e smoke tests. Nenhuma destas ações autorizada nesta fase.
@@ -26,7 +26,7 @@ Atualizado em 18/11/2026. Registro de preparação, não autorização de lança
 ## Homologação offline — recompensas coletivas (18/11)
 - Revisados comandos de administração: fluxo `admin_` valida proprietário; trabalho tem cooldown global por JID. Revisão de todos os comandos diretos e identidade ainda não concluída.
 - Correção candidata V2 em `src/neon/progression.js`: missão coletiva com fundo R$5.000/R$6.000, sem multiplicador antigo e um resgate global por jogador/semana (advisory lock + consulta a resgates existentes). Evento-relâmpago R$600–2.000, teto R$2.000 inclusive em estado residual e um resgate por jogador a cada 24h (cooldown transacional). Mesmos serviços chamados pelo WA e Web; V1 sem mudança intencional.
-- `test/reboot-group-rewards.test.mjs` exercita funções com banco simulado, resgates cruzados e V1; CI ainda não confirmado. Valores candidatos, não homologados. Não houve nova tabela, serviço, SQL em produção, deploy ou merge.
+- `test/reboot-group-rewards.test.mjs` exercita funções com banco simulado, resgates cruzados e V1; Quatro testes novos passaram na suíte estendida de `159dd85`; a suíte integral teve 1.404 aprovados, 5 ignorados, 1 falha de fixture descrita acima. CI da correção ainda não confirmado. Valores candidatos, não homologados. Não houve nova tabela, serviço, SQL em produção, deploy ou merge.
 - Próximo ponto após CI: revisar farm de Boss comum e outras atividades por grupo, comandos/admin diretos, depois ciclo de combate e paridade WA/Web. Testar concorrência real apenas em ambiente isolado autorizado.
 
 ## Limitações
