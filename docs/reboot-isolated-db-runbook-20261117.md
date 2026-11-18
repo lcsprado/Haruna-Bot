@@ -2,6 +2,13 @@
 Data: 17/11/2026 · Branch: `feature/reboot-classes-only-20261117`
 Estado: PROPOSTA — sem autorização de deploy, reset ou mudança de DB. O dono do jogo fará o reset por conta própria; este PR não executa nem automatiza reset.
 
+## Decisão operacional atual — Aiven reaproveitado após backup validado
+O dono autorizou continuar o desenvolvimento prudente e fará seu próprio reset. O fluxo aprovado é preparar o código no PR #387, obter um backup EXTERNO verificável da V1, testar restauração sem conectar WhatsApp e, numa janela futura, parar a V1, executar reset pelo dono e dedicar `alpha_prod_v2` do Aiven à temporada 2.0. O Neon é um arquivo secundário opcional: NÃO é requisito para concluir código nem há autorização de apagar Neon.
+- Auditoria somente leitura do Aiven: banco `alpha_prod_v2` ocupa **149.386.943 bytes (~142 MiB)**; disco do serviço na métrica do painel aproximadamente **40,7%**; backup automático mais recente **17/11/2026 às 22:08:29 UTC**, dentre dez registros. Esses backups internos não substituem uma cópia externa restaurável.
+- Novo `scripts/reboot-backup-v1.mjs` prepara a criação de backup offline com `pg_dump`, inventário TOC, SHA-256 e verificador de checksum, sempre fora do repositório. **Ainda não há backup externo criado**: o conector Aiven só permite SQL de leitura, não exporta dump físico.
+- `assertRebootDatabaseTarget` segue rejeitando `alpha_prod_v2` com a antiga flag `isolated-v2`. Para cutover real há modo novo `ALPHA_REBOOT_DB_CONFIRMED=existing-aiven-cutover` que exige Aiven, nome exato e cinco atestações (`ALPHA_REBOOT_V1_STOPPED`, `ALPHA_REBOOT_BACKUP_VERIFIED`, SHA-256 do arquivo, `ALPHA_REBOOT_RESET_VERIFIED`, `ALPHA_REBOOT_CUTOVER_APPROVED`). Todos devem ser definidos conscientemente na janela de virada. Flags não verificam automaticamente parada ou restore, e nunca devem ser configuradas antecipadamente.
+- Sem merge, deploy, mudança de ambiente, reset, cópia de dados ou desligamento da V1 enquanto essas condições faltarem. As alternativas de homologação num banco separado abaixo continuam opções de teste, mas não plano obrigatório de migração.
+
 ## Decisão de escopo reduzido (17/11/2026)
 - Não existem pagantes ativos, conforme informado pelo dono. As estruturas antigas de licenças/pedidos continuam no código, mas não há migração de assinantes a executar.
 - O reset dos jogadores será feito pelo próprio dono, fora deste PR. Nosso trabalho restringe-se a remover collabs, manter quatro classes, balancear economia e evitar estouro de recursos.
