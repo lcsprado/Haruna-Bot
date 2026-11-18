@@ -37,7 +37,7 @@ test('Passe Supremo: no máximo 3 pacotes, dentro de 24h, sem ressarcir compra a
 test('O modo especial vem do job validado na sala e nunca de opção do jogador',()=>{
  assert.match(games,/j\.auction_pass_manual_rewards/)
  assert.match(games,/auctionPassManualRewards:row\.auction_pass_manual_rewards===true/)
- assert.match(games,/const loteReduced=lote&&s\.auctionPassManualRewards!==true/)
+ assert.match(games,/const loteReduced=lote&&\(rebootEconomyEnabled\(\)\|\|s\.auctionPassManualRewards!==true\)/)
  assert.match(games,/if\(loteReduced\)levelAward\.xp=raidLoteReward/)
  assert.match(games,/xp:loteReduced\?raidLoteReward/)
  assert.match(games,/const cash=loteReduced\?raidLoteCashPayout/)

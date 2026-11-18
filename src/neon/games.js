@@ -28,6 +28,7 @@ import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {chooseEconomicPetPotion} from './pet-potion-economy.js'
 import {petCombatExperience} from './reboot-pet-economy.js'
 import {mitigateRaidPetDamage,estimatedRaidPetHit} from './raid-pet-mitigation.js'
+import {raidPlayerDefenseCoefficient} from './raid-pet-mitigation.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
@@ -1862,7 +1863,7 @@ export async function raidRound(chat,level){
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
-      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
+      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*raidPlayerDefenseCoefficient(cfg.level))*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
