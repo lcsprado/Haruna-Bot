@@ -2309,7 +2309,7 @@ function renderRaids(){
       }
       const ranked=players.slice().sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
-      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'';
+      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+(ui.data?.rebootV2&&Number(p.alliedProtection||0)>0?' • Proteção '+num(p.alliedProtection):'')+(ui.data?.rebootV2&&Number(p.curseTeamDamage||0)>0?' • Maldição +'+num(p.curseTeamDamage):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'';
       const timeLeft=s&&Number(s.expiresAt||0)>Date.now()?Math.ceil((Number(s.expiresAt)-Date.now())/60000):null;
       const autoExpanded=Boolean(s&&(s.status==='active'||(s.status==='lobby'&&(meJoined||isHost))));
       const expanded=autoExpanded||Number(ui.selectedRaidLevel)===Number(r.level);
@@ -2329,7 +2329,7 @@ function activeBoss(){
   const g=currentGroup();
   if(!g) return null;
   if(g.bossEvent && Number(g.bossEvent.hp)>0 && g.bossEvent.active!==false) return Object.assign({event:true},g.bossEvent);
-  if(g.boss && Number(g.boss.hp)>0) return g.boss;
+  if(g.boss && Number(g.boss.hp)>0 && (!ui.data?.rebootV2||g.boss.mode!=='completed')) return g.boss;
   return null;
 }
 function renderBoss(){

@@ -950,6 +950,8 @@ const boostName=Number(x.xpBoostPercent||0)===100?'⏳ *BÔNUS AMPULHETA XP 2×*
 text+=`\n${boostName}: +${fmt(x.xpBoostBonus)} XP (já incluído no total)`
 }
 text+=formatRaidPlayerHealing(x,fmt)
+if(classesOnlyRebootEnabled()&&Number(x.alliedProtection||0)>0)text+='\n🛡️ Proteção de aliados: '+fmt(x.alliedProtection)+' HP'
+if(classesOnlyRebootEnabled()&&Number(x.curseTeamDamage||0)>0)text+='\n💀 Maldição: +'+fmt(x.curseTeamDamage)+' dano de aliados (já incluído no dano total)'
 text+=formatRaidSkillLine(x,fmt)
 const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
 if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
@@ -1285,7 +1287,7 @@ setQuickFlow(chat,sender,'nav_main',{},90000)
 await reply(
 `🤖 *ALPHA BOT — CENTRAL DO GRUPO*
 Um bot completo para o grupo — não só RPG.
-🚀 *NOVIDADES 3.0*
+🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
 📜 *!contratos* — missões rotativas de 4 em 4 horas
 💰 *Economia & patrimônio*
@@ -1324,7 +1326,7 @@ await reply(
 `📚 *ALPHA BOT — CENTRAL DE COMANDOS*
 O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
 Escolha a área e eu mostro só os comandos que interessam.
-🚀 *NOVIDADES 3.0*
+🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — acesso ao novo RPG visual no navegador
 📜 *!contratos* — missões de 4 em 4 horas
 1️⃣ 👤 Perfil, conta & social
@@ -5285,12 +5287,12 @@ const commandPages={
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos com equipamentos
 *!personagem status* — base sem equipamentos e Despertar da classe atual
-*!heroi status* — mesma consulta da base do combatente ativo
+${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do combatente ativo'}
 *!nível* — progresso e resgata recompensas a cada 5 níveis
 *!despertar* — missões permanentes de Despertar
 *!reliquias* — equipar 1 insígnia de evento por vez
 *!despertar evoluir* — paga e recebe bônus base ao cumprir os desafios
-*!batalhar @pessoa* — desafia outro jogador
+*!batalhar @pessoa* — desafia outro jogador${classesOnlyRebootEnabled()?' (ambos Lv.21+)':''}
 *!dungeon* — entra em uma dungeon e ganha dinheiro/XP
 *!curar* — recupera HP usando cura disponível
 *!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
@@ -5301,7 +5303,7 @@ const commandPages={
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
-*!go NÚMERO/NÍVEL* — host inicia sua sala; *todas as Raids podem ser feitas solo*
+*!go NÚMERO/NÍVEL* — host inicia sua sala; ${classesOnlyRebootEnabled()?'*Raid 70 exige 3 jogadores Lv.90+ e contribuição efetiva.*':'*todas as Raids podem ser feitas solo*'}
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
@@ -5349,14 +5351,13 @@ const commandPages={
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o Boss disponível; Boss de Evento tem prioridade
+*!boss* — inicia/mostra o Boss disponível${classesOnlyRebootEnabled()?'':'; Boss de Evento tem prioridade'}
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 👹 *Boss comum:* 9–12 mil HP
-🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • 8–9,5 milhões HP • ATK 200 • 1 Boss global por fim de semana
+🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • ${classesOnlyRebootEnabled()?'150 mil HP • ATK 45 • fundo R$ 40 mil':'8–9,5 milhões HP • ATK 200'} • 1 Boss global por fim de semana
 💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
 ⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
-🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
-🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único
+${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e chance de Caixa da Sorte com 2% de participação.':'🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã\n🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único'}
 🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
 9️⃣ Voltar • 0️⃣ Fechar`,
 '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
@@ -5448,7 +5449,7 @@ setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
 await reply(
 `📚 *COMANDOS DO ALPHA*
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
-🚀 *ALPHA BOT 3.0*
+🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
 1️⃣ 👤 Perfil, conta, casamento & social
