@@ -3,7 +3,7 @@
 // All state lives inside ONE duel; no progression, consumables or DB changes.
 import {classAttack,classDefense,classCritBonus} from './game-catalog.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
-import {V2_PVP_ROLES} from './reboot-combat-progression.js'
+import {V2_PVP_ROLES,v2PvpDamageAdjustment} from './reboot-combat-progression.js'
 
 const stageOf=(applied,stage)=>applied?Math.max(0,Math.min(5,Math.floor(Number(stage)||0))):0
 const clamp=(v,low,high)=>Math.max(low,Math.min(high,Number(v)||0))
@@ -39,7 +39,7 @@ export function classPvpAttack({
   const base=classAttack({classId:id,applied,damage,critical,hp,maxHp,
     attackIndex,lastProcAttack,roll,awakeningStage:0,context:'pvp'})
   const state={...(awakeningState||{})}
-  if(!stage)return {...base,awakeningState:state,technique:null,skillActivated:false}
+  if(!stage)return {...base,damage:v2PvpDamageAdjustment(base.damage,id,stage,applied),awakeningState:state,technique:null,skillActivated:false}
   const index=Math.max(1,Math.floor(Number(attackIndex)||1))
   const ratio=clamp(Number(hp)/Math.max(1,Number(maxHp)||1),0,1)
   let bonus=0,heal=Number(base.heal||0),technique=null
@@ -148,7 +148,7 @@ export function classPvpAttack({
   // Additional PvP-only damage is bounded even when effects coincide.
   const role=PVP_AWAKENING_ROLES[id]||{attack:0,defense:0}
   const roleBonus=Number(role.attack||0)*stage/5
-  const result=Math.max(1,Math.round(base.damage*(1+clamp(bonus,0,.22))*(1+roleBonus)))
+  const result=v2PvpDamageAdjustment(Math.max(1,Math.round(base.damage*(1+clamp(bonus,0,.22))*(1+roleBonus))),id,stage,applied)
   return {damage:result,heal:Math.max(0,heal),proc:base.proc,
     lastProcAttack:base.lastProcAttack,awakeningState:state,technique,
     skillActivated:Boolean(technique)}

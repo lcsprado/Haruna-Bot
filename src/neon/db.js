@@ -24,7 +24,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
-import {reserveV2DailyXp,v2DailyXpStatus} from './reboot-combat-progression.js'
+import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-combat-progression.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -3284,6 +3284,7 @@ const aClassStats=!aHero?classCombatStats(a,a.class_id,classLevel(a),Boolean(a.c
 const bClassStats=!bHero?classCombatStats(b,b.class_id,classLevel(b),Boolean(b.class_applied)):null;
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
+assertV2PvpAccess(au?.level,bu?.level)
 if(Number(bu?.level||1)<=20){
 throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${bu?.push_name||'Esse jogador'} está no *Lv.${Number(bu?.level||1)}* e não pode ser atacado até completar o *Lv.20*.\n⚔️ O PvP contra ele é liberado a partir do *Lv.21*.`)
 }

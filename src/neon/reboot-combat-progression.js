@@ -70,3 +70,17 @@ export const V2_RAID_DIFFICULTY=Object.freeze({
  50:{hp:270000,atk:108},60:{hp:420000,atk:135},65:{hp:560000,atk:165},
  70:{hp:1600000,atk:320}
 })
+
+// Apenas PvP V2. O Despertar V e as passivas PvE permanecem intactos.
+export function v2PvpDamageAdjustment(damage,classId,awakeningStage,applied=true,{enabled=classesOnlyRebootEnabled()}={}){
+ if(!enabled||!applied||awakeningStage>=5||damage<=0)return damage
+ const factor=classId==='samurai'?.975:classId==='necromancer'&&awakeningStage<=1?1.02:classId==='paladin'&&awakeningStage>=2?1.02:1
+ return Math.max(1,Math.round(damage*factor))
+}
+// Proteção simétrica: antes do nível 21 não pode iniciar nem receber PvP.
+export function assertV2PvpAccess(attackerLevel,defenderLevel,{enabled=classesOnlyRebootEnabled()}={}){
+ if(!enabled)return true
+ for(const level of [attackerLevel,defenderLevel])if(!Number.isSafeInteger(Number(level))||Number(level)<21)
+   throw Error('🛡️ PROTEÇÃO DE INICIANTE: ambos os jogadores precisam estar no Lv.21 ou superior para participar do PvP.')
+ return true
+}

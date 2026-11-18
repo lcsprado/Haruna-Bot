@@ -13,6 +13,7 @@ import {pvpWinnerByHealth} from '../src/neon/pvp-outcome-policy.js';
 import {REBOOT_CLASS_IDS,classesOnlyRebootEnabled} from '../src/neon/reboot-classes-policy.js';
 const IDS=['paladin','necromancer','samurai','berserker'];
 const LEVELS=[1,25,50,75,100];
+const ELIGIBLE_LEVELS=[21,22,23,24,25,50,75,100];
 const SCENARIOS=['none','gear','petShield'];
 function rng(seed){
  let x=seed>>>0;
@@ -33,7 +34,7 @@ export function compileClassDuel(dbSource){
  return (a,b,random)=>{const math=Object.create(Math);math.random=random;return duel(...Object.values(deps),a,b,math)};
 }
 export function buildClassFighter(id,level,stage,scenario){
- if(!IDS.includes(id)||!LEVELS.includes(level)||!SCENARIOS.includes(scenario))throw Error('Cenário inválido.');
+ if(!IDS.includes(id)||![...LEVELS,...ELIGIBLE_LEVELS].includes(level)||!SCENARIOS.includes(scenario))throw Error('Cenário inválido.');
  const c=PLAYER_CLASSES[id],g=classCombatGrowth(id,level);
  // Base inicial e crescimento geral lidos do esquema: HP+8/ATK+2/DEF+1/SPD+1.
  // Despertar concluído nos checkpoints é hipótese, não elegibilidade comprovada.
@@ -50,19 +51,19 @@ export function buildClassFighter(id,level,stage,scenario){
  petBonus:pet,petHealUses:0,shieldCritGuard:shield?.critGuard||0,shieldCritResist:shield?.critResist||0};
 }
 function vitalHp(hp,pet){return applyVitalCombatHp(hp,hp,pet?.hp||0,0,{pvp:true}).maxHp}
-export function auditFourClasses(dbSource,{duelsPerOrder=160}={}){
+export function auditFourClasses(dbSource,{duelsPerOrder=160,eligibleOnly=false,seed=20261118}={}){
  if(!Number.isSafeInteger(duelsPerOrder)||duelsPerOrder<1||duelsPerOrder>1000)throw Error('Amostra inválida.');
  if(!IDS.every(id=>REBOOT_CLASS_IDS.includes(id))||REBOOT_CLASS_IDS.length!==4)throw Error('Catálogo V2 mudou.');
  const duel=compileClassDuel(dbSource),scenarios=[];
- for(const level of LEVELS){
-  const stage=LEVELS.indexOf(level)+1;
-  for(const scenario of SCENARIOS){
+ for(const level of eligibleOnly?ELIGIBLE_LEVELS:LEVELS){
+  const stages=eligibleOnly?Array.from({length:Math.min(5,Math.floor(level/25)+1)+1},(_,i)=>i):[LEVELS.indexOf(level)+1];
+  for(const stage of stages)for(const scenario of SCENARIOS){
    const wins=Object.fromEntries(IDS.map(id=>[id,0])),pairs=[];
    for(let i=0;i<IDS.length;i++)for(let j=i+1;j<IDS.length;j++){
     let w=0;
     for(let k=0;k<duelsPerOrder;k++)for(const flip of [false,true]){
      const a=buildClassFighter(IDS[flip?j:i],level,stage,scenario),b=buildClassFighter(IDS[flip?i:j],level,stage,scenario);
-     const r=duel(a,b,rng(20261118+level*10000+i*500+j*200+k));
+     const r=duel(a,b,rng(seed+level*10000+i*500+j*200+k));
      wins[r.winner]++;if(r.winner===IDS[i])w++;
     }
     pairs.push({a:IDS[i],b:IDS[j],battles:2*duelsPerOrder,winRateA:Math.round(w/(2*duelsPerOrder)*1000)/10});
@@ -72,11 +73,11 @@ export function auditFourClasses(dbSource,{duelsPerOrder=160}={}){
      flagged:Object.values(rates).some(v=>v<30||v>70)});
   }
  }
- return {readOnly:true,scenarios,battles:scenarios.reduce((s,r)=>s+r.battles,0),
+ return {readOnly:true,eligibleOnly,seed,scenarios,battles:scenarios.reduce((s,r)=>s+r.battles,0),
  thresholds:{minClassWinRate:30,maxClassWinRate:70},flagged:scenarios.filter(x=>x.flagged).length,
  caveat:'Equipamento sintético igual, pet e escudo reais iguais; nível geral/classe iguais e despertar concluído hipoteticamente. Não modela inventário real, sinergias completas, PvE, obtenção de gear ou economia.'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const source=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
- process.stdout.write(JSON.stringify(auditFourClasses(source),null,2)+'\n');
+ process.stdout.write(JSON.stringify(auditFourClasses(source,{eligibleOnly:true,duelsPerOrder:180,seed:88209117}),null,2)+'\n');
 }
