@@ -79,5 +79,7 @@ test('Implementacao integra scheduler, impede reconexao dupla e inclui auditoria
  assert.match(src,/isCofreDestinoCheckpoint\(round\)/)
  assert.match(src,/if\(timer\)return/)
  assert.match(index,/startCofreDestinoScheduler\(sock\)/)
- assert.ok(index.indexOf('if(await handleCofreDestinoCommand')<index.indexOf('if(await handleCofreCommand'))
+ const destino=index.indexOf('if(!classesOnlyRebootEnabled()&&await handleCofreDestinoCommand')
+ const cofre=index.indexOf('if(!classesOnlyRebootEnabled()&&await handleCofreCommand')
+ assert.ok(destino>=0&&cofre>destino,'Cofre Destino precede Cofre original, ambos bloqueados na V2')
 })
