@@ -16,6 +16,7 @@ on:
       - 'docs/reboot-events-c4h-v2-20261117.md'
       - 'docs/reboot-events-c4i-v2-20261117.md'
       - 'docs/reboot-isolated-db-runbook-20261117.md'
+      - 'docs/reboot-db-capacity-v2-20261117.md'
       - 'scripts/reboot-audit.mjs'
       - 'scripts/reboot-economy-baseline.mjs'
       - 'scripts/reboot-economy-sim.mjs'

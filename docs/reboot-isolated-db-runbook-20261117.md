@@ -1,6 +1,14 @@
 # Alpha Bot 2.0 — migração sem interferência (Runbook)
 Data: 17/11/2026 · Branch: `feature/reboot-classes-only-20261117`
-Estado: PROPOSTA — sem autorização de deploy, reset ou mudança de DB.
+Estado: PROPOSTA — sem autorização de deploy, reset ou mudança de DB. O dono do jogo fará o reset por conta própria; este PR não executa nem automatiza reset.
+
+## Decisão de escopo reduzido (17/11/2026)
+- Não existem pagantes ativos, conforme informado pelo dono. As estruturas antigas de licenças/pedidos continuam no código, mas não há migração de assinantes a executar.
+- O reset dos jogadores será feito pelo próprio dono, fora deste PR. Nosso trabalho restringe-se a remover collabs, manter quatro classes, balancear economia e evitar estouro de recursos.
+- **Alternativa futura**: depois de backup testado, parar a V1, fazer o reset dirigido pelo dono e reaproveitar o banco Aiven como única temporada 2.0. Isso evita manter duas bases completas dentro da mesma quota de 1 GB. O guard atual rejeita `alpha_prod_v2`: o plano de cutover precisa solucionar isso explicitamente, sem enfraquecer a trava antecipadamente.
+- Neon poderá receber um backup **somente** se quotas, custo, retenção e restauração forem comprovados. O projeto antigo registrou quota excedida e não é um destino aprovado hoje. Um backup em arquivo separado, verificado, é opção se Neon não comportar restauração.
+- **Não copiar o banco inteiro para um Neon ativo ligado ao WhatsApp**. O backup deve permanecer inerte, sem clientes/cron/sessão ligados; nunca dois bots consumindo a mesma identidade.
+- A capacidade realmente livre do Aiven e do Neon não foi confirmada nesta etapa. Não criar database/branch, não ativar compute, não fazer restore e não remover dados da V1 agora.
 
 ## Arquitetura escolhida para preparação
 - **Ambiente A — produção atual**: código atual, banco atual, WhatsApp/Web atuais. Zero mudança de configuração ou dados durante desenvolvimento.

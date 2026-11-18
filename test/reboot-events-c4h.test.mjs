@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs';
 import {rebootEventsSchedulerAuthorized,tickRebootEventsV2,startRebootEventsScheduler}
  from '../src/neon/reboot-events-scheduler.js';
 import {bingoV2Status,createBingoV2Edition,buyBingoV2Ticket,stepBingoV2Draw,
- auctionV2Status,createAuctionV2Edition,bidAuctionV2,closeAuctionV2Lot}
+ auctionV2Status,createAuctionV2Edition,bidAuctionV2,closeAuctionV2Lot,
+ rebootEventStatePayload,V2_EVENT_MAX_STATE_BYTES}
  from '../src/neon/reboot-events-service.js';
 
 const T=Date.parse('2026-11-23T19:30:00-03:00');
@@ -275,4 +276,13 @@ test('C4i: cliente Web V2 tem cards e botoes, e a tela V1 ainda existe',()=>{
  assert.match(idx,/startRebootEventsScheduler\(db\)/);
  assert.doesNotMatch(idx,/createBingoV2Edition\(/);
  assert.doesNotMatch(idx,/createAuctionV2Edition\(/);
+});
+
+test('C4j: estado da edição não ultrapassa 24 KiB de JSONB no banco',()=>{
+ assert.equal(V2_EVENT_MAX_STATE_BYTES,24*1024);
+ const info=rebootEventStatePayload('alpha_reboot_v2_bingo_active',{id:'v2',players:{}});
+ assert.equal(JSON.parse(info).id,'v2');
+ assert.throws(()=>rebootEventStatePayload('alpha_reboot_v2_bingo_active',
+  {players:{a:'X'.repeat(V2_EVENT_MAX_STATE_BYTES)}}),/armazenamento/);
+ assert.throws(()=>rebootEventStatePayload('trevo_settings_global',{}),/armazenamento/);
 });

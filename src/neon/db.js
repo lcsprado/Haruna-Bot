@@ -64,9 +64,12 @@ const databaseUrl=(()=>{
   else if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
   return url.toString()
 })()
+// A V2 começa pequena e usa a mesma instância Aiven/Neon entre Web e WhatsApp.
+// O limite é POR PROCESSO: vários deployments continuam somando conexões no servidor.
+const rebootPoolCap=classesOnlyRebootEnabled()?3:10
 const poolSize=isAivenDb
-  ?Math.max(1,Math.min(10,Number(process.env.ALPHA_DB_POOL_MAX)||5))
-  :10
+  ?Math.max(1,Math.min(rebootPoolCap,Number(process.env.ALPHA_DB_POOL_MAX)||5))
+  :rebootPoolCap
 export const db = new Pool({
 connectionString: databaseUrl,
 ...(isAivenDb && aivenCaPem?{ssl:{ca:aivenCaPem,rejectUnauthorized:true}}:{}),

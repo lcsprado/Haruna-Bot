@@ -3,6 +3,7 @@
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 export const V2_BINGO=Object.freeze({
  ticket:500,cardLimit:1,weeklyEditions:1,numberCount:40,
+ maxCardsPerEdition:64,maxJidLength:128,
  milestones:Object.freeze({
   row:Object.freeze({target:1,cash:1_500}),
   twoRows:Object.freeze({target:2,cash:2_500}),
@@ -31,10 +32,12 @@ export function validateBingoV2Edition({id,startAt,endAt,now,otherStarts=[]}){
  return {id,startAt,endAt,ticketPrice:V2_BINGO.ticket,weeklyLimit:1};
 }
 export function bingoV2TicketEligibility({jid,entries=[],started=false}){
- if(typeof jid!=='string'||!jid.trim()||!Array.isArray(entries)||
-    entries.some(e=>typeof e!=='string'||!e))throw new Error('Jogadores inválidos');
+ if(typeof jid!=='string'||!jid.trim()||jid.length>V2_BINGO.maxJidLength||
+    !Array.isArray(entries)||entries.some(e=>typeof e!=='string'||!e||e.length>V2_BINGO.maxJidLength))
+    throw new Error('Jogadores inválidos');
  if(started)throw new Error('Inscrição do Bingo encerrada');
  if(entries.includes(jid))throw new Error('Apenas uma cartela por jogador na edição');
+ if(entries.length>=V2_BINGO.maxCardsPerEdition)throw new Error('Bingo V2 atingiu limite de cartelas desta edição');
  return {allowed:true,cost:V2_BINGO.ticket};
 }
 export function planBingoV2Payouts({editionId, winners, settled={}}){

@@ -13,6 +13,7 @@ import {grantAuctionInventoryItem} from '../src/neon/auction-forged-rewards.js';
 test('Bingo V2 começa barato, emissão total fixa, sem bônus de caixa para cada inscrito',()=>{
  assert.equal(V2_BINGO.ticket,500);
  assert.equal(V2_BINGO.cardLimit,1);
+ assert.equal(V2_BINGO.maxCardsPerEdition,64);
  assert.equal(V2_BINGO.weeklyEditions,1);
  assert.equal(V2_BINGO.cashPackagePerCard,0);
  const cash=Object.values(V2_BINGO.milestones).reduce((sum,x)=>sum+x.cash,0);
@@ -113,4 +114,12 @@ test('integrações de revenda individual, lote, inventário e caixa são todas 
  assert.match(reward,/assertRebootItemAllowed\(voucher\(1\)\)/);
  assert.match(reward,/assertRebootItemAllowed\(voucher\(2\)\)/);
  assert.match(reward,/if\(classesOnlyRebootEnabled\(\)\)return false/);
+});
+
+test('proteção C4j: Bingo V2 limita o tamanho das cartelas e JIDs sem afetar a V1',()=>{
+ assert.throws(()=>bingoV2TicketEligibility({jid:'a'.repeat(129),entries:[]}),/Jogadores inválidos/);
+ const participants=Array.from({length:64},(_,i)=>'player'+i);
+ assert.throws(()=>bingoV2TicketEligibility({jid:'player65',entries:participants}),/limite de cartelas/);
+ assert.equal(bingoV2TicketEligibility({jid:'player65',entries:participants.slice(0,63)}).cost,500);
+ assert.throws(()=>bingoV2TicketEligibility({jid:'player0',entries:participants}),/uma cartela/);
 });

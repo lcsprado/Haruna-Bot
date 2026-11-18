@@ -11,6 +11,8 @@ const BINGO_CALENDAR='alpha_reboot_v2_bingo_calendar';
 const AUCTION_KEY='alpha_reboot_v2_auction_active';
 const AUCTION_CALENDAR='alpha_reboot_v2_auction_calendar';
 const GLOBAL_LOCK='alpha_reboot_v2_event_finance';
+// Teto conservador por registro JSONB. Nenhuma tabela nova ou arquivo por sorteio.
+export const V2_EVENT_MAX_STATE_BYTES=24*1024;
 const WEEK=7*86400000;
 const LOT_DURATION=5*60000;
 const fm=x=>'R$ '+Number(x).toLocaleString('pt-BR');
@@ -32,10 +34,18 @@ async function readSetting(q,key,locked=false){
   const sql='SELECT value FROM trevo_settings WHERE key=$1'+(locked?' FOR UPDATE':'');
   return (await q.query(sql,[key])).rows[0]?.value||null;
 }
+export function rebootEventStatePayload(key,value){
+  const data=JSON.stringify(value);
+  if(!String(key).startsWith('alpha_reboot_v2_')||typeof data!=='string'||
+     Buffer.byteLength(data,'utf8')>V2_EVENT_MAX_STATE_BYTES)
+    throw new Error('Evento V2 excedeu limite de armazenamento');
+  return data;
+}
 async function writeSetting(c,key,value){
+  const data=rebootEventStatePayload(key,value);
   await c.query(
     'INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at',
-    [key,JSON.stringify(value)]
+    [key,data]
   );
 }
 async function financeTx(pool,env,type,fn){
