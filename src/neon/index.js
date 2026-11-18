@@ -2095,7 +2095,7 @@ await initEnchantments()
 await initHalloweenAlpha()
 await initMadrugada()
 await initRacingAlpha()
-{
+if(!classesOnlyRebootEnabled()){
 const key='raid_fragment_double_20261012_30min_v1'
 const startAt=Date.now()
 const event={
@@ -2114,7 +2114,7 @@ const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
 const adminXpEventMinutes=Number(process.env.ADMIN_XP_EVENT_MINUTES||0)
 const adminXpEventMultiplier=Number(process.env.ADMIN_XP_EVENT_MULTIPLIER||0)
 const adminXpEventLabel=String(process.env.ADMIN_XP_EVENT_LABEL||'EVENTO 2X XP').trim()||'EVENTO 2X XP'
-if(adminXpEventToken&&Number.isInteger(adminXpEventMinutes)&&adminXpEventMinutes>=1&&adminXpEventMinutes<=180&&Number.isFinite(adminXpEventMultiplier)&&adminXpEventMultiplier>=1&&adminXpEventMultiplier<=10){
+if(!classesOnlyRebootEnabled()&&adminXpEventToken&&Number.isInteger(adminXpEventMinutes)&&adminXpEventMinutes>=1&&adminXpEventMinutes<=180&&Number.isFinite(adminXpEventMultiplier)&&adminXpEventMultiplier>=1&&adminXpEventMultiplier<=10){
 const markerKey='admin_xp_event:'+adminXpEventToken
 const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!already){
@@ -9930,11 +9930,13 @@ startAuctionAlphaScheduler(sock)
 startAuctionAlphaScheduler1500(sock)
 startAuctionNotificationPilot(sock)
 }
+if(!classesOnlyRebootEnabled()){
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
 scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
+}
 startGtAlphaScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startPocoPreviewScheduler(sock)
 startPocoLiveScheduler(sock)
@@ -9953,6 +9955,8 @@ void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
 }
 // Disputa unica nos dois grupos oficiais: estado e saldos compartilhados.
 apostaEngine?.stop()
+apostaEngine=null
+if(!classesOnlyRebootEnabled()){
 apostaEngine=createApostaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open'
@@ -9967,8 +9971,11 @@ void apostaEngine.open().then(async()=>{
   // WhatsApp ainda estiver abrindo. Avisos sao persistidos por grupo.
   apostaEngine.start()
 }).catch(err=>console.error('[APOSTO] cancelamento automatico falhou',err?.message||err))
+}
 // Rouba-Rouba: somente o grupo AlphaBot correto; edição anterior no outro grupo não é reativada.
 roubaEngine?.stop()
+roubaEngine=null
+if(!classesOnlyRebootEnabled()){
 roubaEngine=createRoubaRoubaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open'
@@ -9977,6 +9984,7 @@ void roubaEngine.open().then(()=>roubaEngine.start())
   .catch(err=>console.error('[ROUBA] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] inicializacao',err?.message||err))
+}
 // A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
 // mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
 if(!classesOnlyRebootEnabled()){
@@ -9989,7 +9997,7 @@ startBingoNov16Scheduler(sock)
 // C4i: agendador ÚNICO somente no cutover aprovado e no banco isolado.
 // Sem as flags de aprovação, não cria timer, SQL, socket ou serviço.
 startRebootEventsScheduler(db)
-if(!temporaryRecoveryMode){
+if(!classesOnlyRebootEnabled()&&!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
 }else{
@@ -9997,6 +10005,7 @@ console.log('[TEMPORARY] Labirinto/Baú históricos bloqueados; Bingo Halloween 
 }
 ;(async()=>{
 try{
+if(classesOnlyRebootEnabled())return
 const event=(await db.query(
 "SELECT value FROM trevo_settings WHERE key='raid_fragment_double_20261012_30min_v1'"
 )).rows[0]?.value
@@ -10401,7 +10410,7 @@ const roubaCmd=String(roubaWords[0]||'').toLowerCase()
 const roubaNumbered=roubaCmd==='tomar' && /^#?\d+$/.test(String(roubaWords[1]||''))
 const roubaNamed=['participar','abrirpresente','tomar','tomarpremio'].includes(roubaCmd)
 const roubaOpen=isGroup&&chat===ROUBA_GROUP_JID&&roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
-if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
+if(!classesOnlyRebootEnabled()&&isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
   if(!roubaEngine){await reply('⏳ Evento inicializando.');continue}
   if(roubaCmd==='participar'){
     await ensureUser(sender,msg.pushName||'Jogador')
@@ -10427,7 +10436,7 @@ if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
 const apostaTokens=body.startsWith(prefix)
   ?body.slice(prefix.length).trim().split(/\s+/):[]
 const apostaCommand=String(apostaTokens[0]||'').toLowerCase()
-if(isGroup && APOSTA_GROUPS.includes(chat) &&
+if(!classesOnlyRebootEnabled() && isGroup && APOSTA_GROUPS.includes(chat) &&
    ['participar','confio','duvido','resposta'].includes(apostaCommand)){
   if(!apostaEngine){await reply('⏳ Evento inicializando. Tente novamente.');continue}
   if(apostaCommand==='participar'){
@@ -10638,14 +10647,14 @@ if(process.env.POCO_BETA_GROUP_PREVIEW==='true'&&['poco','pocorank'].includes(cm
 }
 if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
-if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleRebootEventsCommand({cmd,args,sender,chat,reply})) continue
 if(!classesOnlyRebootEnabled()){
 if(await handleBingoNov16Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 }
-if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
 if(classesOnlyRebootEnabled()&&['7pecados','setepecados','pecados7'].includes(cmd)){
  await reply(REBOOT_HERO_MESSAGE)
@@ -10658,18 +10667,19 @@ if(await handleAuction15RewardCommand({cmd,args,sender,reply})) continue
 if(await handleAuctionAlphaCommand1500({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 }
-if(await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGtAlphaCommand({cmd,args,sender,reply,
  openSponsorFlow:()=>setQuickFlow(chat,sender,'gt_sponsor_choose',{},5*60*1000),
  closeSponsorFlow:()=>{if(getQuickFlow(chat,sender)?.stage==='gt_sponsor_choose')clearQuickFlow(chat,sender)}
 })) continue
 if(await handleRacingAlphaCommand({cmd,args,sender,name:msg.pushName||'Piloto',chat,mentions:cmd==='desafiocorrida'&&mentionsOf(msg)[0]?[await resolvePlayerJid(sock,chat,mentionsOf(msg)[0],msg)]:[],reply})) continue
-if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
+  if(classesOnlyRebootEnabled()){await reply('Esta edição histórica está encerrada.');continue}
   const option=String(args[0]||'').toLowerCase()
   if(['cancelar','off','parar'].includes(option)){
     if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar esta edicao.');continue}
@@ -10680,6 +10690,7 @@ if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
   continue
 }
 if(['aposto','apostoq','apostoquenao'].includes(cmd)){
+  if(classesOnlyRebootEnabled()){await reply('Esta edição histórica está encerrada.');continue}
   const option=String(args[0]||'').toLowerCase()
   if(['cancelar','parar','off'].includes(option)){
     if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar este evento.');continue}

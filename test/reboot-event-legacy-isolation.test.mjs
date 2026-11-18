@@ -58,3 +58,16 @@ test('Superboss V2 usa prêmio novo na liquidação e não multiplica XP pelo ev
  assert.match(s,/if\(v2Reward\)\{[\s\S]*?\}else drops=weekly\?await giveBossDrops/)
  assert.match(source('src/neon/index.js'),/classesOnlyRebootEnabled\(\)\?'🏆 Superboss 2\.0/)
 })
+
+test('V2 não reativa os eventos antigos de data fixa, cofre ou baú ao perder marcadores',()=>{
+ const s=source('src/neon/index.js')
+ assert.match(s,/if\(!classesOnlyRebootEnabled\(\)\)\{\nconst key='raid_fragment_double_20261012_30min_v1'/)
+ assert.match(s,/if\(!classesOnlyRebootEnabled\(\)&&adminXpEventToken/)
+ assert.match(s,/if\(!classesOnlyRebootEnabled\(\)\)\{\nscheduleSaturdayRaidHunt\(sock\)[\s\S]*?startGuerraAlmasScheduler[^\n]*\n\}\nstartGtAlphaScheduler/)
+ assert.match(s,/apostaEngine=null\nif\(!classesOnlyRebootEnabled\(\)\)\{\napostaEngine=createApostaEngine/)
+ assert.match(s,/roubaEngine=null\nif\(!classesOnlyRebootEnabled\(\)\)\{\nroubaEngine=createRoubaRoubaEngine[\s\S]*?startCofreDestinoScheduler[^\n]*\n\}/)
+ assert.match(s,/if\(!classesOnlyRebootEnabled\(\)&&!temporaryRecoveryMode\)\{\nstartLabirintoScheduler/)
+ for(const name of ['handleLabirintoCommand','handleBauGolpeCommand','handleCofreDestinoCommand','handleCofreCommand','handleMimicCommand','handleHalloweenCommand','handleMadrugadaCommand','handleGuerraAlmasCommand'])
+  assert.ok(s.includes('if(!classesOnlyRebootEnabled()&&await '+name+'('),name)
+ assert.match(s,/startGtAlphaScheduler[^\n]*\nstartPocoPreviewScheduler\(sock\)\nstartPocoLiveScheduler\(sock\)/)
+})
