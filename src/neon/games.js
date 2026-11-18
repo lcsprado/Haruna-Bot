@@ -26,6 +26,7 @@ import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {chooseEconomicPetPotion} from './pet-potion-economy.js'
+import {petCombatExperience} from './reboot-pet-economy.js'
 import {mitigateRaidPetDamage,estimatedRaidPetHit} from './raid-pet-mitigation.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
@@ -1053,7 +1054,7 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=lote?1:await getPetXpEventMultiplier(c)
-  baseGain=lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
+  baseGain=rebootEconomyEnabled()?petCombatExperience(baseGain):lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
     :await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
@@ -1407,7 +1408,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote?baseQty:baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
+    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote||rebootEconomyEnabled()?baseQty:baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}

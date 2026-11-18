@@ -1,3 +1,4 @@
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 // Resgate oficial do Vale Domador de Lendas. Não depende de comandos admin.
 // O catálogo vem da MESMA lista de pets obtidos pelos Altares das Raids.
 // Regras de sinergia e especialidades são as já vigentes no jogo.
@@ -75,6 +76,7 @@ export function voucherSelectedPet(altars,raidPosition,petPosition){
   return {...raid.pets[n-1],raidLevel:raid.raidLevel}
 }
 export async function redeemRaidPetVoucher({pool,jid,selectedSpecies,altars,petMaxHp,petMaxEnergy}){
+  if(classesOnlyRebootEnabled())throw Error('Vale Domador legado indisponível na V2. Conquiste o pet no altar.')
   const chosen=voucherRaidCatalog(altars).flatMap(r=>r.pets.map(p=>({...p,raidLevel:r.raidLevel})))
     .find(p=>p.species===String(selectedSpecies||''))
   if(!chosen)throw Error('Pet não elegível para o Vale Domador de Lendas.')

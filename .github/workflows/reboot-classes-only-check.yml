@@ -32,6 +32,8 @@ on:
       - 'src/neon/reboot-economy-policy.js'
       - 'src/neon/reboot-gear-economy.js'
       - 'src/neon/reboot-progression-rewards.js'
+      - 'src/neon/reboot-pet-economy.js'
+      - 'test/reboot-pet-economy.test.mjs'
       - 'src/neon/pet-potion-economy.js'
       - 'src/neon/npc-shops.js'
       - 'test/reboot-progression-rewards.test.mjs'
@@ -116,6 +118,7 @@ jobs:
           node --check src/neon/reboot-economy-policy.js
           node --check src/neon/reboot-gear-economy.js
           node --check src/neon/reboot-progression-rewards.js
+          node --check src/neon/reboot-pet-economy.js
           node --check src/neon/pet-potion-economy.js
           node --check src/neon/npc-shops.js
           node --check src/neon/gt-alpha-rules.js
@@ -153,7 +156,7 @@ jobs:
           node --check src/neon/npc-shops.js
           node --check src/neon/auction-20261115-rewards.js
       - name: Testes dedicados, sem dependencias ou credenciais
-        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-transport-policy.test.mjs test/reboot-career-policy.test.mjs test/reboot-vehicle-roi.test.mjs test/reboot-economy-integrated.test.mjs test/reboot-economy-stress.test.mjs test/reboot-economy-ancillary-audit.test.mjs test/reboot-economy-c4g.test.mjs test/reboot-events-c4h.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-backup-v1.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs test/reboot-raid-lote-hours.test.mjs test/reboot-gear-economy.test.mjs test/reboot-progression-rewards.test.mjs test/level-reward-safety-20261020.test.mjs test/auction-pass-manual-rewards-20261116.test.mjs test/raid-lote-store.test.js test/raid-lote-worker.test.js test/raid-lote-public.test.js
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-transport-policy.test.mjs test/reboot-career-policy.test.mjs test/reboot-vehicle-roi.test.mjs test/reboot-economy-integrated.test.mjs test/reboot-economy-stress.test.mjs test/reboot-economy-ancillary-audit.test.mjs test/reboot-economy-c4g.test.mjs test/reboot-events-c4h.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-backup-v1.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs test/reboot-raid-lote-hours.test.mjs test/reboot-gear-economy.test.mjs test/reboot-progression-rewards.test.mjs test/reboot-pet-economy.test.mjs test/level-reward-safety-20261020.test.mjs test/auction-pass-manual-rewards-20261116.test.mjs test/raid-lote-store.test.js test/raid-lote-worker.test.js test/raid-lote-public.test.js
       - name: Regressões do jogo anterior (sem DB)
         run: node --test test/regression-smoke.test.mjs test/playable-seven-sins-20261027.test.mjs
       - name: Auditorias somente leitura

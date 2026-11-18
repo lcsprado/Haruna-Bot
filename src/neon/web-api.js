@@ -380,7 +380,7 @@ function petCatalog(){
       source:'raid'
     }))
   )
-  const adoptable=ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
+  const adoptable=classesOnlyRebootEnabled()?[]:ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
   const all=[...adoptable,...legendary]
   return all.map(p=>({
     ...p,

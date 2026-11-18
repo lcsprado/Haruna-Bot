@@ -72,7 +72,8 @@ const LEGACY_COLLAB_IDS=new Set([
 export const REBOOT_LEGACY_AUCTION_VOUCHERS=Object.freeze([
  'voucher_arsenal_supremo_20261115',
  'voucher_essencia_perfeicao_20261115',
- 'voucher_passe_raidlote_triplo_20261115'
+ 'voucher_passe_raidlote_triplo_20261115',
+ 'voucher_mercado_negro_petraid_20261105'
 ]);
 export function isRebootLegacyAuctionVoucher(id){
  return REBOOT_LEGACY_AUCTION_VOUCHERS.includes(String(id||'').trim().toLowerCase());

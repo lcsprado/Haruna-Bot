@@ -1,3 +1,4 @@
+import {v2PetSacrifice} from './reboot-pet-economy.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {VITAL_PETS} from './vital-pets.js'
@@ -175,7 +176,7 @@ export function petSacrificeReward(species,level=1,xp=0,pricePaid=null) {
   const shopPrice=getAdoptablePetRule(species)?.price||0
   const tracked=pricePaid===null||pricePaid===undefined?shopPrice:Math.max(0,Number(pricePaid)||0)
   const cash=tracked>0?Math.floor(tracked*.5):previousCash
-  return {level:lvl,exp,cash,originalPrice:tracked,shopRefund:tracked>0}
+  return v2PetSacrifice({level:lvl,exp,cash,originalPrice:tracked,shopRefund:tracked>0})
 }
 
 

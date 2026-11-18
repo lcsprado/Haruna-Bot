@@ -23,6 +23,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
+import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
@@ -5724,8 +5725,9 @@ export const LEGENDARY_PET_SUMMONS=[
 {species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:9,power:435},
 {species:'leviata_eternidade',name:'🌊 Leviatã da Eternidade',chance:8,power:430}
 ]}
-]
+].map(a=>effectivePetAltar(a))
 export async function raid50DragonGuaranteeStatus(jid){
+if(classesOnlyRebootEnabled())return {active:false,alreadyOwned:false}
 if(String(jid)!=='5511948523167@s.whatsapp.net') return {active:false,alreadyOwned:false}
 const marker='raid50_fenix_once_20261012:'+jid
 const [used,existing]=await Promise.all([
@@ -5736,6 +5738,11 @@ return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
 }
 
 async function summonLegendaryPetTx(client,jid,altar){
+if(classesOnlyRebootEnabled()){
+ const player=(await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+ const wins=(await client.query("SELECT COUNT(*)::int AS n FROM transactions WHERE to_jid=$1 AND type='minigame' AND note=$2",[jid,'raid_'+altar.raidLevel])).rows[0]
+ assertV2PetAltarAccess(altar.raidLevel,Number(player?.level||0),Number(wins?.n||0))
+}
 const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
 const owned=Number(inv?.quantity||0)
 const summonCost=Math.max(1,Number(altar.summonCost||100))
@@ -5746,11 +5753,11 @@ if(owned+universalOwned<summonCost) throw new Error(`Você precisa de ${summonCo
 if(summonCost-missing>0)await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost-missing,jid,altar.materialId])
 if(missing)await client.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_universal_raid'",[missing,jid])
 const forcedKey='forced_summon:'+jid+':'+altar.materialId
-const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
+const forcedRow=classesOnlyRebootEnabled()?null:(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
 // Invocação programada por posição, sem alterar chances nem resultados anteriores.
 // O lock do jogador e o da configuração serializam invocações únicas e em lote.
 const scheduledKey='scheduled_summon:'+jid+':'+altar.materialId
-const scheduledRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[scheduledKey])).rows[0]
+const scheduledRow=classesOnlyRebootEnabled()?null:(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[scheduledKey])).rows[0]
 const scheduled=nextScheduledSummon(scheduledRow?.value,altar.pets)
 if(scheduled){
   if(scheduled.clear){
@@ -5763,11 +5770,11 @@ if(scheduled){
   }
 }
 const specialGuaranteeKey='raid50_fenix_once_20261012:'+jid
-const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
+const specialGuaranteeEligible=!classesOnlyRebootEnabled()&&jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
 const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
 const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
 const sphinxKey='raid65_esfinge_once_20261017:'+jid
-const sphinxEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
+const sphinxEligible=!classesOnlyRebootEnabled()&&jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
 const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
 const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
 const forcedSpecies=scheduled?.forcedSpecies||(sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')))
@@ -5804,6 +5811,7 @@ const fragmentRate=rare ? 0.35 : 0.25
 const fragmentRefund=Math.max(1,Math.floor(summonCost*fragmentRate))
 let cashRefund=Math.round((Number(altar.raidLevel||1)*800+Number(chosen.power||0)*60)/1000)*1000
 if(rare) cashRefund=Math.round(cashRefund*1.25/1000)*1000
+cashRefund=petDuplicateCash(cashRefund,altar.raidLevel)
 await client.query(
 'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
 [jid,altar.materialId,fragmentRefund]
@@ -5822,7 +5830,7 @@ fragmentRefund,
 remaining:Math.max(0,owned-summonCost)+fragmentRefund
 }
 }
-const startLevel=Math.max(1,Number(altar.raidLevel||1))
+const startLevel=petSummonStartLevel(altar.raidLevel)
 const startXp=(startLevel-1)*100
 const energy=petMaxEnergy(startLevel,chosen.species)
 const maxHp=petMaxHp(startLevel,startXp,chosen.species)
@@ -6089,8 +6097,8 @@ const EXPEDITION_ITEM_NAMES={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_ra
 export function petExpeditionTrait(species){
 return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador',xp:.08,cash:.05}
 }
-export const PET_EXPEDITION_MAX_CONCURRENT=12
-const PET_EXPEDITION_PLANS={2:{xp:70,cash:500},4:{xp:150,cash:1100},8:{xp:330,cash:2500}}
+export const PET_EXPEDITION_MAX_CONCURRENT=petExpeditionLimit()
+export const PET_EXPEDITION_PLANS=effectiveExpeditionPlans()
 function petExpeditionRewards(plan,trait,position){
 const cashScale=position>6?.25:position>3?.5:1
 return {
@@ -6224,7 +6232,7 @@ for(const row of rows){
 const trait=petExpeditionTrait(row.species)
 const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
+const awardedPetXp=classesOnlyRebootEnabled()?Number(row.pet_xp||0):Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
 const rawXp=Number(row.xp||0)+awardedPetXp
 const level=Math.min(100,1+Math.floor(rawXp/100))
 const xp=level>=100?9900:rawXp
@@ -6331,18 +6339,18 @@ if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.c
 const maxEnergy=petMaxEnergy(pet.level,pet.species)
 if(Number(pet.energy)>=maxEnergy && Number(petHp.hp)>=Number(petHp.max_hp)) throw new Error(`Seu pet já está com energia e HP cheios.`)
 }
-if(!a.rest && now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+if(!a.rest && now-Number(pet.last_action||0)<(classesOnlyRebootEnabled()?300:60)) throw new Error('Seu pet precisa descansar um pouco.')
 if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
 const oldLevel=Number(pet.level||1)
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
 const relicXP=await getRelicPetXpBonus(client,jid)
-const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
+const actionXp=classesOnlyRebootEnabled()?Math.floor(Math.max(0,Number(a.xp||0))*.6):Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
 const rawXp=Number(pet.xp)+actionXp
 const level=Math.min(100,1+Math.floor(rawXp/100))
 const xp=level>=100?9900:rawXp
 const levelsGained=Math.max(0,level-Math.min(100,oldLevel))
-const powerGain=(a.power||0)+(levelsGained*2)
+const powerGain=(classesOnlyRebootEnabled()?0:(a.power||0))+(levelsGained*2)
 const levelEnergyGain=levelsGained*3
 const maxEnergyAtLevel=petMaxEnergy(level,pet.species)
 const {rows}=await client.query(`UPDATE pets SET
@@ -6386,14 +6394,14 @@ const fullAdventureThreshold=maxAdventureEnergy*.85
 const energyFactor=Math.min(1,energy/fullAdventureThreshold)
 const fullAdventureCash=13000+Math.floor(Math.random()*5001)
 const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
-const cash=Math.round(baseCash*moneyMultiplier)
+const cash=classesOnlyRebootEnabled()?petAdventureCash(baseCash):Math.round(baseCash*moneyMultiplier)
 const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
-const xpGain=Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
+const xpGain=classesOnlyRebootEnabled()?baseAdventureXp:Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
 const rawXp=Number(pet.xp||0)+xpGain
 const nextLevel=Math.min(100,1+Math.floor(rawXp/100))
 const xp=nextLevel>=100?9900:rawXp
 const levelsGained=Math.max(0,nextLevel-Math.min(100,Number(pet.level||1)))
-const powerGain=Math.floor(energy/50)+(levelsGained*2)
+const powerGain=(classesOnlyRebootEnabled()?0:Math.floor(energy/50))+(levelsGained*2)
 const levelEnergyGain=levelsGained*3
 const {rows}=await client.query(`UPDATE pets SET energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
 hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
@@ -6547,8 +6555,8 @@ return updated
 }
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='a')
-const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='b')
+const updatedA=await evolve(a,hpA,(classesOnlyRebootEnabled()?(winnerKey==='a'?15:6):Math.round((winnerKey==='a'?25:10)*xpMultiplier*petXpEventMultiplier)),winnerKey==='a')
+const updatedB=await evolve(b,hpB,(classesOnlyRebootEnabled()?(winnerKey==='b'?15:6):Math.round((winnerKey==='b'?25:10)*xpMultiplier*petXpEventMultiplier)),winnerKey==='b')
 const winner=winnerKey==='a'?updatedA:updatedB
 const loser=winnerKey==='a'?updatedB:updatedA
 return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}

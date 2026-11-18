@@ -135,6 +135,7 @@ assertRebootWhatsappPermission()
 
 import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText} from './raid-lote-policy.js'
 import {shopForge5ServiceFee} from './shop-forge5-plan.js'
+import {effectiveExpeditionPlans} from './reboot-pet-economy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
@@ -11405,7 +11406,7 @@ for(const x of activeExpeditions){
 text+=`• ID *${x.pet_id}* — *${x.pet_name}* — volta em *${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))}*\n`
 }
 }
-text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n• *2h* — +70 XP • R$ 500\n• *4h* — +150 XP • R$ 1.100\n• *8h* — +330 XP • R$ 2.500\n\n⭐ Bônus da espécie e chances de item são extras. Dinheiro reduzido em 50% para o 4º–6º pet e em 75% do 7º em diante; XP integral.\n\n👉 Individual: *!expedicaopet 4 8*\n🚀 Todos: *!expedicaopet todos 8*\n📌 Até *'+PET_EXPEDITION_MAX_CONCURRENT+' pets* simultâneos. Pets do time e ativo não podem ir.'
+text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n'+Object.entries(effectiveExpeditionPlans()).map(([h,p])=>'• *'+h+'h* — +'+p.xp+' XP • R$ '+fmt(p.cash)).join('\n')+'\n\n⭐ Bônus da espécie e chances de item são extras.'+(classesOnlyRebootEnabled()?'':' Dinheiro reduzido em 50% para o 4º–6º pet e em 75% do 7º em diante; XP integral.')+'\n\n👉 Individual: *!expedicaopet 4 8*\n🚀 Todos: *!expedicaopet todos 8*\n📌 Até *'+PET_EXPEDITION_MAX_CONCURRENT+' pets* simultâneos. Pets do time e ativo não podem ir.'
 return await reply(text)
 }
 const r=await startPetExpedition(sender,petId,hours)
@@ -13229,7 +13230,7 @@ text+=`   Você possui: *${materialQty(a.materialId)}/${cost}*\n`
 a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
 text+='\n'
 }
-text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*.\n🚀 Para invocar em lote: *!invocarpet 10 todos* (Raid 70) ou *!invocarpet 10 5* (cinco invocações).'
+text+=(classesOnlyRebootEnabled()?'💠 Cada altar indica seu custo. Pets nascem no Lv.1. Exige nível e vitória manual na Raid.':'💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.')+'\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*.\n🚀 Para invocar em lote: *!invocarpet 10 todos* (Raid 70) ou *!invocarpet 10 5* (cinco invocações).'
 pages.push(text)
 setQuickFlow(chat,sender,'legendary_pet_altar_select',{},5*60*1000)
 for(const page of pages) await reply(page)
