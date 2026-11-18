@@ -113,6 +113,7 @@ import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {startBingoNov16Scheduler,handleBingoNov16Command} from './bingo-20261116.js'
 import {handleRebootEventsCommand} from './reboot-events-whatsapp.js'
+import {startRebootEventsScheduler} from './reboot-events-scheduler.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
@@ -9979,6 +9980,9 @@ startBingoRebootScheduler(sock)
 startBingoNov15Scheduler(sock)
 // Edição de Bingo de 16/11 às 16h, independente e com prêmio de R$ 1 milhão.
 startBingoNov16Scheduler(sock)
+// C4i: agendador ÚNICO somente no cutover aprovado e no banco isolado.
+// Sem as flags de aprovação, não cria timer, SQL, socket ou serviço.
+startRebootEventsScheduler(db)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
