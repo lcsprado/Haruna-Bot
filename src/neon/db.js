@@ -24,6 +24,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
+import {dungeonCashV2} from './reboot-pve-policy.js'
 import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-combat-progression.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
@@ -4390,9 +4391,10 @@ export async function dungeon(jid) {
 await ensureUser(jid)
 return transaction(async client=>{
 const p=await client.query(`
-SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,COALESCE(cl.level,1) AS class_level
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,COALESCE(cl.level,1) AS class_level,COALESCE(pa.stage,0) AS awakening_stage
 FROM users u JOIN stats s ON s.jid=u.jid
 LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
+LEFT JOIN player_awakenings pa ON pa.jid=s.jid
 WHERE u.jid=$1
 FOR UPDATE OF u,s
 `,[jid])
@@ -4431,19 +4433,22 @@ const m={...monsters[Math.min(idx,monsters.length-1)]}
 m.hp+=level*6
 m.atk+=Math.floor(level*1.3)
 m.def+=Math.floor(level*.7)
-let php=classCombatHp(row.hp,Number(row.max_hp)+gearHp,effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
+const awakeningStage=classesOnlyRebootEnabled()?Number(row.awakening_stage||0):0
+let php=classCombatHp(row.hp,Number(row.max_hp)+gearHp,effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0,awakeningState={}
 while(php>0&&mhp>0&&rounds<25){
 rounds++
-const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
+const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied,awakeningStage,'dungeon'))
 const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)*(crit?1.5:1)))
-const skill=classAttack({classId:row.class_id,applied:row.class_applied,damage:pdmg,critical:crit,hp:php,maxHp:effectiveMaxHp,attackIndex:rounds,context:'dungeon',lastProcAttack})
+const skill=classAttack({classId:row.class_id,applied:row.class_applied,damage:pdmg,critical:crit,hp:php,maxHp:effectiveMaxHp,attackIndex:rounds,context:'dungeon',lastProcAttack,awakeningStage,awakeningState})
 lastProcAttack=skill.lastProcAttack
+awakeningState=skill.awakeningState
 mhp=Math.max(0,mhp-skill.damage)
 php=Math.min(effectiveMaxHp,php+skill.heal)
 if(mhp<=0) break
 const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
-const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg})
-php=Math.max(0,php-blocked.damage)
+const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg,...(classesOnlyRebootEnabled()?{context:'dungeon',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState}:{})})
+awakeningState=blocked.awakeningState
+php=Math.max(0,php-blocked.damage+Number(blocked.healAfter||0))
 }
 if(php<=0||(classesOnlyRebootEnabled()&&mhp>0)){
 const recover=php>0?php:Math.max(1,Math.floor(effectiveMaxHp*.30))
@@ -4452,7 +4457,7 @@ const lossExp=Math.round(10*xpMultiplier)
 const expRes=await applyExp(client,jid,lossExp)
 return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
 }
-const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
+const cash=classesOnlyRebootEnabled()?dungeonCashV2(m.mult,Math.random()):Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
 const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
 await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,classPersistentHp(php,effectiveMaxHp,Number(row.max_hp)+gearHp)),jid])
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])

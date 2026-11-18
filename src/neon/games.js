@@ -18,6 +18,7 @@ import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} f
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
+import {V2_WEEKLY_BOSS,commonBossRewardV2} from './reboot-pve-policy.js'
 import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount,rebootWeeklyBossReward} from './weekly-golem-payouts.js'
 import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares} from './weekly-boss-prize-pool.js'
 import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
@@ -3007,9 +3008,9 @@ export async function claimWeeklyGolemChoice(jid,selection){
 }
 async function loadWeeklyBoss(c,weekend,{create=false}={}){
   const current=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-  if(current?.weekendKey===weekend.weekendKey) return current
+  if(current?.weekendKey===weekend.weekendKey&&(!rebootEconomyEnabled()||current.rebootV2===true)) return current
   if(!create||!weekend.open) return null
-  const rows=(await c.query(`
+  const rows=rebootEconomyEnabled()?[]:(await c.query(`
     SELECT chat_jid,state FROM trevo_games
     WHERE game_type='boss' AND chat_jid<>$1
       AND state->>'weekendKey'=$2
@@ -3017,7 +3018,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
            OR (state->>'mode' IS NULL AND COALESCE((state->>'maxHp')::numeric,0)>=25000))
   `,[GLOBAL_WEEKLY_BOSS_CHAT,weekend.weekendKey])).rows
   const bosses=rows.map(r=>r.state).filter(x=>Number(x.maxHp)>0)
-  const maxHp=bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
+  const maxHp=rebootEconomyEnabled()?V2_WEEKLY_BOSS.hp:bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
   const participants={}
   let totalDamage=0
   for(const boss of bosses){
@@ -3035,7 +3036,8 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
   }
   const state={
     mode:'weekly',name:'Golem Ancestral do Alpha',
-    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:200,participants,
+    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:rebootEconomyEnabled()?V2_WEEKLY_BOSS.atk:200,participants,
+    ...(rebootEconomyEnabled()?{rebootV2:true}:{}),
     startedAt:bosses.length?Math.min(...bosses.map(x=>Number(x.startedAt||Date.now()))):Date.now(),
     weekendKey:weekend.weekendKey,weeklyCompleted:bosses.some(x=>x.weeklyCompleted),
     endsAt:weekend.endsAt,endsLabel:weekend.endsLabel
@@ -3285,7 +3287,7 @@ export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
+    if(!rebootEconomyEnabled()&&event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     if(weekend.open){
       const weekly=await loadWeeklyBoss(c,weekend,{create:true})
       if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel,finished:weekly.mode==='completed'&&weekly.weeklyCompleted===true&&Array.isArray(weekly.result?.rewards)}
@@ -3350,7 +3352,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`weekly-boss-player:${weekend.weekendKey}:${jid}`])
     }
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
+    const eventActive=!rebootEconomyEnabled()&&Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
     const weeklyActive=!eventActive&&weekend.open
     const gameType=eventActive?'boss_event':'boss'
     const bossChat=weeklyActive?GLOBAL_WEEKLY_BOSS_CHAT:chat
@@ -3560,7 +3562,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       // O cap vale para ataques manuais e automáticos, incluindo críticos e pets.
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)),
         collabRemainingPersonalDamage(s.maxHp,existingParticipant.damage||0))
-    }else if(s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
+    }else if(rebootEconomyEnabled()||s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)))
     }
 
@@ -3786,6 +3788,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
+        const commonV2=rebootEconomyEnabled()&&!weekly&&!eventMode?commonBossRewardV2(p.damage,total):null
         const tier=weekly?((upgradedWeeklyEdition(s.weekendKey)?BOSS_PLACEMENT:OLD_BOSS_PLACEMENT)[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
@@ -3871,15 +3874,18 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
             :weeklyNov13Xp
           exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
+          if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
-          if(pp){
+          if(pp&&(!commonV2||commonV2.xp>0)){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))
               : Math.max(5,Math.round(12+35*share))
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          if(v2Reward){
+          if(commonV2){
+            if(Math.random()<commonV2.boxChance)drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+          }else if(v2Reward){
             const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
             if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
             if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance){
@@ -3935,7 +3941,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
-        const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
+        const reclassDrop=s.eventId===NIGHT_EVENT_ID||(commonV2&&commonV2.xp===0)?null:await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
         if(reclassDrop) drops.push(reclassDrop)
         rewards.push({...p,position,cash,exp,petXp,petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }

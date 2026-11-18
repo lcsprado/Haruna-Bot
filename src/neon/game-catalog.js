@@ -1,6 +1,7 @@
 import {v2PetSacrifice} from './reboot-pet-economy.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {dungeonAwakeningEnabled} from './reboot-pve-policy.js'
 import {VITAL_PETS} from './vital-pets.js'
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
@@ -319,7 +320,7 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
 
 // Habilidades I–V em Boss/Raid, com atributos dos cinco estágios. Não altera PvP nem passivas dos não despertos.
 function awakenedStage(applied,stage,context){
-  return applied && (context==='boss'||context==='raid')
+  return applied && dungeonAwakeningEnabled(context)
     ? Math.max(0,Math.min(5,Math.floor(Number(stage)||0))) : 0
 }
 export function getAwakeningSkillDescriptions(classId){
