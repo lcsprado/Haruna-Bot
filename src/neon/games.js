@@ -18,7 +18,7 @@ import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} f
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
-import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-golem-payouts.js'
+import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount,rebootWeeklyBossReward} from './weekly-golem-payouts.js'
 import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares} from './weekly-boss-prize-pool.js'
 import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
@@ -2939,7 +2939,8 @@ export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
   const s=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
   if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
   const specialNov13=!rebootEconomyEnabled()&&s.weekendKey===WEEKLY_GOLEM_V2_KEY
-  const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)
+  const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)||
+    (rebootEconomyEnabled()&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.weekendKey||'')))
   if(!specialNov13&&!proportionalPool)return null
   // Nao retroagir nem prolongar o evento de 13/11; eventos futuros seguem o prazo no estado.
   if(specialNov13&&(nowMs<Date.parse('2026-11-15T00:00:00-03:00')||
@@ -2949,7 +2950,7 @@ export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
   const rewards=[]
   for(let i=0;i<entries.length;i++){
    const p=entries[i],position=i+1
-   const cash=weeklyCashShares===null
+   const cash=rebootEconomyEnabled()?(weeklyCashShares?.get(p.jid)||0):weeklyCashShares===null
      ?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
      :(weeklyCashShares.get(p.jid)||0)
    const exp=rebootEconomyEnabled()?0:(golem20261113Xp(s.weekendKey,position,p.damage)??0)
@@ -3852,12 +3853,15 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           // Boss comum permanece inalterado. No Superboss, usa apenas o dano
           // real já registrado para liberar o bônus extra de dinheiro e XP.
           // Nada é debitado do jogador, e os prêmios só são pagos na vitória.
+          const v2Reward=weekly&&rebootEconomyEnabled()?rebootWeeklyBossReward({
+            position,damage:p.damage,totalDamage:total,weekendKey:s.weekendKey
+          }):null
           const golemBonus=weekly?weeklyGolemPayoutIncrease({
             weekendKey:s.weekendKey,position,damage:p.damage
           }):{cash:0,xp:0}
           // A partir de 20/11, o dinheiro do Superboss soma exatamente R$ 50 mi.
           // Sem multiplicador nem cash fixo por posicao ou por evento.
-          cash=weeklyCashShares===null
+          cash=v2Reward?(weeklyCashShares?.get(p.jid)||0):weeklyCashShares===null
             ?(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
               +(weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
             :(weeklyCashShares.get(p.jid)||0)
@@ -3865,16 +3869,25 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           const baseXp=weeklyNov13Xp===null
             ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
             :weeklyNov13Xp
-          exp=Math.floor(baseXp*(1+pb.xp))*xpMultiplier
+          exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-          await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
+          await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))
               : Math.max(5,Math.round(12+35*share))
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+          if(v2Reward){
+            const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
+            if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
+            if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance){
+              const item=Math.random()<.5
+                ?{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
+                :{id:'martelo_golem',name:'Martelo do Golem Ancestral',rarity:'Lendário'}
+              drops.push(await grantBossItem(c,p.jid,item,'weekly-boss:'+String(s.weekendKey)))
+            }
+          }else drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
            if(!rebootEconomyEnabled()&&weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
              drops.push(await grantWeeklyGolemChoice(c,p.jid))
           // Top 3 do Superboss: lendárias garantidas por vitória e dano real.

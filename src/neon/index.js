@@ -13580,7 +13580,7 @@ const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus
 const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
 const bossCritLine='\n🛡️ Resistência CRIT: *'+critResistancePercent(BOSS_CRIT_RESISTANCE)+' p.p.*'
 const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
-const golemRewards=r.mode==='weekly'&&r.weekendKey==='2026-11-13'?'\n🏆 *PRÊMIOS EXCLUSIVOS* — 🥇 e 🥈 escolhem 1 equipamento FORJADO ★★★★★ Lv.10.\n💰 Dinheiro extra: 12M / 10M / 8M / 6M / 5M; demais 3M (mínimo 10 mil dano).\n🎁 Resgate após encerramento: *!golempremio*.\n✅ Novos prêmios pagos mesmo se o Golem resistir ao prazo.':''
+const golemRewards=!classesOnlyRebootEnabled()&&r.mode==='weekly'&&r.weekendKey==='2026-11-13'?'\n🏆 *PRÊMIOS EXCLUSIVOS* — 🥇 e 🥈 escolhem 1 equipamento FORJADO ★★★★★ Lv.10.\n💰 Dinheiro extra: 12M / 10M / 8M / 6M / 5M; demais 3M (mínimo 10 mil dano).\n🎁 Resgate após encerramento: *!golempremio*.\n✅ Novos prêmios pagos mesmo se o Golem resistir ao prazo.':''
 const displayedSchedule=r.eventId==='sete_pecados'
 ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
 :r.eventId==='ruptura_estelar'
@@ -13590,7 +13590,7 @@ if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: 
 await progressDailyMission(sender,'game')
 const rewardInfo=r.mode==='event'
 ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
-:(r.mode==='weekly'?'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
+:(r.mode==='weekly'?(classesOnlyRebootEnabled()?'🏆 Superboss 2.0: fundo coletivo de R$ 40 mil por dano (também no encerramento por prazo). Na vitória: XP por dano até 4 mil brutos, 1 caixa por colocado elegível no Top 5 (mínimo 10 mil de dano e 5% do total); chance de equipamento do Golem no Top 3. Insígnias seguem as regras existentes.':'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.'):'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
 await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${golemRewards}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 } else if(['pararatacar','pararboss'].includes(cmd)){
 const existing=bossSessions.get(sender)

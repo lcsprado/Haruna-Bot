@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {rebootWeeklyBossReward} from '../src/neon/weekly-golem-payouts.js'
 import {weeklyBossCashPoolShares} from '../src/neon/weekly-boss-prize-pool.js'
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
 test('V2 não inicia Bingo e leilões históricos nem recria bônus do grupo após reset',()=>{
@@ -35,4 +36,25 @@ test('prêmios especiais legados do Golem não são concedidos na V2',()=>{
  assert.match(s,/specialNov13=!rebootEconomyEnabled\(\)&&/)
  assert.equal(s.split('if(!rebootEconomyEnabled()&&weeklyGolemV2Choice').length,3)
  assert.match(s,/legendaryBoxes=weekly&&!rebootEconomyEnabled\(\)\?weeklyGolemLegendaryBoxCount/)
+})
+
+test('Superboss V2: XP proporcional, caixas limitadas e chance exclusiva sem bônus de pet',()=>{
+ const reward=(position,damage,totalDamage)=>rebootWeeklyBossReward({position,damage,totalDamage,weekendKey:'2026-11-20'})
+ assert.deepEqual(reward(1,1_000_000,1_000_000),{xp:4000,box:'caixa_epica',exclusiveChance:.05})
+ const rows=[reward(1,400_000,1_000_000),reward(2,300_000,1_000_000),reward(3,200_000,1_000_000),reward(4,100_000,1_000_000)]
+ assert.equal(rows.reduce((sum,r)=>sum+r.xp,0),6000-500)
+ assert.deepEqual(rows.map(r=>r.box),['caixa_epica','caixa_rara','caixa_rara','caixa_sorte'])
+ assert.deepEqual(reward(2,49_999,1_000_000),{xp:149,box:null,exclusiveChance:0})
+ assert.equal(reward(6,100_000,1_000_000).box,null)
+ assert.equal(reward(1,9999,9999).box,null)
+ for(const [d,total] of [[0,100],[-1,100],[101,100],[Infinity,100],[1,0]])assert.equal(reward(1,d,total).xp,0)
+ assert.equal(rebootWeeklyBossReward({position:1,damage:100,totalDamage:100,weekendKey:'invalid'}).xp,0)
+})
+test('Superboss V2 usa prêmio novo na liquidação e não multiplica XP pelo evento antigo',()=>{
+ const s=source('src/neon/games.js')
+ assert.match(s,/cash=v2Reward\?\(weeklyCashShares\?\.get\(p\.jid\)\|\|0\):weeklyCashShares===null/)
+ assert.match(s,/exp=v2Reward\?v2Reward\.xp:Math\.floor/)
+ assert.match(s,/v2Reward\?exp:await halloweenPveXp/)
+ assert.match(s,/if\(v2Reward\)\{[\s\S]*?\}else drops=weekly\?await giveBossDrops/)
+ assert.match(source('src/neon/index.js'),/classesOnlyRebootEnabled\(\)\?'🏆 Superboss 2\.0/)
 })
