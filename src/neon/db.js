@@ -4401,8 +4401,8 @@ if(!row) throw new Error('Perfil não encontrado.')
 if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
 const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
 if(!cd.ok) return cd
-const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const moneyMultiplier=classesOnlyRebootEnabled()?1:await getDoubleEventMultiplier(client,'money')
+const xpMultiplier=classesOnlyRebootEnabled()?1:await getDoubleEventMultiplier(client,'xp')
 const eqIds=[row.weapon_id,row.armor_id,row.boot_id,row.helmet_id].filter(Boolean)
 const ups=eqIds.length?(await client.query(
 'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',

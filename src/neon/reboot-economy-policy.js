@@ -124,16 +124,25 @@ export function assertRaid70V2Start({level,partySize,mode='manual',enabled=reboo
   }
   return true;
 }
+// O dano deve refletir HP realmente removido, e cura efetivamente realizada.
+export function raidV2MeaningfulContribution(p,total,minShare=.02){
+ if(!p?.jid||!Number.isFinite(total)||total<=0)return false;
+ const damage=Math.max(0,Number(p.damage||0));
+ const healing=Math.max(0,Number(p.classHealing||0))+Math.max(0,Number(p.petSkillHealing||0));
+ return (damage>0&&damage>=total*minShare)||healing>=Math.max(200,total*.002);
+}
+export function raidV2EligibleRewards(players,{enabled=rebootEconomyEnabled()}={}){
+ const rows=Array.isArray(players)?players:Object.values(players||{});
+ if(!enabled)return rows;
+ const total=rows.reduce((sum,p)=>sum+Math.max(0,Number(p.damage||0)),0);
+ return rows.filter(p=>raidV2MeaningfulContribution(p,total));
+}
 export function raid70V2Contributors(players,{level,enabled=rebootEconomyEnabled()}={}){
   if(!enabled||Number(level)!==70)return {valid:true,required:1,contributors:0};
   const participants=Object.values(players||{});
   const total=participants.reduce((a,p)=>a+Math.max(0,Number(p.damage||0)),0);
   // Curadores e defensores contribuem com suporte, sem exigir dano igual ao DPS.
-  const minimumHealing=Math.max(200,total*.002);
-  const qualified=participants.filter(p=>p.jid&&(
-    (Number(p.damage||0)>0&&Number(p.damage||0)>=total*.05)||
-    (Number(p.classHealing||0)+Number(p.petSkillHealing||0)>=minimumHealing)
-  ));
+  const qualified=participants.filter(p=>raidV2MeaningfulContribution(p,total,.05));
   const count=new Set(qualified.map(p=>p.jid)).size;
   return {valid:total>0&&count>=3,required:3,contributors:count};
 }

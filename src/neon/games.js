@@ -11,7 +11,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
 import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
-import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,rebootEconomyEnabled} from './reboot-economy-policy.js'
+import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -35,7 +35,7 @@ import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
 
 // Passiva de EXP exclusiva de Boss/Raid. Não interfere em PvP, carreira ou comércio.
-async function halloweenPveXp(c,jid,xp){return halloweenTitleBonusXp(xp,await ownsHalloweenTitle(c,jid))}
+async function halloweenPveXp(c,jid,xp){return rebootEconomyEnabled()?xp:halloweenTitleBonusXp(xp,await ownsHalloweenTitle(c,jid))}
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible,COLLAB_RAID_FRAGMENTS_PER_WIN} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -942,10 +942,10 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
-    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id,st.helmet_id],c)
+    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id,st.helmet_id,...(rebootEconomyEnabled()?[st.boot_id]:[])],c)
     const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id),forgeStars[st.weapon_id]||1):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id),forgeStars[st.armor_id]||1):{atk:0,def:0,hp:0,crit:0}
-    const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
+    const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id),rebootEconomyEnabled()?forgeStars[st.boot_id]||1:1):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id),forgeStars[st.helmet_id]||1):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -1225,7 +1225,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const armorStars=activeStars(st.armor_id)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id),weaponStars):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
-      const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
+      const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id),rebootEconomyEnabled()?activeStars(st.boot_id):1):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id),activeStars(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -1273,8 +1273,8 @@ async function finishRaidRewards(c,s,cfg,chat){
   const lote=s.mode==='lote'
   // Somente lotes adquiridos com o Passe Supremo mantêm a tabela base manual.
   // O identificador é persistido na sala após a validação do job no PostgreSQL.
-  const loteReduced=lote&&s.auctionPassManualRewards!==true
-  const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
+  const loteReduced=lote&&(rebootEconomyEnabled()||s.auctionPassManualRewards!==true)
+  const ranked=raidV2EligibleRewards(Object.values(s.players||{})).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
   // A compensação por desconexões usa uma janela dinâmica persistida no Neon.
@@ -1294,11 +1294,11 @@ async function finishRaidRewards(c,s,cfg,chat){
     now<Number(fragmentEvent.endsAt||0) &&
     Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
-  const cacadaActive=cacadaAlphaActive()
-  const ownerRaid=await getOwnerEventMultiplier(c,'raid')
-  const ownerDrop=await getOwnerEventMultiplier(c,'drop')
-  const ownerFragments=await getOwnerEventMultiplier(c,'fragmentos')
-  const ownerGeneralXp=await getOwnerEventMultiplier(c,'xp')
+  const cacadaActive=!rebootEconomyEnabled()&&cacadaAlphaActive()
+  const ownerRaid=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'raid')
+  const ownerDrop=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'drop')
+  const ownerFragments=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'fragmentos')
+  const ownerGeneralXp=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'xp')
   const effectivePetXp=lote?1:await getPetXpEventMultiplier(c)
   // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
@@ -1444,7 +1444,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
-      if(!lote&&cfg.level===60 && Number(p.damage||0)>0){
+      if(!lote&&cfg.level===60 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const playerDigits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const isPlayer=playerDigits.endsWith('11948523167') ||
           (await c.query(
@@ -1464,7 +1464,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão única e individual na Raid 50, somente após vitória com dano real.
       // Mantém a apresentação habitual do drop; não altera chances de outros jogadores.
-      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11939089695'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1485,7 +1485,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão individual, transacional e única para a próxima vitória na Raid 50.
       // Usa o mesmo resultado habitual da Raid, sem anúncio administrativo.
-      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11987308687'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1506,7 +1506,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Pendência individual da Raid 70: conceder uma única vez na próxima vitória,
       // com participação real, pelo fluxo habitual de drop (sem aviso separado).
-      if(!lote&&!singleUseGear && cfg.level===70 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===70 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11948523167'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const playerMatch=digits.endsWith(phone) ||
@@ -1535,7 +1535,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       // Recompensa de uso unico para Augusto: proxima vitoria da Raid Lv.65.
       // Sem anuncio administrativo: permanece no relatorio normal de drop da Raid.
       // Chave transacional impede duplicacao em novas raids, reinicios e outros grupos.
-      if(!lote&&!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 &&
+      if(!lote&&!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 && !rebootEconomyEnabled() &&
         p.jid==='5511982964423@s.whatsapp.net'){
         const oneOff=await c.query(
           `INSERT INTO trevo_settings(key,value,updated_at)
@@ -1781,7 +1781,7 @@ export async function raidRound(chat,level){
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
-      p.damage=Number(p.damage||0)+dmg
+      p.damage=Number(p.damage||0)+(rebootEconomyEnabled()?actualDamage:dmg)
       s.hp=Math.max(0,Number(s.hp)-dmg)
       await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit,p.heroId)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
@@ -1812,7 +1812,7 @@ export async function raidRound(chat,level){
         await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[rebased.storedHp,player.jid]);
       }
       // Impede que um único jogador carregue dois participantes inativos na Raid 70.
-      // Nenhum saque é feito se menos de dois contribuírem pelo menos 5% de dano.
+      // Em V2, nenhum saque é feito se menos de três contribuírem com dano real ou cura.
       const cooperation=raid70V2Contributors(s.players,{level:cfg.level})
       if(!cooperation.valid){
         s.status='failed';s.failReason='insufficient_cooperation'

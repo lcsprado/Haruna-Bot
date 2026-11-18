@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
  V2_EVENT_BUDGET,V2_RAID_LEVELS,V2_BUSINESS_ECONOMY,V2_GOALS,
  budgetReport,candidateRaidConfig,candidateShopCatalogItem,candidateBusinessCatalog,businessIntervalGrossV2,raid70V2Policy,assertRaid70V2Start,
- raid70V2Contributors,raidCashSharesV2,rebootEconomyEnabled
+ raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,raidV2MeaningfulContribution,rebootEconomyEnabled
 } from '../src/neon/reboot-economy-policy.js';
 import {gtRaceReward,gtEffectiveWeeklyPrizes} from '../src/neon/gt-alpha-rules.js';
 import {weeklyBossCashPoolShares} from '../src/neon/weekly-boss-prize-pool.js';
@@ -191,4 +191,29 @@ test('Redistribuição V2 reduz emissão sem penalizar a primeira diária',()=>{
  const rates=Object.values(V2_BUSINESS_ECONOMY.hourlyRates);
  assert.equal(rates[0],160);
  assert.ok(rates.every((value,i)=>i===0||value>rates[i-1]));
+});
+
+test('V2 Raid: recompensa apenas contribuição efetiva, incluindo cura; V1 preservada',()=>{
+ const rows=[{jid:'a',damage:9700},{jid:'b',damage:200},{jid:'c',damage:0,classHealing:200},{jid:'d',damage:100},{jid:'e',damage:0}];
+ assert.deepEqual(raidV2EligibleRewards(rows,{enabled:true}).map(r=>r.jid),['a','b','c']);
+ assert.deepEqual(raidV2EligibleRewards(rows,{enabled:false}),rows);
+ assert.equal(raidV2MeaningfulContribution({jid:'x',damage:0,classHealing:199},10000),false);
+ assert.equal(raidV2MeaningfulContribution({jid:'x',damage:0,petSkillHealing:200},10000),true);
+ const game=getSource('src/neon/games.js');
+ assert.match(game,/p\.damage=Number\(p\.damage\|\|0\)\+\(rebootEconomyEnabled\(\)\?actualDamage:dmg\)/);
+ assert.match(game,/const ranked=raidV2EligibleRewards\(Object\.values\(s\.players\|\|\{\}\)\)/);
+ assert.match(game,/const ownerDrop=rebootEconomyEnabled\(\)\?1:/);
+ assert.match(game,/const loteReduced=lote&&\(rebootEconomyEnabled\(\)\|\|s\.auctionPassManualRewards!==true\)/);
+ assert.match(game,/cfg\.level===60 && Number\(p\.damage\|\|0\)>0&&!rebootEconomyEnabled\(\)/);
+ assert.equal((game.match(/cfg\.level===50 && Number\(p\.damage\|\|0\)>0&&!rebootEconomyEnabled\(\)/g)||[]).length,2);
+ assert.match(game,/cfg\.level===70 && Number\(p\.damage\|\|0\)>0&&!rebootEconomyEnabled\(\)/);
+ assert.match(game,/cfg\.level===65 && Number\(p\.damage\|\|0\)>0 && !rebootEconomyEnabled\(\)/);
+});
+test('V2 Raid aplica estrelas de botas no início e entrada tardia e Dungeon não usa eventos antigos',()=>{
+ const game=getSource('src/neon/games.js'),db=getSource('src/neon/db.js');
+ assert.match(game,/lev\(st\.boot_id\),rebootEconomyEnabled\(\)\?activeStars\(st\.boot_id\):1/);
+ assert.match(game,/await lev\(st\.boot_id\),rebootEconomyEnabled\(\)\?forgeStars\[st\.boot_id\]\|\|1:1/);
+ const dungeon=db.slice(db.indexOf('export async function dungeon(jid)'),db.indexOf('export async function robPlayer'));
+ assert.match(dungeon,/moneyMultiplier=classesOnlyRebootEnabled\(\)\?1:await getDoubleEventMultiplier/);
+ assert.match(dungeon,/xpMultiplier=classesOnlyRebootEnabled\(\)\?1:await getDoubleEventMultiplier/);
 });
