@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {v2XpCredit,reserveV2DailyXp,brazilProgressionDay,V2_CLASS_GROWTH,V2_PVP_ROLES,effectiveAwakeningTier,V2_RAID_DIFFICULTY} from '../src/neon/reboot-combat-progression.js'
+import {v2DailyXpStatus,v2XpCredit,reserveV2DailyXp,brazilProgressionDay,V2_CLASS_GROWTH,V2_PVP_ROLES,effectiveAwakeningTier,V2_RAID_DIFFICULTY} from '../src/neon/reboot-combat-progression.js'
 import {candidateRaidConfig} from '../src/neon/reboot-economy-policy.js'
 test('ganho inicial integral, extra a 25%, teto diário e bônus contabilizado no mesmo limite',()=>{
  assert.equal(v2XpCredit(0,8000).awarded,8000)
@@ -57,4 +57,26 @@ test('XP/boost e Despertar usam regras comuns sem exceções pessoais; dungeon u
  assert.match(aw,/tier=effectiveAwakeningTier/)
  assert.match(aw,/personalProtection=!classesOnlyRebootEnabled\(\)/)
  assert.match(aw,/recoveredQuests=!classesOnlyRebootEnabled\(\)/)
+})
+
+test('perfil V2 mostra a faixa atual, saldo diário e virada sem escrever registros',()=>{
+ const day='2026-11-18',opts={day}
+ assert.deepEqual(v2DailyXpStatus(null,opts),{day,used:0,fullRemaining:8000,remaining:12000,cap:12000,rate:1})
+ assert.equal(v2DailyXpStatus({day,used:8000},opts).rate,.25)
+ assert.equal(v2DailyXpStatus({day,used:12000},opts).remaining,0)
+ assert.equal(v2DailyXpStatus({day,used:12000},opts).rate,0)
+ assert.equal(v2DailyXpStatus({day:'2026-11-17',used:12000},opts).used,0)
+ assert.throws(()=>v2DailyXpStatus({day,used:-1},opts),/inválido/)
+})
+test('perfil WhatsApp e Web recebem o mesmo saldo e pergaminho sem XP não é consumido',()=>{
+ const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ const wa=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
+ const web=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
+ assert.match(db,/daily_xp:v2DailyXpStatus\(daily_xp_state\)/)
+ assert.match(wa,/p\.daily_xp\.fullRemaining/)
+ assert.match(web,/raw\.daily_xp\.fullRemaining/)
+ const scroll=db.slice(db.indexOf('export async function useXpConsumable'),db.indexOf('export async function grantExp(jid'))
+ assert.match(scroll,/gain\.awardedGain===0\)throw/)
+ assert.ok(scroll.indexOf('gain.awardedGain===0')<scroll.indexOf('UPDATE inventories SET quantity=quantity-1'))
+ assert.match(scroll,/xp:classesOnlyRebootEnabled\(\)\?gain\.awardedGain:effect\.xp/)
 })

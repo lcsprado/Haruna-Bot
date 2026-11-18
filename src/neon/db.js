@@ -23,7 +23,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
-import {reserveV2DailyXp} from './reboot-combat-progression.js'
+import {reserveV2DailyXp,v2DailyXpStatus} from './reboot-combat-progression.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -962,19 +962,23 @@ return changed
 })
 }
 export async function getProfile(jid) {
+const reboot=classesOnlyRebootEnabled()
 const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
 w.cash,w.bank,w.bank_limit,
 s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,
 s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss,
 COALESCE(cl.level,1)::int AS class_level,COALESCE(cl.xp,0)::int AS class_xp
+${reboot?",(SELECT value FROM trevo_settings WHERE key='reboot_xp_daily:' || u.jid) AS daily_xp_state":""}
 FROM users u
 JOIN wallets w ON w.jid=u.jid
 JOIN stats s ON s.jid=u.jid
 LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
 WHERE u.jid=$1
 `, [jid])
-return rows[0] ?? null
+if(!reboot||!rows[0])return rows[0] ?? null
+const {daily_xp_state,...profile}=rows[0]
+return {...profile,daily_xp:v2DailyXpStatus(daily_xp_state)}
 }
 export async function setPlayerClass(jid,classId){
 await ensureUser(jid)
@@ -3971,7 +3975,8 @@ INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
 ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
 `,[jid,dayNumber])
 const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
-result={type:'scroll',name:effect.name,xp:effect.xp,level:gain.level,levelUps:gain.levels}
+if(classesOnlyRebootEnabled()&&gain.awardedGain===0)throw new Error('Limite diário de XP atingido. Pergaminho preservado; volte amanhã.')
+result={type:'scroll',name:effect.name,xp:classesOnlyRebootEnabled()?gain.awardedGain:effect.xp,level:gain.level,levelUps:gain.levels}
 }
 await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
 return result

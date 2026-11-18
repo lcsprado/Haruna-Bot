@@ -8,6 +8,15 @@ export function brazilProgressionDay(now=new Date()){
  const p=Object.fromEntries(parts.map(({type,value})=>[type,value]))
  return p.year+'-'+p.month+'-'+p.day
 }
+// Leitura pura para perfil: não cria registro nem reinicia a quota no banco.
+export function v2DailyXpStatus(state,{day=brazilProgressionDay()}={}){
+ const used=state?.day===day?Number(state.used):0
+ if(!Number.isSafeInteger(used)||used<0)throw Error('Saldo de XP diário inválido')
+ const fullRemaining=Math.max(0,V2_XP_FULL_DAILY-used)
+ const remaining=Math.max(0,V2_XP_MAX_DAILY-used)
+ return {day,used,fullRemaining,remaining,cap:V2_XP_MAX_DAILY,
+  rate:remaining===0?0:fullRemaining>0?1:V2_XP_EXTRA_RATE}
+}
 export function v2XpCredit(used,base,bonus=0){
  for(const v of [used,base,bonus])if(!Number.isSafeInteger(v)||v<0)throw Error('Saldo de XP diário inválido')
  const full=Math.max(0,V2_XP_FULL_DAILY-used)
