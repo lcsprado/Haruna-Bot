@@ -1,12 +1,15 @@
-// WhatsApp: somente comandos explícitos !bingov2, !cartelav2, !leilaov2, !lancev2.
+// WhatsApp: comandos tradicionais e aliases V2 usam exclusivamente o novo serviço.
 // Nunca inicia sorteio, agenda edição ou ativa socket paralelo.
 import {db,getGroupLicense,groupLicenseIsActive} from './db.js';
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 import {bingoV2Status,buyBingoV2Ticket,auctionV2Status,bidAuctionV2}
  from './reboot-events-service.js';
 const money=x=>'R$ '+Number(x).toLocaleString('pt-BR');
+const COMMAND_ALIASES=Object.freeze({bingo:'bingov2',cartela:'cartelav2',leilao:'leilaov2',lance:'lancev2'});
+export function rebootEventCommand(cmd){return Object.hasOwn(COMMAND_ALIASES,cmd)?COMMAND_ALIASES[cmd]:cmd;}
 export async function handleRebootEventsCommand({cmd,args=[],sender,chat,reply}){
  if(!classesOnlyRebootEnabled())return false;
+ cmd=rebootEventCommand(cmd);
  if(!['bingov2','cartelav2','leilaov2','lancev2'].includes(cmd))return false;
  if(!String(chat||'').endsWith('@g.us')){
    await reply('🔒 Os eventos V2 exigem grupo vinculado e licenciado.');

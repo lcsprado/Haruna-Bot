@@ -12,7 +12,8 @@ export function isWeeklyBossPoolEdition(weekendKey){
 // Reparte todos os R$ 50 milhoes pelo dano registrado, somando exatamente ao bolo.
 // O arredondamento usa maiores restos e desempate pela ordem do ranking.
 export function weeklyBossCashPoolShares(weekendKey,participants=[]){
- if(!isWeeklyBossPoolEdition(weekendKey))return null
+ if(!isWeeklyBossPoolEdition(weekendKey)&&!rebootEconomyEnabled())return null
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(weekendKey||'')))return null
  const rows=(Array.isArray(participants)?participants:[]).map((p,i)=>({
    jid:String(p?.jid||''),i,
    damage:Number.isSafeInteger(Number(p?.damage))&&Number(p.damage)>0

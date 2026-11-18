@@ -9925,9 +9925,11 @@ void (async()=>{
       '🔧 *!7pecados fragmentos* para consultar evolução da collab.')
   }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
 })()
+if(!classesOnlyRebootEnabled()){
 startAuctionAlphaScheduler(sock)
 startAuctionAlphaScheduler1500(sock)
 startAuctionNotificationPilot(sock)
+}
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
@@ -9977,11 +9979,13 @@ void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?
 void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] inicializacao',err?.message||err))
 // A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
 // mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
+if(!classesOnlyRebootEnabled()){
 startBingoRebootScheduler(sock)
 // Edição independente do Bingo de 15/11, às 19h30 de Brasília.
 startBingoNov15Scheduler(sock)
 // Edição de Bingo de 16/11 às 16h, independente e com prêmio de R$ 1 milhão.
 startBingoNov16Scheduler(sock)
+}
 // C4i: agendador ÚNICO somente no cutover aprovado e no banco isolado.
 // Sem as flags de aprovação, não cria timer, SQL, socket ou serviço.
 startRebootEventsScheduler(db)
@@ -10021,7 +10025,7 @@ console.log('[RAID FRAG 2X] anúncios processados em',targeted,'grupos licenciad
 })()
 ;(async()=>{
 try{
-if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
+if(classesOnlyRebootEnabled()||temporaryRecoveryMode)return // evento antigo não é reexecutado na V2 nem em recuperação temporária
 const markerKey='admin_group_games_event:test-bot:2026-10-08-15x-v4'
 const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!done){
@@ -10089,7 +10093,7 @@ console.error('[Eventos] falha no evento games 1.5x do grupo teste',err?.message
 ;(async()=>{
 try{
 const targetChat='120363429534634131@g.us'
-if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
+if(classesOnlyRebootEnabled()||temporaryRecoveryMode)return // evento antigo não é reexecutado na V2 nem em recuperação temporária
 const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v2'
 const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!done){
@@ -10636,9 +10640,11 @@ if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',rep
 if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleRebootEventsCommand({cmd,args,sender,chat,reply})) continue
+if(!classesOnlyRebootEnabled()){
 if(await handleBingoNov16Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+}
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
 if(classesOnlyRebootEnabled()&&['7pecados','setepecados','pecados7'].includes(cmd)){
@@ -10646,10 +10652,12 @@ if(classesOnlyRebootEnabled()&&['7pecados','setepecados','pecados7'].includes(cm
  continue
 }
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
+if(!classesOnlyRebootEnabled()){
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuction15RewardCommand({cmd,args,sender,reply})) continue
 if(await handleAuctionAlphaCommand1500({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+}
 if(await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
@@ -11130,7 +11138,7 @@ let license=await getGroupLicense(chat)
 if(!license) license=await ensureGroupTrial(chat)
 if(!groupLicenseIsActive(license)){
 // Temporary, zero-cost pilot only; no normal gameplay is unlocked.
-if(['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
+if(!classesOnlyRebootEnabled()&&['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
   await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 return await reply(
 `🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
