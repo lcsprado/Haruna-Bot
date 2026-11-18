@@ -218,7 +218,9 @@ export async function auctionV2Status(pool,{env=process.env}={}){
   if(!s)return {enabled:true,available:false};
   const lot=firstAuctionV2Catalog()[s.lotIndex]||null;
   return {enabled:true,available:true,id:s.id,phase:s.phase,lotIndex:s.lotIndex,
-    lot,endsAt:s.endsAt||null,bid:s.high?.amount||null,
+    lot,startsAt:s.startAt,endsAt:s.endsAt||null,serverTime:Date.now(),step:500,
+    acceptingBids:['pending','active'].includes(s.phase)&&Date.now()>=s.startAt&&Date.now()<s.endsAt,
+    bid:s.high?.amount||null,
     nextMinimum:s.high?s.high.amount+500:lot?.opening||null,
     history:(s.history||[]).map(h=>({lot:h.lot,amount:h.amount||null}))};
 }

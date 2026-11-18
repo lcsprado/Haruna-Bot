@@ -22,6 +22,9 @@ const ui = {
   lootReveal: null,
   page: 'home',
   auction: null,
+  bingoV2: null,
+  bingoV2Loading: false,
+  bingoV2Busy: false,
   racing: null,
   racingFetchedAt: 0,
   racingLoading: false,
@@ -967,6 +970,32 @@ async function syncBossLive(){
   }finally{ui.bossPolling=false;}
 }
 
+async function loadBingoV2(){
+  if(!ui.token||ui.bingoV2Loading)return;
+  ui.bingoV2Loading=true;
+  try{
+    const response=await api('/api/v1/me/bingo-v2');
+    ui.bingoV2=response.data||null;
+  }catch(err){
+    ui.bingoV2={enabled:false,requiresApproval:true,error:String(err.message||'Consulta indisponível')};
+  }finally{
+    ui.bingoV2Loading=false;
+    if(ui.page==='events'&&ui.data&&ui.catalog)render();
+  }
+}
+async function buyBingoV2Web(){
+  if(ui.bingoV2Busy)return;
+  const b=ui.bingoV2;
+  if(!b?.enabled||!b.available||b.phase!=='registration'||!b.startAt||Date.now()>=b.startAt)
+    return toast('Não existem inscrições abertas no Bingo V2.');
+  ui.bingoV2Busy=true;
+  try{
+    const response=await api('/api/v1/action/bingoV2.buy',{method:'POST',body:'{}'});
+    toast(response.result?.alreadyOwned?'Sua cartela já estava registrada.':'Cartela V2 comprada por R$ 500.');
+    await Promise.all([loadBingoV2(),sync(true,true)]);
+  }catch(err){toast(String(err.message||'Falha ao adquirir a cartela.'));}
+  finally{ui.bingoV2Busy=false;if(ui.page==='events')render();}
+}
 async function loadAuction(){
   if(!ui.token || ui.auctionLoading) return;
   ui.auctionLoading=true;
@@ -989,8 +1018,11 @@ async function auctionBid(amount){
   ui.auctionSubmitting=true;
   try{
     if(!ui.auction?.acceptingBids) throw new Error('Este lote já não aceita lances.');
-    const response=await api('/api/v1/action/auction.bid',{
-      method:'POST',body:JSON.stringify({amount})
+    const v2=Boolean(ui.auction?.enabled);
+    const offered=v2&&/^\+\d+$/.test(String(amount))?
+      Number(ui.auction?.nextMinimum||0):v2?Number(amount):amount;
+    const response=await api(v2?'/api/v1/action/auctionV2.bid':'/api/v1/action/auction.bid',{
+      method:'POST',body:JSON.stringify({amount:offered})
     });
     ui.auctionAmount='';
     await loadAuction();
@@ -1043,7 +1075,7 @@ async function openWebPage(page){
   if(page==='inventory')jobs.push(loadRelics());
   if(['social','market','clan','games','activities','progression','rankings','loans','contracts','events'].includes(page))
     jobs.push(syncExtras(false).catch(()=>null));
-  if(page==='events')jobs.push(loadEventCenter(false));
+  if(page==='events'){jobs.push(loadEventCenter(false));jobs.push(loadBingoV2());}
   if(page==='auction')jobs.push(loadAuction());
   if(page==='racing')jobs.push(loadRacing(false));
   if(page==='clan'){jobs.push(loadSiege(true));jobs.push(checkWebBuild());}
@@ -2602,7 +2634,38 @@ function gameStatePanel(type,state){
   return '<div class="game-state"><span class="tag good">ATIVO</span></div>';
 }
 
+function renderAuctionV2(){
+  const a=ui.auction||{};
+  if(!a.available)return '<div class="page-head"><h2>🔨 Leilão 2.0</h2></div>'+
+    '<div class="card"><h3>Leilão indisponível</h3><p>'+
+    (a.requiresApproval?'Aguardando homologação no banco isolado.':'Nenhuma edição da nova temporada foi agendada.')+
+    '</p><button class="btn" data-auction-refresh>Atualizar</button></div>';
+  const accepting=Boolean(a.acceptingBids);
+  const remaining=Math.max(0,Math.ceil((Number(a.endsAt||0)-Date.now()-ui.auctionClockOffset)/1000));
+  const rows=(a.history||[]).map((h,i)=>'<div class="list-row"><span>Lote '+num(i+1)+' • '+esc(h.lot||'')+
+    '</span><strong>'+(h.amount?money(h.amount):'Sem arremate')+'</strong></div>').join('');
+  const input='<form data-auction-form><label for="auctionCustomAmount">Lance total (R$)</label>'+
+    '<div class="game-answer"><input id="auctionCustomAmount" class="game-input" data-auction-amount type="number" inputmode="numeric" step="1" min="'+
+    num(a.nextMinimum||500)+'" max="25000" placeholder="Mínimo: '+num(a.nextMinimum||500)+
+    '" value="'+esc(ui.auctionAmount||'')+'" required'+(accepting?'':' disabled')+'>'+
+    '<button class="btn primary" type="submit"'+(accepting&&!ui.auctionSubmitting?'':' disabled')+
+    '>Registrar lance</button></div></form>';
+  return '<div class="page-head"><div><h2>🔨 Leilão Alpha 2.0</h2>'+
+    '<p>Prêmios iniciais ★1 Lv1. O valor do lance fica reservado e é devolvido se for superado.</p></div>'+
+    '<span class="tag '+(accepting?'good':'')+'">'+(a.phase==='completed'?'ENCERRADO':accepting?'LANCES ABERTOS':'AGUARDANDO')+'</span></div>'+
+    '<div class="grid stats">'+
+    statCard('LOTE',num(a.lotIndex+1)+' / 3',a.lot?.itemId||'Sem lote')+
+    statCard('MAIOR LANCE',a.bid?money(a.bid):'Nenhum','Sem dados pessoais de outros jogadores')+
+    statCard('PRÓXIMO MÍNIMO',a.nextMinimum?money(a.nextMinimum):'—','Acréscimo de R$ 500')+
+    statCard('TEMPO',a.endsAt?formatRemaining(remaining):'—','Cronometração do servidor')+'</div>'+
+    '<section class="card section"><h3>Participar</h3><div class="hero-actions">'+
+    '<button class="btn good" data-auction-increment'+(accepting&&!ui.auctionSubmitting?'':' disabled')+'>Lance mínimo '+money(a.nextMinimum||0)+'</button>'+
+    '<button class="btn" data-auction-refresh>Atualizar</button></div>'+input+'</section>'+
+    '<section class="card section"><h3>Lotes encerrados</h3>'+
+    (rows?'<div class="list">'+rows+'</div>':'<p class="muted">Nenhum lote encerrado.</p>')+'</section>';
+}
 function renderAuction(){
+  if(ui.auction?.enabled||ui.auction?.requiresApproval)return renderAuctionV2();
   const a=ui.auction;
   if(ui.auctionError)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card"><p>'+esc(ui.auctionError)+'</p><button class="btn" data-auction-refresh>Atualizar</button></div>';
   if(!a)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card">Carregando leilão...</div>';
@@ -2784,6 +2847,31 @@ function eventCenterMimicCard(mimic){
     actions
   });
 }
+function renderBingoV2Card(){
+ const b=ui.bingoV2;
+ if(!b?.enabled&&!b?.requiresApproval)return '';
+ if(!b.enabled||!b.available)return '<section class="event-center-section"><div class="card">'+
+  '<h3>🎰 Bingo 2.0</h3><p class="muted">'+
+  (b.error?esc(b.error):b.requiresApproval?'Em homologação. Sem sorteio ou cobrança ativa.':'Nenhuma edição agendada.')+
+  '</p><button class="btn" data-bingo-v2-refresh>Atualizar</button></div></section>';
+ const marked=new Set(b.drawn||[]);
+ const card=b.card?'<div class="event-center-player"><strong>Sua cartela</strong><div class="event-center-pieces">'+
+   b.card.map(n=>'<span>'+(n==null?'⭐ LIV':(marked.has(n)?'✅ ':'○ ')+num(n))+'</span>').join('')+
+   '</div></div>':'<p class="muted">Você ainda não comprou sua cartela.</p>';
+ const register=b.phase==='registration'&&Date.now()<Number(b.startAt||0)&&!b.card;
+ const prizes=Object.entries(b.prizes||{}).map(([name,x])=>'<span>'+esc(name)+' • '+money(x.amount||0)+'</span>').join('');
+ return '<section class="event-center-section"><div class="card"><div class="section-title"><h3>🎰 Bingo Alpha 2.0</h3>'+
+  '<small>'+esc(b.phase||'')+'</small></div>'+
+  '<p>Uma cartela por jogador • R$ 500 • até R$ 9.000 de premiação global.</p>'+
+  '<p class="muted">Início: '+new Date(Number(b.startAt)).toLocaleString('pt-BR')+
+  ' • '+num((b.drawn||[]).length)+'/40 números sorteados</p>'+card+
+  (prizes?'<div class="event-center-pieces">'+prizes+'</div>':'')+
+  '<div class="hero-actions"><button class="btn primary" data-bingo-v2-buy'+
+    (register&&!ui.bingoV2Busy?'':' disabled')+'>'+
+    (b.card?'Cartela adquirida':register?'Comprar cartela por R$ 500':'Inscrições fechadas')+'</button>'+
+  '<button class="btn" data-bingo-v2-refresh>Atualizar</button></div></div></section>';
+}
+
 function renderEvents(){
   const now=Date.now();
   const data=ui.eventCenter||{},group=currentGroup(),extras=ui.extras||{};
@@ -2902,6 +2990,7 @@ function renderEvents(){
     (!group?'<div class="notice warn">Use !web dentro de um grupo ativo para acompanhar os eventos coletivos.</div>':'')+
     (ui.eventCenterError?'<div class="notice warn">⚠️ '+esc(ui.eventCenterError)+' — tente atualizar a Central.</div>':'')+
     (!ui.eventCenter?'<div class="notice">'+(ui.eventCenterLoading?'Carregando eventos…':'Abra a Central novamente para carregar os eventos.')+'</div>':'')+
+    renderBingoV2Card()+
     '<div class="event-center-summary"><div><strong>'+active.length+'</strong><span>Em andamento</span></div><div><strong>'+upcoming.length+'</strong><span>Próximos</span></div><div><strong>'+finished.length+'</strong><span>Encerrados</span></div></div>'+
     groupCards('🔴 Acontecendo agora',active,'Nenhum evento em andamento neste momento.')+
     groupCards('🕒 Próximos eventos',upcoming,'Nenhum próximo evento confirmado.')+
@@ -3238,6 +3327,8 @@ function render(){
 function bind(){
   if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
   if(ui.page==='clan')bindClanSiegePreview(ui,{render,submit:submitSiege,refresh:loadSiege});
+  document.querySelectorAll('[data-bingo-v2-refresh]').forEach(x=>x.onclick=()=>loadBingoV2());
+  document.querySelectorAll('[data-bingo-v2-buy]').forEach(x=>x.onclick=()=>buyBingoV2Web());
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+'+String(ui.auction?.step||100000)));
