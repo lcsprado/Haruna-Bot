@@ -34,8 +34,8 @@ test('Leilão da collab não compete com o leilão Alpha atual na V2',()=>{
   const legacy=source('src/neon/auction-bonus-20261101.js');
   const gateway=source('src/neon/auction-bonus-20261101-1500.js');
   assert.match(gateway,/from '\.\/auction-20261115-2100\.js'/);
-  assert.match(api,/classesOnlyRebootEnabled\(\)\?getCurrentAuctionWebStatus\(args\):getLegacyAuctionWebStatus\(args\)/);
-  assert.match(api,/classesOnlyRebootEnabled\(\)\?placeCurrentAuctionWebBid\(args\):placeLegacyAuctionWebBid\(args\)/);
+  assert.match(api,/classesOnlyRebootEnabled\(\)\?auctionV2Status\(db\):getLegacyAuctionWebStatus\(args\)/);
+  assert.match(api,/classesOnlyRebootEnabled\(\)\?bidAuctionV2\(db,args\.sender,Number\(args\.amount\)\):placeLegacyAuctionWebBid\(args\)/);
   assert.match(legacy,/startAuctionAlphaScheduler\(sock\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return/);
   assert.match(legacy,/handleAuctionAlphaCommand\(\{cmd,args,sender,name,chat,reply,web=false\}\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return false/);
   assert.match(legacy,/async function tick\(sock\)\{\s*if\(classesOnlyRebootEnabled\(\)\)return/);

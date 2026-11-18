@@ -10,7 +10,7 @@ import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
-  listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
+  listMyMarketListings, getGroupLicense, groupLicenseIsActive, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel, getEquipmentInfo, equipmentStatsAtLevel, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
@@ -50,15 +50,15 @@ import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } fro
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus as getLegacyAuctionWebStatus,placeAuctionWebBid as placeLegacyAuctionWebBid} from './auction-bonus-20261101.js'
-import {getAuctionWebStatus as getCurrentAuctionWebStatus,placeAuctionWebBid as placeCurrentAuctionWebBid} from './auction-bonus-20261101-1500.js'
+import {bingoV2Status,buyBingoV2Ticket,auctionV2Status,bidAuctionV2} from './reboot-events-service.js'
 import {classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 async function getAuctionWebStatus(args){
-  return classesOnlyRebootEnabled()?getCurrentAuctionWebStatus(args):getLegacyAuctionWebStatus(args)
+  return classesOnlyRebootEnabled()?auctionV2Status(db):getLegacyAuctionWebStatus(args)
 }
 async function placeAuctionWebBid(args){
-  return classesOnlyRebootEnabled()?placeCurrentAuctionWebBid(args):placeLegacyAuctionWebBid(args)
+  return classesOnlyRebootEnabled()?bidAuctionV2(db,args.sender,Number(args.amount)):placeLegacyAuctionWebBid(args)
 }
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
@@ -1171,7 +1171,24 @@ async function startRaidServerRun(session,level){
 
 async function runAction(session,name,body={}){
   const jid=session.jid
-  // This action is verified and executed by the same auction handler as WhatsApp.
+  // Esta ação passa pela mesma política que o comando WhatsApp da V2.
+  if(name==='bingoV2.buy'){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+    return buyBingoV2Ticket(db,jid)
+  }
+  if(name==='auctionV2.bid'){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+    return bidAuctionV2(db,jid,Number(body.amount))
+  }
+  if(name==='auction.bid'&&classesOnlyRebootEnabled()){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+  }
   if(name==='auction.bid')return placeAuctionWebBid({
     chat:requireGroup(session),sender:jid,name:await playerDisplayName(jid),amount:body.amount
   })
@@ -1514,6 +1531,20 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/bingo-v2'){
+      requireGroup(session)
+      const data=await bingoV2Status(db,session.jid)
+      json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/auction-v2'){
+      requireGroup(session)
+      const data=await auctionV2Status(db)
+      json(res,200,{ok:true,data})
+      return true
+    }
+
     if(req.method==='GET' && url.pathname==='/api/v1/me/auction'){
       const data=await getAuctionWebStatus({chat:requireGroup(session),sender:session.jid})
       json(res,200,{ok:true,data})
@@ -1598,7 +1629,7 @@ export async function handleWebApi(req,res){
       const body=await readJson(req)
       const rawResult=await runAction(session,actionName,body)
       // Auction broadcasts are already queued for both groups by auction-alpha.
-      if(actionName!=='auction.bid')await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
+      if(!['auction.bid','auctionV2.bid','bingoV2.buy'].includes(actionName))await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
       const result=sanitizePrivateRefs(sanitizeActionResult(actionName,rawResult),session)
       json(res,200,{ok:true,result})
       return true
