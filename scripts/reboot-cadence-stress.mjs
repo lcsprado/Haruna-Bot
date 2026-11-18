@@ -7,7 +7,7 @@ import {resolve} from 'node:path';
 import {extractBusinessCatalog} from './reboot-economy-baseline.mjs';
 import {PROFILES} from './reboot-economy-sim.mjs';
 import {C4C_WINDOWS} from './reboot-economy-integrated.mjs';
-import {candidateBusinessCatalog,businessIntervalGrossV2,V2_BUSINESS_ECONOMY} from '../src/neon/reboot-economy-policy.js';
+import {candidateBusinessCatalog,businessIntervalGrossV2,V2_BUSINESS_ECONOMY,businessSettlementV2} from '../src/neon/reboot-economy-policy.js';
 import {v2XpCredit} from '../src/neon/reboot-combat-progression.js';
 import {classLevelAdvance} from '../src/neon/class-combat-balance.js';
 const DAY=86400;
@@ -18,13 +18,13 @@ export function collectionStress(business,level){
   for(let i=0;i<count;i++){
    const earned=businessIntervalGrossV2(business,{level,last_collected_at:i*DAY/count},(i+1)*DAY/count);
    gross+=earned;
-   net+=earned-Math.floor(earned*.10)-Math.floor(earned*.10);
+   net+=businessSettlementV2(earned).net;
   }
   return {count,gross,net};
  });
  return {id:business.id,level,effectiveHourly:effective.profitHour,capacityHours:effective.capacityHours,runs,
   previousDailyGross:Math.floor(V2_BUSINESS_ECONOMY.hourlyRates[business.id]*business.capacityHours*(100+(level-1)*10)/100),
-  grossBounded:runs.every(r=>r.gross<=runs[0].gross)};
+  grossBounded:runs.every(r=>r.gross<=runs[0].gross),netBounded:runs.every(r=>r.net<=runs[0].net)};
 }
 export function progressionStress(profile,rawDailyXp,dbSource){
  const formula=String(dbSource).match(/function expNeeded\(level\)\s*\{\s*return Math\.max\(100, Number\(level\) \* (\d+)\)\s*\}/);
@@ -48,7 +48,7 @@ export function progressionStress(profile,rawDailyXp,dbSource){
 export function cadenceReport(progressionSource,dbSource){
  return {readOnly:true,collections:extractBusinessCatalog(progressionSource).flatMap(b=>[1,5].map(l=>collectionStress(b,l))),
  progression:PROFILES.map((p,i)=>progressionStress(p,[2000,5000,10000,24000][i],dbSource)),
- caveat:'XP diário bruto hipotético, curva geral e classe reais; não prova taxa de vitória, acesso ao despertar, dano ou sucesso de Raid. Coleta bruta limitada, truncamento de imposto por transação pode alterar o líquido.'};
+ caveat:'XP diário bruto hipotético, curva geral e classe reais; não prova taxa de vitória, acesso ao despertar, dano ou sucesso de Raid. Coletas frequentes não aumentam emissão bruta nem líquida; truncamento pode reduzir o líquido em coletas pequenas.'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const p=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');

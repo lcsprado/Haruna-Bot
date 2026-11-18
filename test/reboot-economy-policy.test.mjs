@@ -144,7 +144,7 @@ test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da
  assert.throws(()=>businessIntervalGrossV2({id:'invalido',capacityHours:24},{level:1},now),/inválidos|sem tarifa/);
  const progression=getSource('src/neon/progression.js');
  assert.ok(progression.includes('businessIntervalGrossV2(b,row,now)'));
- assert.ok(progression.includes('operating=rebootEconomyEnabled()?Math.floor(gross*V2_BUSINESS_ECONOMY.operatingCostRate):0'));
+ assert.ok(progression.includes('rebootEconomyEnabled()?businessSettlementV2(gross):'));
  assert.ok(progression.includes('const recovery=rebootEconomyEnabled()?null:'));
  assert.ok(progression.includes("const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')"));
  const wa=getSource('src/neon/index.js');

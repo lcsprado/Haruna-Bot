@@ -141,8 +141,8 @@ test('Política candidata reduz disparidade, concentração e mantém liquidez n
   assert.equal(row.withConditionalEvents.accountingBalanced,true);
  }
  const p=report.profiles.find(r=>r.profile==='intensivo'&&r.days===120);
- assert.equal(p.invested.netWorthAtResaleAssumption,4525936);
- assert.equal(p.withConditionalEvents.netWorthAtResaleAssumption,4950392);
+ assert.equal(p.invested.netWorthAtResaleAssumption,4525503);
+ assert.equal(p.withConditionalEvents.netWorthAtResaleAssumption,4949955);
  const inputs=buildIntegratedInputs(prog,db,{currentV2Prices:true});
  assert.equal(inputs.businesses.find(x=>x.id==='tech').profitHour,7000);
 });

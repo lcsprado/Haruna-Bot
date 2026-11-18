@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import {PROFILES,getBusinessVersions,UPGRADE_RATES,forecastBusinessDay} from './reboot-economy-sim.mjs';
 import {auditVehicleRoi} from './reboot-vehicle-roi.mjs';
-import {V2_EVENT_BUDGET,V2_BUSINESS_ECONOMY,candidateBusinessCatalog} from '../src/neon/reboot-economy-policy.js';
+import {V2_EVENT_BUDGET,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessSettlementV2} from '../src/neon/reboot-economy-policy.js';
 import {careerWorkXp,careerWorkGross} from '../src/neon/reboot-career-policy.js';
 
 // Ações são hipóteses de uso. Não são novo limite no runtime.
@@ -157,8 +157,7 @@ export function simulateIntegrated(profile,days,inputs,{
       const elapsedHours=Math.min(row.business.capacityHours,24*(day-row.collectedAt));
       const gross=money(row.business.profitHour*elapsedHours*
         (1+(row.level-1)*V2_BUSINESS_ECONOMY.levelBonus));
-      const tax=money(gross*.10),operating=money(gross*.10);
-      const net=gross-tax-operating;
+      const {tax,operating,net}=includeStreak?businessSettlementV2(gross):{tax:money(gross*.10),operating:money(gross*.10),net:gross-2*money(gross*.10)};
       cash+=net;businessNet+=net;businessTax+=tax;businessOperating+=operating;
       row.collectedAt=day;
     }

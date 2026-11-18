@@ -5,7 +5,7 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
-import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2} from './reboot-economy-policy.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2} from './reboot-economy-policy.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
@@ -1503,9 +1503,8 @@ export async function collectBusinesses(jid){
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
     const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')
-    const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10)
-    const operating=rebootEconomyEnabled()?Math.floor(gross*V2_BUSINESS_ECONOMY.operatingCostRate):0
-    const net=gross-tax-operating
+    const gross=Math.round(total*moneyMultiplier)
+    const {tax,operating,net}=rebootEconomyEnabled()?businessSettlementV2(gross):{tax:Math.floor(gross*.10),operating:0,net:gross-Math.floor(gross*.10)}
     // Settle a documented economy recovery from future net business profits.
     // No player's wallet goes negative; all changes share the collection transaction.
     const recoveryKey='economy_recovery:'+jid

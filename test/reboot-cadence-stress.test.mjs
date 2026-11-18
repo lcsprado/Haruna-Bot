@@ -9,6 +9,7 @@ test('V2 protege orçamento bruto em 1, 3, 24 e 288 coletas diárias, níveis 1 
  for(const b of r.collections){
   assert.equal(b.capacityHours,24);
   assert.ok(b.grossBounded);
+  assert.ok(b.netBounded);
   assert.ok(b.runs[0].gross<=b.previousDailyGross);
   assert.ok(b.previousDailyGross-b.runs[0].gross<=34);
   for(const run of b.runs)assert.ok(run.gross<=b.runs[0].gross);

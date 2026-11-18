@@ -174,3 +174,10 @@ export function budgetReport(){
       .sort((a,b)=>b-a).slice(0,5).reduce((a,b)=>a+b,0)
   });
 }
+
+// Truncamento líquido único, para não aumentar o lucro dividindo a coleta em parcelas.
+export function businessSettlementV2(gross){
+ if(!Number.isSafeInteger(gross)||gross<0)throw RangeError('Receita inválida');
+ const tax=Math.floor(gross/10),operating=Math.ceil(gross/5)-tax;
+ return {gross,tax,operating,net:gross-tax-operating};
+}
