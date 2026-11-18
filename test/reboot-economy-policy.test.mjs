@@ -51,8 +51,8 @@ test('Economia V2 tem orçamentos explícitos para todos os principais eventos',
  const b=budgetReport();
  assert.equal(b.seasonalPocoRank,40_000);
  assert.equal(b.pocoAllFloors,32_500);
- assert.equal(b.dailyThirtyDayLowLevel,140_000);
- assert.equal(b.topFiveMissions,19_500);
+ assert.equal(b.dailyThirtyDayLowLevel,143_000);
+ assert.equal(b.topFiveMissions,6_000);
  assert.equal(Object.keys(V2_RAID_LEVELS).length,10);
  assert.equal(Object.keys(V2_BUSINESS_ECONOMY.hourlyRates).length,9);
  assert.deepEqual(V2_GOALS,{freshPlayers:4,startingLevel:1,startingCash:0,startingCharacterXp:0,
@@ -135,11 +135,11 @@ test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da
  const v1=candidateBusinessCatalog(base,{enabled:false});
  const v2=candidateBusinessCatalog(base,{enabled:true});
  assert.equal(v1,base);
- assert.equal(v2.profitHour,27000);
+ assert.equal(v2.profitHour,7000);
  assert.equal(base.profitHour,110000);
  const now=1_900_000_000;
- assert.equal(businessIntervalGrossV2(base,{level:5,last_collected_at:now-48*3600},now),907_200);
- assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-2*3600},now),54_000);
+ assert.equal(businessIntervalGrossV2(base,{level:5,last_collected_at:now-48*3600},now),235_200);
+ assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-2*3600},now),14_000);
  assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now+3600},now),0);
  assert.throws(()=>businessIntervalGrossV2({id:'invalido',capacityHours:24},{level:1},now),/inválidos/);
  const progression=getSource('src/neon/progression.js');
@@ -182,4 +182,13 @@ test('Poço V2 reduz ranking/andares e não entrega equipamento ★5 Lv10 pronto
  const rules=getSource('src/neon/poco-abismo-rules.js');
  assert.match(rules,/V2_EVENT_BUDGET\.pocoFloorBands/);
  assert.ok(V2_EVENT_BUDGET.pocoFloorBands.reduce((a,b)=>a+b,0)*5===32500);
+});
+
+test('Redistribuição V2 reduz emissão sem penalizar a primeira diária',()=>{
+ assert.deepEqual(V2_EVENT_BUDGET.dailyBaseByTier,[4500,5000,5500,6000,6500]);
+ assert.equal(V2_EVENT_BUDGET.dailyStreakMilestones[30],3000);
+ assert.equal(V2_EVENT_BUDGET.dailyMissionCash.battle,750);
+ const rates=Object.values(V2_BUSINESS_ECONOMY.hourlyRates);
+ assert.equal(rates[0],160);
+ assert.ok(rates.every((value,i)=>i===0||value>rates[i-1]));
 });

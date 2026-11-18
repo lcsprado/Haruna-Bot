@@ -46,8 +46,8 @@ export function candidateEconomyReport(progressionSource,dbSource){
  try{assertRaid70V2Start({level:70,partySize:1,enabled:true})}catch{soloRaid70Blocked=true}
  return {readOnly:true,currentV2Prices:true,profiles,riskSignals,conditionalRisks,
   xpSensitivity:xp,bossVictorySensitivity:boss,soloRaid70Blocked,
-  assumptions:'Saldo zero, nível de personagem fixo em 1, perfis e investimentos do modelo integrado. Eventos hipotéticos: Boss semanal e Raid 10 semanal após dia 21, lucro líquido de chave, sem drops/consumíveis específicos.',
-  exclusions:'GT, Poço, Bingo, leilão, cidade, streaks, XP real por atividade, compras de poder, tempo/nível de acesso à Raid e custos adicionais não modelados. Não é homologação.'};
+  assumptions:'Saldo zero, nível de personagem fixo em 1, perfis e investimentos do modelo integrado, sequência diária com proteção de um dia a cada 30 dias. Eventos hipotéticos: Boss semanal e Raid 10 semanal após dia 21, lucro líquido de chave, sem drops/consumíveis específicos.',
+  exclusions:'GT, Poço, Bingo, leilão, cidade, caixas das sequências, XP real por atividade, compras de poder, tempo/nível de acesso à Raid e custos adicionais não modelados. Não é homologação.'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const p=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');

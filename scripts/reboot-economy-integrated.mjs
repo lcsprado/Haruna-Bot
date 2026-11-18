@@ -45,6 +45,8 @@ export const INVESTMENT_SEQUENCE=Object.freeze([
   Object.freeze({type:'business',id:'shopping'}),
   Object.freeze({type:'business',id:'tech'})
 ]);
+// C4c histórico permanece reproduzível: não mistura o baseline com a política atual.
+const C4C_BASELINE_BUDGET=Object.freeze({dailyBaseByTier:Object.freeze([2000,3000,4500,6000,8000]),dailyMissionCash:Object.freeze({battle:3000,dungeon:4000,work:3000,pet_train:3000,boss_damage:5000,raid_damage:4500,game:3000,shop:3000,legend_raid:7000})});
 const money=x=>Math.floor(x);
 const sum=(a,b)=>a+b;
 export function extractCareerRanks(dbSource){
@@ -70,16 +72,18 @@ function targetProduct(row,businesses,vehicles){
   return null;
 }
 export function buildIntegratedInputs(progressionSource,dbSource,{currentV2Prices=false}={}){
-  const biz=getBusinessVersions(progressionSource).proposed;
+  const original=getBusinessVersions(progressionSource).proposed;
+  const biz=currentV2Prices?original.map(b=>({...b,profitHour:V2_BUSINESS_ECONOMY.hourlyRates[b.id]})):original;
+  const eventBudget=currentV2Prices?V2_EVENT_BUDGET:C4C_BASELINE_BUDGET;
   const cars=auditVehicleRoi(progressionSource,{currentV2Prices});
   const ranks=extractCareerRanks(dbSource);
   for(const b of biz)
-    if(b.profitHour!==V2_BUSINESS_ECONOMY.hourlyRates[b.id])
+    if(!Number.isSafeInteger(b.profitHour)||b.profitHour<=0)
       throw Error('Tabelas de lucro divergem; não simular valores incompatíveis');
   for(const entry of INVESTMENT_SEQUENCE){
     if(!targetProduct(entry,biz,cars))throw Error('Investimento sem catálogo '+entry.id);
   }
-  return {businesses:biz,vehicles:cars,ranks};
+  return {businesses:biz,vehicles:cars,ranks,eventBudget,includeStreak:currentV2Prices};
 }
 function eligibleManualVehicles(ownedVehicles,hired,kind){
   const busy=new Set(hired.filter(x=>x.mode===kind).map(x=>x.vehicleId));
@@ -137,9 +141,9 @@ export function simulateIntegrated(profile,days,inputs,{
   if(!['invest','cash_only'].includes(strategy))throw RangeError('Estratégia inválida');
   if(!Number.isSafeInteger(characterLevel)||characterLevel<1)
     throw RangeError('Nível inválido');
-  const actions=PLAYER_BEHAVIOR[profile.id],{businesses,vehicles,ranks}=inputs;
+  const actions=PLAYER_BEHAVIOR[profile.id],{businesses,vehicles,ranks,eventBudget=C4C_BASELINE_BUDGET,includeStreak=false}=inputs;
   const ownedBusiness=[],ownedVehicle=[],hired=[];
-  let extraCash=0,cash=0,careerXp=0,careerRank='Ajudante',step=0,workNet=0,missionNet=0,
+  let streak=0,lastDay=0,lastProtection=-100,streakCash=0,extraCash=0,cash=0,careerXp=0,careerRank='Ajudante',step=0,workNet=0,missionNet=0,
     manualNet=0,cltNet=0,businessNet=0,consumableSpent=0,capitalPaid=0,
     businessTax=0,businessOperating=0,workTax=0,activeDays=0,workShifts=0;
   const picks=[];
@@ -159,10 +163,17 @@ export function simulateIntegrated(profile,days,inputs,{
       row.collectedAt=day;
     }
     // Cenário pessimista: não fingir que missões difíceis foram completadas.
-    const missionCash=Object.values(V2_EVENT_BUDGET.dailyMissionCash)
-      .filter(v=>v<7000).sort((a,b)=>a-b).slice(0,actions.mission).reduce(sum,0);
-    const dayClaim=V2_EVENT_BUDGET.dailyBaseByTier[0];
-    const missionAmount=dayClaim+missionCash;
+    const missionCash=Object.entries(eventBudget.dailyMissionCash)
+      .filter(([id])=>id!=='legend_raid').map(([,v])=>v).sort((a,b)=>a-b).slice(0,actions.mission).reduce(sum,0);
+    const tier=characterLevel>=200?4:characterLevel>=150?3:characterLevel>=100?2:characterLevel>=50?1:0;
+    const dayClaim=eventBudget.dailyBaseByTier[includeStreak?tier:0];
+    const diff=day-lastDay;
+    const protectedGap=diff===2&&day-lastProtection>=30;
+    if(protectedGap)lastProtection=day;
+    streak=lastDay&&(diff===1||protectedGap)?streak+1:1;lastDay=day;
+    const streakBonus=includeStreak?(eventBudget.dailyStreakMilestones[((streak-1)%30)+1]||0):0;
+    streakCash+=streakBonus;
+    const missionAmount=dayClaim+missionCash+streakBonus;
     missionNet+=missionAmount;cash+=missionAmount;
     for(let j=0;j<actions.work;j++){
       const xpGain=careerWorkXp(.5,{enabled:true});
@@ -205,7 +216,7 @@ export function simulateIntegrated(profile,days,inputs,{
     businessLevels:ownedBusiness.map(r=>({id:r.business.id,level:r.level})),
     vehicleIds:ownedVehicle.map(r=>r.id),driverAssignments:hired.map(r=>({mode:r.mode,id:r.id,vehicleId:r.vehicleId})),
     workNet,missionNet,manualNet,cltNet,businessNet,businessTax,businessOperating,workTax,
-    extraCash,consumableSpent,capitalPaid,businessBook,vehicleBook,driverHiring,
+    extraCash,streakCash,consumableSpent,capitalPaid,businessBook,vehicleBook,driverHiring,
     residualVehicleValue,netWorthAtResaleAssumption,totalAssetsBook,
     netGenerated:generated-consumableSpent,
     accountingBalanced:generated-consumableSpent===cash+capitalPaid,
@@ -228,7 +239,7 @@ export function assessIntegratedRisks(rows){
     Math.max(1,smallest.invested.netWorthAtResaleAssumption);
   const greatestBusinessShare=Math.max(...day.map(row=>{
     const x=row.invested;
-    const earned=x.workNet+x.missionNet+x.manualNet+x.cltNet+x.businessNet;
+    const earned=x.workNet+x.missionNet+x.manualNet+x.cltNet+x.businessNet+x.extraCash;
     return x.businessNet/Math.max(1,earned);
   }));
   const leastLiquid=[...day].sort((a,b)=>

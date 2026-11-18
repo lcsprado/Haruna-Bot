@@ -14,12 +14,12 @@ export const V2_EVENT_BUDGET=Object.freeze({
   gtXpPercentPerHeat:Object.freeze([6,5,4,3,2]), // máximo 18% do próximo nível/3 vitórias
   pocoRankPrizes:Object.freeze([20_000,12_000,8_000]), // só uma edição sazonal
   pocoFloorBands:Object.freeze([300,500,700,1_100,1_600,2_300]),
-  dailyBaseByTier:Object.freeze([2_000,3_000,4_500,6_000,8_000]),
-  dailyStreakMilestones:Object.freeze({3:5_000,7:10_000,14:15_000,21:20_000,30:30_000}),
+  dailyBaseByTier:Object.freeze([4_500,5_000,5_500,6_000,6_500]),
+  dailyStreakMilestones:Object.freeze({3:500,7:1_000,14:1_500,21:2_000,30:3_000}),
   dailyMissionCash:Object.freeze({
-    battle:3_000,dungeon:4_000,work:3_000,pet_train:3_000,
-    boss_damage:5_000,raid_damage:4_500,game:3_000,shop:3_000,
-    legend_raid:7_000
+    battle:750,dungeon:1_250,work:750,pet_train:750,
+    boss_damage:1_750,raid_damage:1_500,game:750,shop:750,
+    legend_raid:2_750
   })
 });
 export const V2_RAID_LEVELS=Object.freeze({
@@ -38,8 +38,8 @@ export const V2_RAID_LEVELS=Object.freeze({
 export const V2_BUSINESS_ECONOMY=Object.freeze({
   taxRate:.10,operatingCostRate:.10,levelBonus:.10,capacityExtraHoursPerLevel:0,
   hourlyRates:Object.freeze({
-    carrinho_lanche:160,barbearia:400,loja_roupas:900,restaurante:1_700,
-    posto:3_000,mercado:4_500,hotel:8_000,shopping:14_000,tech:27_000
+    carrinho_lanche:160,barbearia:300,loja_roupas:450,restaurante:650,
+    posto:1_000,mercado:1_500,hotel:2_500,shopping:4_250,tech:7_000
   })
 });
 export const V2_GOALS=Object.freeze({

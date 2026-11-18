@@ -129,3 +129,20 @@ test('simulação candidata usa os preços V2 atuais e reinveste prêmios hipot�
  assert.equal(report.xpSensitivity.intensivo.creditedPerActiveDay,12000);
  assert.equal(report.xpSensitivity.casual.creditedPerActiveDay,2000);
 });
+
+test('Política candidata reduz disparidade, concentração e mantém liquidez nos 32 cenários',()=>{
+ const report=candidateEconomyReport(prog,db);
+ for(const x of [...report.riskSignals.checks,...report.conditionalRisks.checks]){
+   assert.deepEqual(x.warnings,[],JSON.stringify(x));
+ }
+ for(const row of report.profiles){
+  assert.ok(row.invested.streakCash>0);
+  assert.equal(row.invested.accountingBalanced,true);
+  assert.equal(row.withConditionalEvents.accountingBalanced,true);
+ }
+ const p=report.profiles.find(r=>r.profile==='intensivo'&&r.days===120);
+ assert.equal(p.invested.netWorthAtResaleAssumption,4528983);
+ assert.equal(p.withConditionalEvents.netWorthAtResaleAssumption,4953487);
+ const inputs=buildIntegratedInputs(prog,db,{currentV2Prices:true});
+ assert.equal(inputs.businesses.find(x=>x.id==='tech').profitHour,7000);
+});
