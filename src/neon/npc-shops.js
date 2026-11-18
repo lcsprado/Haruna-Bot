@@ -1,5 +1,6 @@
 import { db, ensureUser } from './db.js'
 import {assertRebootItemAllowed} from './reboot-classes-policy.js'
+import {effectiveNpcBasePrice} from './reboot-progression-rewards.js'
 import { alphaReputationTitle } from './progression.js'
 import { getCityMerchantModifier } from './city.js'
 
@@ -161,7 +162,7 @@ export async function getNpcShop(jid,npcRef){
   const stock=npc.goods.map((g,i)=>{
     const item=byId.get(g.id)
     if(!item) return null
-    const basePrice=Number(g.npcPrice||item.price)
+    const basePrice=effectiveNpcBasePrice(g,item)
     if(basePrice<=0) return null
     const permitted=!social.blocked && accessOffer(npc,g,karma) && (!g.raidLevel || highestRaid>=g.raidLevel) && (!g.raidLevel || fragmentsToday<NPC_DAILY_FRAGMENT_LIMIT)
     return {number:i+1,id:item.id,name:item.name,description:item.description,category:item.category,rarity:item.rarity,
@@ -199,7 +200,7 @@ export async function buyNpcShopItem(jid,npcRef,number){
         :'🗡️ Mordek recusou: esta oferta exige Karma '+selected.gate+' ou inferior.')
     }
     const item=(await client.query('SELECT id,name,category,rarity,price FROM items WHERE id=$1',[selected.id])).rows[0]
-    const basePrice=Number(selected.npcPrice||item?.price||0)
+    const basePrice=effectiveNpcBasePrice(selected,item)
     if(!item||basePrice<=0||item.id==='pergaminho_reclassificacao')
       throw new Error('Item não disponível para compra.')
     if(selected.raidLevel){

@@ -14,7 +14,7 @@ test('V2 reduz preços de equipamentos compráveis sem transformar drops em iten
  for(const r of rows)assert.equal(candidateShopCatalogItem(r,no),r)
  assert.equal(candidateShopCatalogItem(['excalibur','Excalibur','','weapon',0,'legendary'],yes)[4],0)
  assert.equal(candidateShopCatalogItem(['chave_raid_70','Chave','','special',390000,'legendary'],yes)[4],60000)
- assert.equal(candidateShopCatalogItem(['pocao_g','Poção','','consumable',3000,'rare'],yes)[4],3000)
+ assert.equal(candidateShopCatalogItem(['pocao_g','Poção','','consumable',3000,'rare'],yes)[4],950)
 })
 test('aprimorar Lv1-10 usa base única, progressiva e preserva V1',()=>{
  assert.deepEqual(['common','uncommon','rare','epic','legendary','event'].map(r=>45*equipmentUpgradeBase(r,yes)),[13500,27000,54000,112500,270000,360000])

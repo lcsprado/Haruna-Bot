@@ -4,6 +4,7 @@
 // antes de conectar todas as rotinas de recompensa à execução real.
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 import {equipmentCatalogPrice} from './reboot-gear-economy.js';
+import {consumableCatalogPrice} from './reboot-progression-rewards.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
   weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
@@ -103,6 +104,7 @@ export function candidateShopCatalogItem(row,{enabled=rebootEconomyEnabled()}={}
  if(!enabled)return row;
  const match=String(row[0]||'').match(/^chave_raid_(\d+)$/);
  const price=match?V2_RAID_LEVELS[Number(match[1])]?.keyPrice:
+   row[3]==='consumable'?consumableCatalogPrice(row[0],row[4],{enabled:true}):
    equipmentCatalogPrice({category:row[3],price:row[4],rarity:row[5]},{enabled:true});
  return price===undefined||price===row[4]?row:[...row.slice(0,4),price,...row.slice(5)];
 }

@@ -1,6 +1,7 @@
 // Fonte única para a escolha e precificação das poções de pet em combate.
 // R$ 6.000 / 800 HP da Suprema preserva a economia frente à Full de R$ 20.000:
 // três Supremas (2.400 HP) custam R$ 18.000.
+import {consumableCatalogPrice} from './reboot-progression-rewards.js'
 export const PET_POTION_ECONOMY_PRICES=Object.freeze({
   pocao_pet_comum:500,
   pocao_pet_rara:1500,
@@ -25,7 +26,7 @@ export function chooseEconomicPetPotion(rows,missingHp,{currentHp,maxHp,imminent
     .map(row=>({...row,
       name:POTIONS[row.item_id].name,
       heal:POTIONS[row.item_id].heal,
-      price:PET_POTION_ECONOMY_PRICES[row.item_id]}))
+      price:consumableCatalogPrice(row.item_id,PET_POTION_ECONOMY_PRICES[row.item_id])}))
   if(!available.length)return null
 
   const amount=Math.max(1,Math.floor(Number(missingHp)||1))

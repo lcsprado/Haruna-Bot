@@ -22,6 +22,7 @@ import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
+import {rebootLevelReward} from './reboot-progression-rewards.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
@@ -3996,6 +3997,8 @@ const LEVEL_REWARDS = {
 100:{cash:750000,items:[['pergaminho_reclassificacao',1],['caixa_epica',10],['chave_raid_50',2],['pocao_pet_suprema',5]]}
 }
 function levelRewardFor(milestone){
+// Prévia e resgate compartilham a mesma regra; auditoria/locks permanecem intactos.
+if(classesOnlyRebootEnabled())return rebootLevelReward(milestone)
 milestone=Number(milestone)
 if(!Number.isInteger(milestone)||milestone<5) return null
 if(milestone<=100) return milestone%5===0?(LEVEL_REWARDS[milestone]||null):null
