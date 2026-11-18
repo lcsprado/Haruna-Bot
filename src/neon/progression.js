@@ -1601,7 +1601,8 @@ function groupWeekKey(){
 
 export async function getGroupMission(chatJid){
   const week=groupWeekKey()
-  const m=groupWeeklyChoice(chatJid,week)
+  const base=groupWeeklyChoice(chatJid,week)
+  const m=rebootEconomyEnabled()?{...base,reward:Math.floor(base.reward/10)}:base
   // Missões de quiz abertas são convertidas sem apagar progresso, membros ou
   // resgates. Missões concluídas e semanas anteriores são preservadas.
   // Se o progresso legado superar a nova meta, falta uma ação válida para fechar.
@@ -1616,7 +1617,8 @@ export async function getGroupMission(chatJid){
       AND group_missions.completed=FALSE`,
     [chatJid,week,m.type,m.title,m.target,m.reward])
   const {rows}=await db.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2',[chatJid,week])
-  return rows[0]
+  const row=rows[0]
+  return rebootEconomyEnabled()?{...row,reward_cash:Math.min(Number(row.reward_cash),m.reward)}:row
 }
 
 export async function progressGroupMission(chatJid,jid,type,amount=1){
@@ -1658,10 +1660,19 @@ export async function claimGroupMission(chatJid,jid){
     const mem=await client.query('SELECT * FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND jid=$3 FOR UPDATE',[chatJid,m.week_key,jid])
     if(!mem.rows.length || Number(mem.rows[0].contribution)<1) throw new Error('Você precisa ter contribuído para essa missão.')
     if(mem.rows[0].claimed) throw new Error('Você já resgatou sua recompensa.')
+    const reboot=rebootEconomyEnabled()
+    if(reboot){
+      // Global por jogador e semana: troca de grupo/canal não cria novo resgate.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`v2:group-mission:${m.week_key}:${jid}`])
+      const previous=await client.query('SELECT 1 FROM group_mission_members WHERE week_key=$1 AND jid=$2 AND claimed=TRUE LIMIT 1',[m.week_key,jid])
+      if(previous.rows.length) throw new Error('Você já resgatou uma missão coletiva nesta semana, em outro grupo.')
+    }
     const contribution=Number(mem.rows[0].contribution)
     const total=Math.max(1,board.total)
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const share=Math.round(Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))*moneyMultiplier)
+    const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(client,'money')
+    const proportional=Math.floor(Number(m.reward_cash)*contribution/total)
+    const share=reboot?proportional:Math.round(Math.max(1,proportional)*moneyMultiplier)
+    if(reboot&&share<=0) throw new Error('Sua contribuição ainda não gera uma recompensa monetária.')
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
     await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva proporcional')",[jid,share])
@@ -1701,6 +1712,7 @@ export async function maybeSpawnGroupEvent(chatJid){
       {type:'tesouro',reward:randomGroupEventCash(6000,12000),text:'🧰 Um *Tesouro Alpha* apareceu!',hint:'Menos dinheiro, mas chance alta de item.'}
     ]
     const e=events[Math.floor(Math.random()*events.length)]
+    if(rebootEconomyEnabled()) e.reward=Math.floor(e.reward/10)
     await client.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
       VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
       event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
@@ -1718,7 +1730,13 @@ export async function claimGroupEvent(chatJid,jid){
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
 
     // Eventos-relâmpago do grupo têm economia própria e não recebem multiplicador global.
-    const rewardCash=Math.round(Number(e.reward_cash||0))
+    const reboot=rebootEconomyEnabled()
+    if(reboot){
+      // O cooldown é transacional e compartilhado entre WhatsApp, Web e grupos.
+      const cd=await claimCooldown(client,`v2:group-event:${jid}`,24*60*60)
+      if(!cd.ok) throw new Error('Você já resgatou um evento-relâmpago nas últimas 24 horas.')
+    }
+    const rewardCash=reboot?Math.max(0,Math.min(2000,Math.round(Number(e.reward_cash||0)))):Math.round(Number(e.reward_cash||0))
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])
