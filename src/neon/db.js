@@ -23,6 +23,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
 import {rebootLevelReward} from './reboot-progression-rewards.js'
+import {reserveV2DailyXp} from './reboot-combat-progression.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -2254,14 +2255,14 @@ if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inv
 const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
 if (!r.rows[0]) return { level:1, exp:0, levels:0, baseGain:numericGain, awardedGain:numericGain, eventMultiplier:1 }
 const startingLevel=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
-const groupMultiplier=numericGain>0
+const groupMultiplier=numericGain>0&&!classesOnlyRebootEnabled()
 ?await getGroupProgressionEventMultiplier(client,jid,startingLevel,options)
 :1
 const ascensionAward=ascensionAwardedPlayerXp({level:startingLevel,
   currentExp:Number(r.rows[0].exp)||0,baseGain:numericGain,
-  groupMultiplier,disabled:Boolean(options.ignoreGroupProgressionEvent)})
+  groupMultiplier,disabled:classesOnlyRebootEnabled()||Boolean(options.ignoreGroupProgressionEvent)})
 const eventMultiplier=ascensionAward.multiplier
-const eventGain=ascensionAward.amount
+let eventGain=ascensionAward.amount
 let bonusXp=0
 let boostPercent=0
 if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
@@ -2273,9 +2274,16 @@ FOR UPDATE
 if(boost){
 bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(eventGain*Number(boost.bonus_percent)/100))
 if(bonusXp>0) boostPercent=Number(boost.bonus_percent)
+}
+}
+let dailyXp=null
+if(classesOnlyRebootEnabled()&&startingLevel<MAX_LEVEL&&eventGain+bonusXp>0){
+ dailyXp=await reserveV2DailyXp(client,jid,eventGain,bonusXp)
+ eventGain=dailyXp.base
+ bonusXp=dailyXp.bonus
+ if(!bonusXp)boostPercent=0
+}
 if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
-}
-}
 let level=startingLevel
 let exp=Math.max(0,Number(r.rows[0].exp)||0)+eventGain+bonusXp
 let levels=0
@@ -2356,7 +2364,8 @@ awardedGain:eventGain+bonusXp,
 eventGain,
 boostBonus:bonusXp,
 boostPercent,
-eventMultiplier
+eventMultiplier,
+...(dailyXp?{dailyXp}: {})
 }
 }
 export function getEquipmentInfo(itemId) {
@@ -4374,8 +4383,9 @@ export async function dungeon(jid) {
 await ensureUser(jid)
 return transaction(async client=>{
 const p=await client.query(`
-SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,COALESCE(cl.level,1) AS class_level
 FROM users u JOIN stats s ON s.jid=u.jid
+LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
 WHERE u.jid=$1
 FOR UPDATE OF u,s
 `,[jid])
@@ -4397,7 +4407,7 @@ const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
 const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id),starLv[row.boot_id]||1):{atk:0,def:0,hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id),starLv[row.helmet_id]||1):{atk:0,def:0,hp:0}
-const classBase=classCombatStats(row,row.class_id,row.level,row.class_applied)
+const classBase=classCombatStats(row,row.class_id,classesOnlyRebootEnabled()?row.class_level:row.level,row.class_applied)
 const gearHp=Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
 const atk=classBase.atk+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
 const def=classBase.def+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
@@ -4428,8 +4438,8 @@ const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
 const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg})
 php=Math.max(0,php-blocked.damage)
 }
-if(php<=0){
-const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
+if(php<=0||(classesOnlyRebootEnabled()&&mhp>0)){
+const recover=php>0?php:Math.max(1,Math.floor(effectiveMaxHp*.30))
 await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[classPersistentHp(recover,effectiveMaxHp,Number(row.max_hp)+gearHp),jid])
 const lossExp=Math.round(10*xpMultiplier)
 const expRes=await applyExp(client,jid,lossExp)

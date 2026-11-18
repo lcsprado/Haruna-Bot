@@ -2,6 +2,8 @@
 // Isolated from classAttack/classDefense so PvE tuning cannot accidentally change.
 // All state lives inside ONE duel; no progression, consumables or DB changes.
 import {classAttack,classDefense,classCritBonus} from './game-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {V2_PVP_ROLES} from './reboot-combat-progression.js'
 
 const stageOf=(applied,stage)=>applied?Math.max(0,Math.min(5,Math.floor(Number(stage)||0))):0
 const clamp=(v,low,high)=>Math.max(low,Math.min(high,Number(v)||0))
@@ -10,7 +12,7 @@ const rounded=(n)=>Math.max(0,Math.round(Number(n)||0))
 // Heroes gain +700 HP, +75 ATK, +100 DEF and +25 SPD at Lv.100;
 // without a controlled PvP bridge, no classic class can compete at full build.
 // Bonuses are combat-only and never touch stored character stats or PvE.
-export const PVP_AWAKENING_ROLES=Object.freeze({
+export const PVP_AWAKENING_ROLES=Object.freeze(classesOnlyRebootEnabled()?V2_PVP_ROLES:{
  warrior:{attack:.11,defense:.11},assassin:{attack:.16,defense:.06},
  mage:{attack:.21,defense:.09},archer:{attack:.15,defense:.07},
  paladin:{attack:.06,defense:.12},berserker:{attack:.23,defense:.08},

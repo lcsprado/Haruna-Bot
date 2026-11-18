@@ -5,6 +5,7 @@
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 import {equipmentCatalogPrice} from './reboot-gear-economy.js';
 import {consumableCatalogPrice} from './reboot-progression-rewards.js';
+import {V2_RAID_DIFFICULTY} from './reboot-combat-progression.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
   weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
@@ -55,7 +56,7 @@ export function candidateRaidConfig(base,{enabled=rebootEconomyEnabled()}={}){
   if(!enabled)return base;
   const patch=V2_RAID_LEVELS[Number(base.level)];
   if(!patch)throw new Error('Raid sem orçamento aprovado na Economia 2.0.');
-  return {...base,...patch};
+  return {...base,...patch,...V2_RAID_DIFFICULTY[Number(base.level)]};
 }
 
 // Pagamento coletivo V2: reembolsa a chave consumida por integrante
