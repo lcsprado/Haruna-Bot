@@ -16,16 +16,32 @@ export function classesOnlyRebootEnabled(env=process.env){
 // As credenciais/URLs nunca são retornadas, logadas ou gravadas no repositório.
 export function assertRebootDatabaseTarget(env=process.env){
   if(!classesOnlyRebootEnabled(env))return {reboot:false};
-  if(String(env?.ALPHA_REBOOT_DB_CONFIRMED||'')!=='isolated-v2'){
-    throw new Error('Reboot bloqueado: falta confirmação do banco isolado.');
-  }
-  let name='';
-  try { name=decodeURIComponent(new URL(String(env?.DATABASE_URL||'')).pathname.slice(1)); }
+  const mode=String(env?.ALPHA_REBOOT_DB_CONFIRMED||'');
+  let target;
+  try{target=new URL(String(env?.DATABASE_URL||''))}
   catch{throw new Error('Reboot bloqueado: endereço do banco inválido.');}
-  if(!/^alpha_reboot_[a-z0-9_]{2,48}$/.test(name)){
-    throw new Error('Reboot bloqueado: banco alvo não identificado como alpha_reboot_*.');
+  const name=decodeURIComponent(target.pathname.slice(1));
+  if(mode==='isolated-v2'){
+    if(!/^alpha_reboot_[a-z0-9_]{2,48}$/.test(name))
+      throw new Error('Reboot bloqueado: banco alvo não identificado como alpha_reboot_*.');
+    return {reboot:true,databaseName:name};
   }
-  return {reboot:true,databaseName:name};
+  // Virada excepcional: o banco Aiven da V1 será reutilizado APENAS DEPOIS
+  // de parada comprovada, backup restaurado em teste e reset pelo dono.
+  // Flags indicam aprovação humana; NÃO verificam backup ou parada sozinhas.
+  if(mode==='existing-aiven-cutover'){
+    if(name!=='alpha_prod_v2'||!target.hostname.endsWith('.aivencloud.com')||
+       target.protocol!=='postgres:'&&target.protocol!=='postgresql:')
+      throw new Error('Reboot bloqueado: cutover exige exatamente alpha_prod_v2 no Aiven.');
+    if(env?.ALPHA_REBOOT_V1_STOPPED!=='confirmed'||
+       env?.ALPHA_REBOOT_BACKUP_VERIFIED!=='restore-verified'||
+       !/^[a-f0-9]{64}$/.test(String(env?.ALPHA_REBOOT_BACKUP_SHA256||''))||
+       env?.ALPHA_REBOOT_RESET_VERIFIED!=='manual-confirmed'||
+       env?.ALPHA_REBOOT_CUTOVER_APPROVED!=='yes-2.0')
+      throw new Error('Reboot bloqueado: cutover exige backup restaurado, V1 parada, reset verificado e aprovação explícita.');
+    return {reboot:true,databaseName:name,cutover:true};
+  }
+  throw new Error('Reboot bloqueado: falta confirmação do banco isolado ou cutover.');
 }
 
 // Por padrão, nunca criar uma segunda conexão com o WhatsApp real em homologação.

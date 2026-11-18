@@ -34,6 +34,36 @@ test('V2 bloqueia conexões com banco de produção e Whatsapp prematuro',()=>{
   assert.equal(assertRebootWhatsappPermission({ALPHA_REBOOT_MODE:'classes_only',
     ALPHA_REBOOT_ALLOW_WHATSAPP:'cutover-approved'}),true);
 });
+test('cutover futuro do Aiven só aceita alvo exato e cinco provas explícitas',()=>{
+  const base={ALPHA_REBOOT_MODE:'classes_only',
+    ALPHA_REBOOT_DB_CONFIRMED:'existing-aiven-cutover',
+    DATABASE_URL:'postgres://u:p@mydb.aivencloud.com:12345/alpha_prod_v2',
+    ALPHA_REBOOT_V1_STOPPED:'confirmed',
+    ALPHA_REBOOT_BACKUP_VERIFIED:'restore-verified',
+    ALPHA_REBOOT_BACKUP_SHA256:'b'.repeat(64),
+    ALPHA_REBOOT_RESET_VERIFIED:'manual-confirmed',
+    ALPHA_REBOOT_CUTOVER_APPROVED:'yes-2.0'};
+  assert.deepEqual(assertRebootDatabaseTarget(base),
+    {reboot:true,databaseName:'alpha_prod_v2',cutover:true});
+  for(const key of ['ALPHA_REBOOT_V1_STOPPED','ALPHA_REBOOT_BACKUP_VERIFIED',
+    'ALPHA_REBOOT_BACKUP_SHA256','ALPHA_REBOOT_RESET_VERIFIED',
+    'ALPHA_REBOOT_CUTOVER_APPROVED']){
+    assert.throws(()=>assertRebootDatabaseTarget({...base,[key]:''}),/cutover exige backup/);
+  }
+  for(const url of ['postgres://u:p@localhost/alpha_prod_v2',
+    'postgres://u:p@mydb.aivencloud.com.evil/alpha_prod_v2',
+    'postgres://u:p@mydb.aivencloud.com/alpha_prod',
+    'postgres://u:p@mydb.aivencloud.com/defaultdb']){
+    assert.throws(()=>assertRebootDatabaseTarget({...base,DATABASE_URL:url}),/cutover exige exatamente/);
+  }
+  assert.throws(()=>assertRebootDatabaseTarget({...base,
+    ALPHA_REBOOT_DB_CONFIRMED:'isolated-v2'}),/alpha_reboot/);
+  assert.throws(()=>assertRebootDatabaseTarget({...base,
+    ALPHA_REBOOT_DB_CONFIRMED:'existing-aiven-cutover',
+    ALPHA_REBOOT_BACKUP_SHA256:'deadbeef'}),/cutover exige backup/);
+  assert.deepEqual(assertRebootDatabaseTarget({...base,ALPHA_REBOOT_MODE:''}),
+    {reboot:false});
+});
 test('nenhum herói da collab pode ocupar o combatente na V2',()=>{
   assert.equal(eligiblePlayableHero('pecado_ban',{enabled:true}),null);
   assert.equal(eligiblePlayableHero('pecado_meliodas',{enabled:true}),null);
