@@ -26,7 +26,7 @@ import {
 } from './db.js'
 import {
   getRaidCatalog, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound,
-  startBoss, attackBoss,
+  startBoss, attackBoss, bossWeekendInfo,
   coinFlip, roulette, rps, startQuiz, answerQuiz, startNumberGame, guessNumber,
   startHangman, hangmanLetter, hangmanWord, createCoinDuel, acceptCoinDuel,
   createRpsDuel, acceptRpsDuel, createGroupRoulette, joinGroupRoulette, spinGroupRoulette,
@@ -52,6 +52,8 @@ import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus as getLegacyAuctionWebStatus,placeAuctionWebBid as placeLegacyAuctionWebBid} from './auction-bonus-20261101.js'
 import {bingoV2Status,buyBingoV2Ticket,auctionV2Status,bidAuctionV2} from './reboot-events-service.js'
 import {classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
+import {candidateBusinessCatalog} from './reboot-economy-policy.js'
+import {rebootWebBossScope} from './reboot-web-boss-scope.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 async function getAuctionWebStatus(args){
@@ -440,10 +442,11 @@ function sanitizeActionResult(actionName,result){
 
 async function groupSnapshot(chatJid){
   if(!chatJid) return null
+  const scope=classesOnlyRebootEnabled()?rebootWebBossScope(chatJid,bossWeekendInfo()):null
   const [raids,license,gameRows,baseRoster]=await Promise.all([
     getRaidStatuses(chatJid),
     getGroupLicense(chatJid),
-    db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
+    scope?db.query("SELECT game_type,state,updated_at FROM trevo_games WHERE (chat_jid=$1 AND game_type NOT IN ('boss','boss_event')) OR (chat_jid=$2 AND game_type='boss' AND ($3::text IS NULL OR (state->>'weekendKey'=$3 AND state->>'rebootV2'='true'))) ORDER BY game_type",[chatJid,scope.chat,scope.weekendKey]):db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
     weeklyActivityLeaderboard(chatJid,20)
   ])
   const rosterJids=(baseRoster||[]).map(x=>x.jid).filter(Boolean)
@@ -505,7 +508,7 @@ async function groupSnapshot(chatJid){
   return {
     chatJid,license,raids,roster,
     boss:games.boss||null,
-    bossEvent:games.boss_event||null,
+    bossEvent:classesOnlyRebootEnabled()?null:games.boss_event||null,
     games
   }
 }
@@ -537,8 +540,8 @@ async function playerBootstrap(session){
     getRelationship(jid),
     getRelationshipProposals(jid),
     groupSnapshot(session.chatJid),
-    getDoubleRewardEvent(),
-    getLuckyBoxEvent(),
+    classesOnlyRebootEnabled()?Promise.resolve(null):getDoubleRewardEvent(),
+    classesOnlyRebootEnabled()?Promise.resolve(null):getLuckyBoxEvent(),
     db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
     db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
     db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
@@ -564,6 +567,7 @@ async function playerBootstrap(session){
     ?await getPlayableHeroCombatSheet(jid,combatProfile):null
   return {
     syncedAt:now(),
+    rebootV2:classesOnlyRebootEnabled(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,combatProfile,activeHeroCombat,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
@@ -644,7 +648,7 @@ async function publicCatalog(){
     houses:HOUSES,
     cars:CARS,
     motorcycles:MOTORCYCLES,
-    businesses:BUSINESSES,
+    businesses:BUSINESSES.map(b=>candidateBusinessCatalog(b)),
     classes:Object.values(SELECTABLE_PLAYER_CLASSES),
     cltUberTypes:CLT_UBER_TYPES,
     loanRules:LOAN_RULES
@@ -1514,7 +1518,8 @@ export async function handleWebApi(req,res){
         json(res,200,{ok:true,data:{changed:false,version:'none'}})
         return true
       }
-      const {rows}=await db.query(
+      const scope=classesOnlyRebootEnabled()?rebootWebBossScope(session.chatJid,bossWeekendInfo()):null
+      const {rows}=scope?await db.query("SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,state->>'mode' AS mode,state->>'weekendKey' AS weekend_key,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type='boss' AND ($2::text IS NULL OR (state->>'weekendKey'=$2 AND state->>'rebootV2'='true'))",[scope.chat,scope.weekendKey]):await db.query(
         "SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event') ORDER BY game_type",
         [session.chatJid]
       )
@@ -1522,7 +1527,7 @@ export async function handleWebApi(req,res){
       for(const r of rows){
         states[r.game_type]={
           hp:Number(r.hp||0),maxHp:Number(r.max_hp||0),
-          status:String(r.status||''),updatedAt:Number(r.updated_at||0)
+          status:String(r.status||''),updatedAt:Number(r.updated_at||0),...(scope?{mode:r.mode||null,weekendKey:r.weekend_key||null}:{})
         }
       }
       const version=sha256(JSON.stringify(states)).slice(0,20)

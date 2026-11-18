@@ -57,6 +57,7 @@ test('Nenhuma vantagem especial deve ser liberada para espécies duplicadas',()=
 test('Raid filtra Pecados de partidas já abertas e recalcula sinergia somente de pets',()=>{
   assert.match(gamesSource,/p\.teamPassives=\(p\.teamPassives\|\|\[\]\)\.filter/)
   assert.match(gamesSource,/PECADOS_HERO_IDS\.includes\(String\(p\.pet\?\.species\|\|''\)\)/)
-  assert.match(gamesSource,/const baseTeamSynergy=petTeamSynergy\(p\.teamPassives\|\|\[\]\)/)
+  assert.match(gamesSource,/let baseTeamSynergy=petTeamSynergy\(p\.teamPassives\|\|\[\]\)/)
+  assert.match(gamesSource,/baseTeamSynergy=petTeamSynergy\(combatTeam\)/)
   assert.doesNotMatch(gamesSource,/const teamSynergy=p\.teamSynergy\|\|\{/)
 })

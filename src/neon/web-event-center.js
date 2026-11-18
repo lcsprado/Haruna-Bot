@@ -1,5 +1,6 @@
 import {PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,PECADOS_MIN_BOSS_DAMAGE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {V2_WEEKLY_BOSS,V2_COMMON_BOSS} from './reboot-pve-policy.js'
 
 // Vitrine de eventos do Web. Somente leitura: a lógica de caça e os prêmios
 // continuam exclusivamente no serviço WhatsApp (mimic-hunt.js).
@@ -90,6 +91,8 @@ export function buildSevenSinsSchedule(now=Date.now(),{reboot=classesOnlyRebootE
 }
 
 export async function getWebEventCenter(db,jid,now=Date.now(),{reboot=classesOnlyRebootEnabled()}={}){
+  // A temporada V2 não consulta tabelas de eventos históricos desativados.
+  if(reboot)return {rebootV2:true,sevenSins:[],mimic:null,saturdayRaid:null,weeklyBoss:{...V2_WEEKLY_BOSS,cashPool:40000,schedule:'Sexta 00:01 a sábado 23:59 (Brasília)'},commonBoss:{...V2_COMMON_BOSS},generatedAt:now,readOnly:true}
   const event={sevenSins:buildSevenSinsSchedule(now,{reboot}),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
     id:SATURDAY_WEB_EVENT.id,name:SATURDAY_WEB_EVENT.name,
     startsAt:SATURDAY_WEB_EVENT.startsAt,endsAt:SATURDAY_WEB_EVENT.endsAt,

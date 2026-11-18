@@ -959,6 +959,7 @@ async function syncBossLive(){
         return;
       }
       if(!existing || !next) continue;
+      if(ui.data?.rebootV2&&(String(existing.mode||'')!==String(next.mode||'')||String(existing.weekendKey||'')!==String(next.weekendKey||''))){await sync(true,true);return;}
       existing.hp=Number(next.hp||0);
       existing.maxHp=Number(next.maxHp||0);
       existing.status=String(next.status||existing.status||'');
@@ -2319,6 +2320,7 @@ function renderRaids(){
       return '<div class="card raid-card'+(expanded?' expanded':'')+'"><div class="raid-summary"><div class="raid-thumb">'+artSprite(raidSpriteKey(r.level,r.name),'raid-thumb-art',r.name)+'</div><div class="raid-summary-body">'+
         '<div class="tag-row"><span class="tag">LV.'+num(r.level)+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(raidStatusLabel(s.status)).toUpperCase():'DISPONÍVEL')+'</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+
         '<div class="raid-metrics"><span>❤️ '+num(hp)+'/'+num(max)+'</span><span>⚔️ '+num(r.atk)+' ATK</span><span>🔑 '+money(r.keyPrice)+'</span><span>👥 '+players.length+'/5</span></div>'+
+        (ui.data?.rebootV2&&Number(r.level)===70?'<p>Exige 3 jogadores Lv.90+ e contribuição efetiva. RaidLote indisponível neste nível.</p>':'')+
         '<div class="raid-actions">'+quickAction+toggle+'</div></div></div>'+details+'</div>';
     }).join('')+'</div>';
 }
@@ -2992,6 +2994,7 @@ function renderEvents(){
     (ui.eventCenterError?'<div class="notice warn">⚠️ '+esc(ui.eventCenterError)+' — tente atualizar a Central.</div>':'')+
     (!ui.eventCenter?'<div class="notice">'+(ui.eventCenterLoading?'Carregando eventos…':'Abra a Central novamente para carregar os eventos.')+'</div>':'')+
     renderBingoV2Card()+
+    (data.rebootV2&&data.weeklyBoss?'<div class="card"><h3>Superboss 2.0</h3><p>'+esc(data.weeklyBoss.schedule)+'</p><p>❤️ '+num(data.weeklyBoss.hp)+' HP • ⚔️ '+num(data.weeklyBoss.atk)+' ATK • Fundo '+money(data.weeklyBoss.cashPool)+'</p><button class="btn" data-go-page="boss">Abrir Boss</button></div>':'')+
     '<div class="event-center-summary"><div><strong>'+active.length+'</strong><span>Em andamento</span></div><div><strong>'+upcoming.length+'</strong><span>Próximos</span></div><div><strong>'+finished.length+'</strong><span>Encerrados</span></div></div>'+
     groupCards('🔴 Acontecendo agora',active,'Nenhum evento em andamento neste momento.')+
     groupCards('🕒 Próximos eventos',upcoming,'Nenhum próximo evento confirmado.')+

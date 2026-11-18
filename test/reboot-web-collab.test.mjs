@@ -14,8 +14,11 @@ test('calendário Web V2 não expõe eventos dos Pecados nem lê seu ledger',asy
   const queryable={query:()=>{throw Error('Não pode consultar DB antes da edição de Mimics')}};
   const result=await getWebEventCenter(queryable,'test-jid',now,{reboot:true});
   assert.deepEqual(result.sevenSins,[]);
-  assert.ok(result.mimic,'Mimics independentes preservados');
-  assert.ok(result.saturdayRaid,'Caçada normal de sábado preservada');
+  assert.equal(result.mimic,null);
+  assert.equal(result.saturdayRaid,null);
+  assert.equal(result.weeklyBoss.hp,150000);
+  const later=await getWebEventCenter(queryable,'test-jid',Date.parse('2026-11-18T12:00:00-03:00'),{reboot:true});
+  assert.equal(later.mimic,null);assert.equal(later.saturdayRaid,null);
   assert.equal(result.readOnly,true);
 });
 

@@ -651,7 +651,7 @@ export async function guessNumber(chat,jid,guess){
   })
 }
 
-function bossWeekendInfo(now=new Date()){
+export function bossWeekendInfo(now=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
     timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   }).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
