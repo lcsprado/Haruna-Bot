@@ -1555,14 +1555,15 @@ export function businessUpgradeQuote(business,currentLevel,targetLevel){
   let cost=0
   for(let level=fromLevel;level<toLevel;level++)
     cost+=Math.floor(Number(business.price)*rates[level])
-  const base=candidateBusinessCatalog(business).profitHour
+  const effectiveBusiness=candidateBusinessCatalog(business)
+  const base=effectiveBusiness.profitHour
   const growth=rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:0.25
   const extraHours=rebootEconomyEnabled()?0:1
   return {fromLevel,toLevel,levelsGained:toLevel-fromLevel,cost,
     previousProfitHour:Math.floor(base*(1+(fromLevel-1)*growth)),
     profitHour:Math.floor(base*(1+(toLevel-1)*growth)),
-    previousCapacityHours:business.capacityHours+extraHours*(fromLevel-1),
-    capacityHours:business.capacityHours+extraHours*(toLevel-1)}
+    previousCapacityHours:effectiveBusiness.capacityHours+extraHours*(fromLevel-1),
+    capacityHours:effectiveBusiness.capacityHours+extraHours*(toLevel-1)}
 }
 
 export async function upgradeBusiness(jid,input,targetLevel=null){

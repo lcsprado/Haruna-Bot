@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import {PROFILES,getBusinessVersions,UPGRADE_RATES,forecastBusinessDay} from './reboot-economy-sim.mjs';
 import {auditVehicleRoi} from './reboot-vehicle-roi.mjs';
-import {V2_EVENT_BUDGET,V2_BUSINESS_ECONOMY} from '../src/neon/reboot-economy-policy.js';
+import {V2_EVENT_BUDGET,V2_BUSINESS_ECONOMY,candidateBusinessCatalog} from '../src/neon/reboot-economy-policy.js';
 import {careerWorkXp,careerWorkGross} from '../src/neon/reboot-career-policy.js';
 
 // Ações são hipóteses de uso. Não são novo limite no runtime.
@@ -73,7 +73,7 @@ function targetProduct(row,businesses,vehicles){
 }
 export function buildIntegratedInputs(progressionSource,dbSource,{currentV2Prices=false}={}){
   const original=getBusinessVersions(progressionSource).proposed;
-  const biz=currentV2Prices?original.map(b=>({...b,profitHour:V2_BUSINESS_ECONOMY.hourlyRates[b.id]})):original;
+  const biz=currentV2Prices?original.map(b=>candidateBusinessCatalog(b,{enabled:true})):original;
   const eventBudget=currentV2Prices?V2_EVENT_BUDGET:C4C_BASELINE_BUDGET;
   const cars=auditVehicleRoi(progressionSource,{currentV2Prices});
   const ranks=extractCareerRanks(dbSource);

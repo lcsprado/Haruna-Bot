@@ -142,10 +142,15 @@ export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled(
  if(!enabled)return business;
  const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business.id];
  if(!Number.isSafeInteger(hourly)||hourly<0)throw new Error('Negócio sem tarifa V2 aprovada.');
- return {...business,profitHour:hourly};
+ // Mantém aproximadamente o orçamento de uma coleta diária, mesmo se o jogador coletar a cada hora.
+ // O catálogo e o cálculo de crédito usam a mesma tarifa inteira efetiva.
+ const capacity=Number(business.capacityHours);
+ if(!Number.isSafeInteger(capacity)||capacity<=0||capacity>24)throw Error('Capacidade inválida.');
+ return {...business,profitHour:Math.floor(hourly*capacity/24),capacityHours:24};
 }
 export function businessIntervalGrossV2(business,row,now){
- const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business?.id],cap=Number(business?.capacityHours);
+ const effective=candidateBusinessCatalog(business,{enabled:true});
+ const hourly=effective?.profitHour,cap=Number(effective?.capacityHours);
  const end=Number(now),start=Number(row?.last_collected_at??end),level=Number(row?.level||1);
  if(!Number.isSafeInteger(hourly)||!Number.isFinite(cap)||cap<=0||!Number.isFinite(end)||
     !Number.isFinite(start)||!Number.isInteger(level)||level<1||level>5)
