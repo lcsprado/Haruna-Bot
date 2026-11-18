@@ -59,6 +59,6 @@ test('Troca, venda, mercado, NPCs e vouchers não transportam equipamento de out
   assert.match(db,/assertRebootItemAllowed\(t\.offer_item_id\)/);
   assert.equal((db.match(/return rows\.filter\(row=>!classesOnlyRebootEnabled\(\)\|\|!isRebootCollabItemId\(row\.item_id\)\)/g)||[]).length,2);
   assert.match(npc,/const selected=npc\.goods\[index-1\]\s+assertRebootItemAllowed\(selected\.id\)/);
-  assert.match(rewards,/redeemArsenal\(jid,itemId\)\{\s+assertRebootItemAllowed\(itemId\)/);
-  assert.match(rewards,/redeemPerfection\(jid,itemId\)\{\s+assertRebootItemAllowed\(itemId\)/);
+  assert.match(rewards,/redeemArsenal\(jid,itemId\)\{\s+assertRebootItemAllowed\(voucher\(0\)\)\s+assertRebootItemAllowed\(itemId\)/);
+  assert.match(rewards,/redeemPerfection\(jid,itemId\)\{\s+assertRebootItemAllowed\(voucher\(1\)\)\s+assertRebootItemAllowed\(itemId\)/);
 });
