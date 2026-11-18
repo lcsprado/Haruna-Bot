@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
-import {raidLoteQuote,RAID_LOTE_V1} from './raid-lote-policy.js'
+import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES} from './raid-lote-policy.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {assertRaid70V2Start} from './reboot-economy-policy.js'
 import {initRaidLoteNoticeOutbox,enqueueRaidLoteNotice} from './raid-lote-notice-outbox.js'
 
@@ -65,6 +66,8 @@ export async function initRaidLoteStore(db){
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_token TEXT")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS duration_hours SMALLINT CHECK (duration_hours IN (4,8,12))")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ")
   await db.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS raid_lote_one_open_job_per_player
     ON raid_lote_jobs(jid) WHERE status IN ('queued','running')
@@ -99,7 +102,7 @@ export async function initRaidLoteStore(db){
   await db.query("INSERT INTO raid_lote_municipality(id,balance) VALUES(1,0) ON CONFLICT(id) DO NOTHING")
   await initRaidLoteNoticeOutbox(db)
 }
-export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirmed},{getCatalog}={}){
+export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null,requestKey,confirmed},{getCatalog}={}){
   if(!jid||typeof jid!=='string')throw new Error('Jogador invalido')
   validateRequestKey(requestKey)
   if(confirmed!==true)throw new Error('Compra requer confirmacao explicita')
@@ -109,6 +112,10 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
   if(!cfg)throw new Error('Raid indisponivel para compra')
   // Não cobrar pacote que não pode iniciar uma Raid cooperativa.
   assertRaid70V2Start({level:cfg.level,partySize:1,mode:'lote'})
+  const v2=classesOnlyRebootEnabled()
+  const plan=v2?raidLoteDurationPlan(durationHours):null
+  if(plan&&Number(attempts)!==plan.attempts)throw new Error('Tentativas divergentes do período escolhido')
+  if(!v2&&durationHours!=null)throw new Error('Pacote por horas disponível somente na V2')
   const initialQuote=raidLoteQuote(cfg.keyPrice,attempts)
   return inTransaction(db,async c=>{
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
@@ -118,7 +125,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     )).rows[0]
     // Replay da mesma mensagem NAO gasta novamente, ainda que a luta ja tenha terminado.
     if(prior){
-      if(Number(prior.level)!==Number(cfg.level)||Number(prior.requested)!==initialQuote.attempts)
+      if(Number(prior.level)!==Number(cfg.level)||Number(prior.requested)!==initialQuote.attempts||Number(prior.duration_hours||0)!==Number(plan?.hours||0))
         throw new Error('Repeticao de pedido com nivel ou quantidade divergente')
       const originalQuote={
         attempts:Number(prior.requested),keyPrice:Number(prior.key_price),
@@ -139,7 +146,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     // de Raid manual. O modo é fixado na compra e não muda após expiração.
     const pass=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',
       ['auction_raid_lote_pass_20261115:'+jid])).rows[0]?.value
-    const passActive=Number(pass?.activatedAt)>0&&Number(pass?.expiresAt)>Date.now()&&
+    const passActive=!v2&&Number(pass?.activatedAt)>0&&Number(pass?.expiresAt)>Date.now()&&
       Number(pass?.maxPackages)===3
     let usedPassPackages=0
     if(passActive){
@@ -211,10 +218,11 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       INSERT INTO raid_lote_jobs(
         id,jid,request_key,level,requested,key_price,keys_total,fee_total,
         total_paid,cash_paid,bank_paid,owned_keys_spent,keys_bought,
-        auction_pass_manual_rewards
-      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        auction_pass_manual_rewards,duration_hours,next_attempt_at
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+        CASE WHEN $15::smallint IS NULL THEN NULL ELSE NOW()+($16::integer*INTERVAL '1 minute') END)
     `,[id,jid,requestKey,cfg.level,quote.attempts,quote.keyPrice,quote.keysTotal,
-      quote.serviceTotal,quote.totalPrice,fromCash,fromBank,quote.ownedKeysUsed,quote.keysToBuy,auctionPassManualRewards])
+      quote.serviceTotal,quote.totalPrice,fromCash,fromBank,quote.ownedKeysUsed,quote.keysToBuy,auctionPassManualRewards,plan?.hours??null,RAID_LOTE_V2_INTERVAL_MINUTES])
     // Credito da taxa na Prefeitura na MESMA transacao do pagamento.
     await c.query('UPDATE raid_lote_municipality SET balance=balance+$1 WHERE id=1',[quote.serviceTotal])
     await c.query(`
@@ -223,13 +231,13 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
         ($1,'raid_shop',$2,'raid_lote_keys',$4),
         ($1,'alpha_prefeitura',$3,'raid_lote_service',$4)
     `,[jid,quote.keysTotal,quote.serviceTotal,'Pacote Raid Lv.'+cfg.level+' #'+id+' (chaves proprias '+quote.ownedKeysUsed+')'])
-    return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued',auction_pass_manual_rewards:auctionPassManualRewards},quote,alreadyPurchased:false}
+    return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued',auction_pass_manual_rewards:auctionPassManualRewards,duration_hours:plan?.hours??null},quote,alreadyPurchased:false}
   })
 }
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -245,7 +253,7 @@ export async function getRaidLoteAttemptReports(db,jid,jobId){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
@@ -283,6 +291,8 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
     if(job.started>=job.requested){
       return {status:'exhausted'}
     }
+    // Não reservar nem escrever enquanto a próxima tentativa programada não venceu.
+    if(raidLoteWaitsForSchedule(job))return {status:'waiting_schedule'}
     // Nao permite iniciar uma nova tentativa enquanto houver Raid ativa do mesmo jogador.
     const busy=(await c.query(`
       SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%')
@@ -297,9 +307,10 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
       VALUES($1,$2,$3,$4,$5)
     `,[id,jobId,seq,raidChat,job.level])
     await c.query(`
-      UPDATE raid_lote_jobs SET started=$2,status='running',current_attempt_id=$3,updated_at=NOW()
+      UPDATE raid_lote_jobs SET started=$2,status='running',current_attempt_id=$3,updated_at=NOW(),
+        next_attempt_at=CASE WHEN duration_hours IS NULL THEN NULL ELSE NOW()+($4::integer*INTERVAL '1 minute') END
       WHERE id=$1
-    `,[jobId,seq,id])
+    `,[jobId,seq,id,RAID_LOTE_V2_INTERVAL_MINUTES])
     return {status:'reserved',attempt:{id,job_id:jobId,seq,raid_chat:raidChat,level:job.level},job}
   })
 }

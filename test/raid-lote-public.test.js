@@ -75,7 +75,7 @@ test('consulta de tentativa confere job id para nao expor combate de outro pacot
 })
 test('compra e consulta liberadas no grupo, com alvo apenas em leitura; cancelamento segue autor',()=>{
   const source=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
-  const start=source.indexOf("} else if(['raidlote'].includes(cmd)){")
+  const start=source.indexOf("} else if(['raidlote'].includes(cmd)||")
   const end=source.indexOf("} else if(['raid','raidstatus'].includes(cmd))",start)
   assert.ok(start>0&&end>start)
   const command=source.slice(start,end)

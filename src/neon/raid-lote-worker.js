@@ -32,6 +32,7 @@ export function createRaidLoteWorker({
     const r=await db.query(`
       UPDATE raid_lote_jobs SET lease_token=$2,lease_until=NOW()+INTERVAL '25 seconds'
       WHERE id=$1 AND status IN ('queued','running')
+        AND (next_attempt_at IS NULL OR next_attempt_at<=NOW() OR current_attempt_id IS NOT NULL OR cancel_requested)
         AND (lease_until IS NULL OR lease_until<NOW())
       RETURNING id,jid,status,requested,started,won_count,current_attempt_id
     `,[jobId,token])
@@ -50,6 +51,7 @@ export function createRaidLoteWorker({
     try{
       const {rows}=await db.query(`
         SELECT id FROM raid_lote_jobs WHERE status IN ('queued','running')
+        AND (next_attempt_at IS NULL OR next_attempt_at<=NOW() OR current_attempt_id IS NOT NULL OR cancel_requested)
         AND (lease_until IS NULL OR lease_until<NOW())
         ORDER BY created_at ASC LIMIT $1
       `,[JOB_BATCH_LIMIT])
@@ -60,7 +62,7 @@ export function createRaidLoteWorker({
         try{
           // Lote cancelado ou encerrado nao faz nova tentativa.
           const next=await reserveNextRaidLoteAttempt(db,row.id)
-          if(['inactive','cancelled','exhausted','player_busy'].includes(next.status)){
+          if(['inactive','cancelled','exhausted','player_busy','waiting_schedule'].includes(next.status)){
             summary.paused++
             continue
           }

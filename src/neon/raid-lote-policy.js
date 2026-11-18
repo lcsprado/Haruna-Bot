@@ -64,3 +64,27 @@ export function raidLoteGearChance(baseChance){
 export function raidLoteShouldStop({cancelRequested=false,dead=false,won=false,attemptsCompleted=0,attemptsRequested=1}={}){
   return Boolean(cancelRequested||dead||!won||attemptsCompleted>=attemptsRequested)
 }
+
+ // V2: pacotes com duração nominal, sem rajadas ou catch-up em massa.
+export const RAID_LOTE_V2_INTERVAL_MINUTES=80
+export function raidLoteDurationPlan(input){
+  const raw=typeof input==='number'?String(input):String(input||'').trim().toLowerCase()
+  if(!/^(4|8|12)h?$/.test(raw))throw new RangeError('Escolha 4h, 8h ou 12h')
+  const hours=Number(raw.replace(/h$/,''))
+  return Object.freeze({hours,attempts:hours*3/4,intervalMinutes:RAID_LOTE_V2_INTERVAL_MINUTES})
+}
+export function raidLoteWaitsForSchedule(job,now=Date.now()){
+  if(!job?.duration_hours||!job.next_attempt_at||job.current_attempt_id||job.cancel_requested)return false
+  const due=Date.parse(job.next_attempt_at)
+  if(!Number.isFinite(due))throw new Error('Horário da próxima Raid inválido')
+  return now<due
+}
+export function raidLoteScheduleText(job,now=Date.now()){
+  if(!job?.duration_hours)return ''
+  const label='⏱️ Pacote de '+Number(job.duration_hours)+'h'
+  if(!['queued','running'].includes(job.status)||job.current_attempt_id||job.cancel_requested)return label
+  const due=Date.parse(job.next_attempt_at)
+  if(!Number.isFinite(due))return label
+  const mins=Math.max(0,Math.ceil((due-now)/60000))
+  return label+' • '+(mins?'próxima tentativa em '+mins+' min':'próxima tentativa liberada')
+}

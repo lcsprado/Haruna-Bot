@@ -133,7 +133,7 @@ const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(
 // No modo V2, o consumidor real só inicia após aprovação explícita do cutover.
 assertRebootWhatsappPermission()
 
-import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText} from './raid-lote-policy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
@@ -13301,7 +13301,7 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
-} else if(['raidlote'].includes(cmd)){
+} else if(['raidlote'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='loteraid')){
 if(!raidLoteV1Enabled)return await reply('⚔️ *RAIDLOTE V1 EM HOMOLOGAÇÃO*\nA compra está indisponível até a certificação do sistema.')
 const action=String(args[0]||'').toLowerCase()
 if(['painel','ativos','todos'].includes(action)){
@@ -13330,6 +13330,7 @@ if(action==='status'){
   return await reply('⚔️ *RAIDLOTE — STATUS*'+displayName+'\n🎯 Lv.'+job.level
     +' • '+job.status.toUpperCase()+'\n🏆 Vitórias: '+job.won_count+'/'+job.requested
     +'\n⚔️ Tentativas iniciadas: '+job.started
+    +(raidLoteScheduleText(job)?'\n'+raidLoteScheduleText(job):'')
     +(progress?'\n'+formatRaidLoteProgress(progress):'')
     +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
     +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
@@ -13373,7 +13374,15 @@ if(action==='cancelar'){
 }
 const confirmation=action==='confirmar'
 const level=collabRaidNumber(confirmation?args[1]:args[0])
-const count=Number(confirmation?args[2]:args[1])
+const durationArg=confirmation?args[2]:args[1]
+const timedRaidLote=classesOnlyRebootEnabled()
+let durationPlan=null
+if(timedRaidLote){
+  try{durationPlan=raidLoteDurationPlan(durationArg)}catch{
+    return await reply('⚔️ *RAIDLOTE 2.0*\n!raidlote 50 4h — 3 tentativas\n!raidlote 50 8h — 6 tentativas\n!raidlote 50 12h — 9 tentativas\nA cada 80 minutos, com a primeira após 80 min.\n!raidlote confirmar 50 8h • !raidlote status • !raidlote painel • !raidlote cancelar')
+  }
+}
+const count=durationPlan?durationPlan.attempts:Number(durationArg)
 const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
 if(classesOnlyRebootEnabled()&&level===70)
   return await reply('⚔️ A Raid 70 é cooperativa no Alpha Bot 2.0: 3 jogadores em Raid manual. RaidLote Lv.70 indisponível.')
@@ -13384,9 +13393,10 @@ if(confirmation){
   const messageId=String(msg?.key?.id||'')
   if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
   const requestKey='wa:'+createHash('sha256').update(sender+':'+chat+':'+messageId).digest('hex')
-  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
+  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,durationHours:durationPlan?.hours??null,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
   return await reply((bought.alreadyPurchased?'✅ *COMPRA JÁ PROCESSADA*':'✅ *PACOTE RAIDLOTE COMPRADO*')
     +'\n⚔️ Raid Lv.'+level+' • '+count+' tentativas'
+    +(durationPlan?'\n⏱️ '+durationPlan.hours+'h previstas • uma tentativa a cada 80 minutos. A primeira após 80 min.':'')
     +'\n🔑 Chaves próprias consumidas: '+bought.quote.ownedKeysUsed
     +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
     +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
@@ -13397,9 +13407,10 @@ if(confirmation){
 }
 const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
 const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
-const nextPassPackage=await isNextRaidLotePassPackage(sender)
-return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
+const nextPassPackage=!timedRaidLote&&await isNextRaidLotePassPackage(sender)
+return await reply('⚔️ *RAIDLOTE '+(timedRaidLote?'2.0':'V1')+' — RESUMO DA COMPRA*'
   +'\n👹 '+cfg.name+' • '+count+' tentativas'
+  +(durationPlan?'\n⏱️ '+durationPlan.hours+'h previstas • uma tentativa a cada 80 minutos. A primeira após 80 min; atrasos podem estender o período.':'')
   +'\n🔑 Chaves próprias: '+quote.ownedKeysUsed+' (serão consumidas na compra)'
   +'\n🛒 Chaves a comprar: '+quote.keysToBuy
   +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
@@ -13407,7 +13418,7 @@ return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
   +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
   +'\n\n'+(nextPassPackage?'🎟️ *PASSE SUPREMO:* 100% das recompensas-base da Raid manual: dinheiro, EXP, maestria, pets, fragmentos e chances normais de equipamentos e caixas.':'💰 Em cada vitória: custo da chave + taxa de automação + 50% do lucro líquido da Raid manual.\n✨ 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos')
   +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
-  +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+count+'*')
+  +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+(durationPlan?durationPlan.hours+'h':count)+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()

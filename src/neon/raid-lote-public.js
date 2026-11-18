@@ -1,3 +1,4 @@
+import {raidLoteScheduleText} from './raid-lote-policy.js'
 // Visualização pública da economia fictícia do Raid Lote.
 // Apenas SELECT: nunca executa compra, inicia combate ou cancela pacote.
 const safeName=value=>String(value||'Jogador').replace(/[\r\n*_`~]/g,' ').trim().slice(0,42)||'Jogador'
@@ -11,7 +12,7 @@ export async function getRaidLotePublicBoard(db,limit=12){
     WITH latest AS (
       SELECT DISTINCT ON (j.jid)
         j.id,j.jid,j.level,j.requested,j.started,j.won_count,
-        j.status,j.current_attempt_id,j.created_at,j.finished_at
+        j.status,j.current_attempt_id,j.created_at,j.finished_at,j.duration_hours,j.next_attempt_at
       FROM raid_lote_jobs j
       WHERE j.status IN ('queued','running')
         OR (j.finished_at>=NOW()-INTERVAL '24 hours')
@@ -92,6 +93,8 @@ export function formatRaidLotePublicBoard(rows,nowMs=Date.now()){
     const status=publicStatus[row.status]||'INDEFINIDO'
     const lines=[(i+1)+'. *'+safeName(row.player_name)+'* • Lv.'+integer(row.level)+' • '+status,
       '🏆 '+integer(row.won_count)+'/'+integer(row.requested)+' vitórias • '+integer(row.started)+' iniciada(s)']
+    const schedule=raidLoteScheduleText(row,nowMs)
+    if(schedule)lines.push(schedule)
     if(integer(row.won_count)>0){
       lines.push('✨ XP +'+integer(row.earned_xp).toLocaleString('pt-BR')+
         ' • 🧩 Frag +'+integer(row.earned_fragments).toLocaleString('pt-BR')+
