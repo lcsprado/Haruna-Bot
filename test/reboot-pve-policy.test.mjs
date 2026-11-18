@@ -36,3 +36,10 @@ test('Superboss usa HP e ATK V2, não importa salas históricas e registra dano 
  assert.match(g,/else if\(rebootEconomyEnabled\(\)\|\|s.eventId==='sete_pecados'/)
  assert.match(g,/if\(commonV2\)\{cash=commonV2.cash;exp=commonV2.xp\}/)
 })
+
+test('Superboss V2 não reabre depois da vitória nem liquida edição histórica',()=>{
+ const g=read('games.js')
+ assert.match(g,/current\?\.weekendKey===weekend.weekendKey&&\(!rebootEconomyEnabled\(\)\|\|current.rebootV2===true\)/)
+ assert.equal(g.split('...(s.rebootV2===true?{rebootV2:true}:{})').length-1,2)
+ assert.match(g,/nowMs<=Number\(s.endsAt\|\|0\)\|\|\(rebootEconomyEnabled\(\)&&s.rebootV2!==true\)/)
+})

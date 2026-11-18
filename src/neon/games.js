@@ -2939,7 +2939,7 @@ async function grantWeeklyGolemChoice(c,jid){
 export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
  return tx(async c=>{
   const s=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-  if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
+  if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0)||(rebootEconomyEnabled()&&s.rebootV2!==true))return null
   const specialNov13=!rebootEconomyEnabled()&&s.weekendKey===WEEKLY_GOLEM_V2_KEY
   const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)||
     (rebootEconomyEnabled()&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.weekendKey||'')))
@@ -2966,6 +2966,7 @@ export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
   const marker={mode:'completed',name:s.name,hp:Number(s.hp),
     maxHp:Number(s.maxHp),participants:{},weekendKey:s.weekendKey,
     weeklyCompleted:true,endsAt:s.endsAt,completedAt:Date.now(),
+    ...(s.rebootV2===true?{rebootV2:true}:{}),
     result:{bossName:s.name,maxHp:Number(s.maxHp),remainingHp:Number(s.hp),
       defeated:false,rewards}}
   await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',marker)
@@ -3963,7 +3964,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
       }else{
-        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
+        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,...(s.rebootV2===true?{rebootV2:true}:{}),weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
         await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
