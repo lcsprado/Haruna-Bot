@@ -1,13 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {effectiveAsset} from '../src/neon/reboot-assets-policy.js'
 import {homeTrainingReward,homeRestCapacity,homeRestDescription,homeCatalogText,homeBenefitsText} from '../src/neon/home-menu.js'
 
 const source=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
 const bot=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const housesSource=source.slice(source.indexOf('export const HOUSES=['),source.indexOf('export const CARS=[')).replace(/^export /gm,'')
-const HOUSES=new Function(housesSource+';return HOUSES')()
+const buildHouses=enabled=>new Function('effectiveAsset',housesSource+';return HOUSES')(row=>effectiveAsset(row,{enabled}))
+const HOUSES=buildHouses(false)
+test('V2 prices reach the house catalog without changing benefits',()=>{
+  const v2=buildHouses(true)
+  assert.deepEqual(v2.map(h=>h.price),[25000,60000,150000,450000,1000000])
+  assert.deepEqual(v2.map(({price,...h})=>h),HOUSES.map(({price,...h})=>h))
+  assert.match(homeCatalogText(v2),/R\$ 1\.000\.000/)
+})
 const expected=[
   ['kitnet',25000,100,.5,15,0,3],
   ['casa',80000,180,.75,25,0,5],
