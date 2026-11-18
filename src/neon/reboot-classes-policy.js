@@ -52,6 +52,15 @@ export function filterRebootRaidCatalog(raids,{enabled=classesOnlyRebootEnabled(
 const LEGACY_COLLAB_IDS=new Set([
   'chave_raid_75','insignia_sete_pecados','titulo_conquistador_pecados'
 ]);
+// Exceções de leilão legado que fazem forja máxima e furam a progressão Lv1.
+export const REBOOT_LEGACY_AUCTION_VOUCHERS=Object.freeze([
+ 'voucher_arsenal_supremo_20261115',
+ 'voucher_essencia_perfeicao_20261115',
+ 'voucher_passe_raidlote_triplo_20261115'
+]);
+export function isRebootLegacyAuctionVoucher(id){
+ return REBOOT_LEGACY_AUCTION_VOUCHERS.includes(String(id||'').trim().toLowerCase());
+}
 export function isRebootCollabItemId(itemId){
   const id=String(itemId||'').trim().toLowerCase();
   return LEGACY_COLLAB_IDS.has(id)||id.startsWith('pecados_')||
@@ -60,13 +69,13 @@ export function isRebootCollabItemId(itemId){
 }
 export function filterRebootStarterItems(items,{enabled=classesOnlyRebootEnabled()}={}){
   const rows=Array.isArray(items)?items:[];
-  return enabled?rows.filter(row=>!isRebootCollabItemId(row?.[0])):rows;
+  return enabled?rows.filter(row=>!isRebootCollabItemId(row?.[0])&&!isRebootLegacyAuctionVoucher(row?.[0])):rows;
 }
 
 // Uso obrigatório nos pontos de aquisição/uso: o seed filtrado, sozinho,
 // não impede uma operação administrativa ou rota legada de recriar itens.
 export function assertRebootItemAllowed(itemId,{enabled=classesOnlyRebootEnabled()}={}){
-  if(enabled&&isRebootCollabItemId(itemId))
+  if(enabled&&(isRebootCollabItemId(itemId)||isRebootLegacyAuctionVoucher(itemId)))
     throw new Error('Item da colaboração indisponível na temporada Alpha Bot 2.0.');
   return true;
 }

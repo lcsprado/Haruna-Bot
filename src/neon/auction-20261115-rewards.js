@@ -1,7 +1,7 @@
 // Leilão 15/11 — direitos de escolha e passe Raid Lote; resgates atômicos.
 import {db} from './db.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
-import {assertRebootItemAllowed} from './reboot-classes-policy.js'
+import {assertRebootItemAllowed,classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 export const REWARDS_15=Object.freeze([
  {id:'voucher_arsenal_supremo_20261115',name:'Decreto do Arsenal Supremo',description:'Escolhe arma, armadura ou bota de drop de Raid, entregue FORJADA ★★★★★ Lv.1. Uso único.'},
  {id:'voucher_essencia_perfeicao_20261115',name:'Essência da Perfeição',description:'Eleva qualquer equipamento próprio para FORJADO ★★★★★ Lv.10. Uso único.'},
@@ -13,6 +13,7 @@ const localTime=ms=>new Date(ms).toLocaleString('pt-BR',{timeZone:'America/Sao_P
 const passKey=jid=>'auction_raid_lote_pass_20261115:'+jid
 let initPromise=null
 export async function initAuction15Rewards(){
+ if(classesOnlyRebootEnabled())return
  if(initPromise)return initPromise
  initPromise=(async()=>{
   for(const r of REWARDS_15)await db.query(
@@ -50,6 +51,7 @@ async function spendVoucher(c,jid,id){
 }
 const validId=id=>/^[a-z0-9_-]{2,100}$/.test(String(id||''))
 export async function redeemArsenal(jid,itemId){
+ assertRebootItemAllowed(voucher(0))
  assertRebootItemAllowed(itemId)
  if(!validId(itemId))throw Error('Informe o ID de um drop: !itensraid')
  return tx(async c=>{
@@ -66,6 +68,7 @@ export async function redeemArsenal(jid,itemId){
  })
 }
 export async function redeemPerfection(jid,itemId){
+ assertRebootItemAllowed(voucher(1))
  assertRebootItemAllowed(itemId)
  if(!validId(itemId))throw Error('Informe o ID do equipamento de seu inventário.')
  return tx(async c=>{
@@ -80,6 +83,7 @@ export async function redeemPerfection(jid,itemId){
  })
 }
 export async function activateRaidLotePass(jid,at=Date.now()){
+ assertRebootItemAllowed(voucher(2))
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const key=passKey(jid)
@@ -93,12 +97,14 @@ export async function activateRaidLotePass(jid,at=Date.now()){
  })
 }
 export async function raidPassText(jid){
+ if(classesOnlyRebootEnabled())return '🎟️ Passe Supremo da temporada anterior indisponível na V2.'
  const s=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(jid)])).rows[0]?.value
  if(!s||Number(s.expiresAt)<=Date.now())return '🎟️ Nenhum Passe Supremo ativo. Se possui o ticket, use !passeraidlote para ativar.'
  const n=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,s.activatedAt,s.expiresAt])).rows[0]?.n||0
  return '🎟️ *PASSE RAIDLOTE — SUPREMO ATIVO*\n📦 Pacotes utilizados: '+n+'/'+s.maxPackages+'\n⌛ Até '+localTime(s.expiresAt)+'\n🏆 Pacotes especiais: 100% das recompensas-base da Raid manual (EXP, dinheiro, maestria, pets, fragmentos, caixas e equipamentos).\n💰 Compra, chaves e taxas normais.\n⚔️ !raidlote 75 10 para consultar um pacote.'
 }
 export async function isNextRaidLotePassPackage(jid,at=Date.now()){
+ if(classesOnlyRebootEnabled())return false
  const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[passKey(jid)])).rows[0]?.value
  if(!(Number(state?.activatedAt)>0&&Number(state?.expiresAt)>at&&Number(state?.maxPackages)===3))return false
  const used=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>=to_timestamp($2/1000.0) AND created_at<to_timestamp($3/1000.0)',[jid,state.activatedAt,state.expiresAt])).rows[0]?.n||0
@@ -106,6 +112,10 @@ export async function isNextRaidLotePassPackage(jid,at=Date.now()){
 }
 export async function handleAuction15RewardCommand({cmd,args=[],sender,reply}){
  if(!['itensraid','usardecreto','usarperfeicao','passeraidlote','usarpasse','meupasse'].includes(cmd))return false
+ if(classesOnlyRebootEnabled()){
+  await reply('🎟️ Prêmios do leilão antigo indisponíveis na nova temporada.')
+  return true
+ }
  try{
   await initAuction15Rewards()
   if(cmd==='itensraid'){
