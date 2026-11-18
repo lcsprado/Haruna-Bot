@@ -7,7 +7,7 @@ Aiven: serviço `lcsh-3393/alphabot` RUNNING, 1 GiB de disco, 20 conexões máxi
 ## O que já está preparado
 - `scripts/reboot-backup-v1.mjs` pode gerar arquivo PostgreSQL em formato `custom`, conferir a lista de objetos com `pg_restore --list`, gerar SHA-256, gravar manifesto privado e validar o arquivo depois de uma cópia offline.
 - Só funciona com `DATABASE_URL` do banco **alpha_prod_v2 em host .aivencloud.com** e `ALPHA_BACKUP_ACK=I_UNDERSTAND_READ_ONLY`. Rejeita CI, banco errado, destino dentro do GitHub e credenciais ausentes. Segredos não são escritos em arquivos do repositório ou nos argumentos do subprocesso.
-- Por padrão, salva numa pasta particular `AlphaBot-Backups` na pasta pessoal do operador. Opcional `ALPHA_BACKUP_DIR` aponta para um disco externo. Requer `pg_dump` e `pg_restore` instalados no computador confiável com versão cliente compatível com Aiven.
+- Por padrão, salva numa pasta particular `AlphaBot-Backups` na pasta pessoal do operador. Opcional `ALPHA_BACKUP_DIR` aponta para um disco externo. Requer `pg_dump` e `pg_restore` instalados no computador confiável com versão cliente compatível com Aiven. Para validar TLS, aceita `ALPHA_AIVEN_CA_PEM` do Aiven por variável local ou `PGSSLROOTCERT` apontando para o certificado de CA em arquivo privado; a CA temporária é apagada após a execução.
 - A execução real exige uma máquina/terminal com PostgreSQL Client, credenciais de produção em ambiente local seguro e conexão TLS. Não anexar banco nem senha ao chat ou GitHub.
 
 ## Protocolo do corte — nenhuma etapa automática

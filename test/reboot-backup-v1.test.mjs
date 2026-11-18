@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {planRebootV1Backup,createRebootV1Backup,verifyRebootV1Backup}
@@ -9,7 +9,8 @@ import {planRebootV1Backup,createRebootV1Backup,verifyRebootV1Backup}
 const valid=(directory)=>({
  ALPHA_BACKUP_ACK:'I_UNDERSTAND_READ_ONLY',
  DATABASE_URL:'postgresql://backup_user:PASS_DO_NOT_PRINT@primary.aivencloud.com:12345/alpha_prod_v2',
- ALPHA_BACKUP_DIR:directory
+ ALPHA_BACKUP_DIR:directory,
+ ALPHA_AIVEN_CA_PEM:'-----BEGIN CERTIFICATE-----\\nTEST\\n-----END CERTIFICATE-----'
 });
 test('backup offline rejeita CI, confirmação ausente, banco incorreto ou host falso',()=>{
  const root=mkdtempSync(join(tmpdir(),'alpha-plan-'));
@@ -34,6 +35,7 @@ test('backup gera dump fora do Git, TOC + checksum, sem restore nem vazamento de
   commands.push({cmd,args,timeout:opts.timeout,password:opts.env.PGPASSWORD});
   assert.equal(args.join(' ').includes('PASS_DO_NOT_PRINT'),false);
   if(cmd==='pg_dump'){
+   assert.equal(existsSync(opts.env.PGSSLROOTCERT),true);
    const file=args.find(x=>x.startsWith('--file=')).slice(7);
    writeFileSync(file,Buffer.alloc(3000,42));
    return {status:0,stdout:''};
@@ -56,6 +58,7 @@ test('backup gera dump fora do Git, TOC + checksum, sem restore nem vazamento de
   assert.equal(record.sha256,saved.sha256);
   assert.equal(record.bytes,3000);
   assert.equal(JSON.stringify(record).includes('PASS_DO_NOT_PRINT'),false);
+  assert.equal((await import('node:fs')).readdirSync(dir).some(x=>x.startsWith('.aiven-ca-')),false);
   assert.equal((await verifyRebootV1Backup(saved.manifest)).valid,true);
   writeFileSync(saved.archive,Buffer.alloc(3000,43));
   await assert.rejects(()=>verifyRebootV1Backup(saved.manifest),/Checksum/);

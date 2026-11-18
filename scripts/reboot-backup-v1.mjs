@@ -12,7 +12,6 @@ import {fileURLToPath} from 'node:url';
 
 const SOURCE_DB='alpha_prod_v2';
 const ROOT=resolve(fileURLToPath(new URL('..',import.meta.url)));
-const CHECK_INTERVAL=14*24*60*60*1000;
 
 function under(path,parent){
   const p=resolve(path),base=resolve(parent);
@@ -39,8 +38,14 @@ export function planRebootV1Backup(env=process.env,{home=homedir()}={}){
     PGPASSWORD:decodeURIComponent(url.password),
     PGDATABASE:SOURCE_DB,PGSSLMODE:'verify-full',
     PGAPPNAME:'alpha-bot-v1-readonly-backup'};
+  // Aceita a CA do Aiven fornecida em ambiente local, sem gravá-la no manifesto.
+  const caPem=String(env.ALPHA_AIVEN_CA_PEM||'').replace(/\\n/g,'\n').trim();
+  if(caPem&&(!caPem.startsWith('-----BEGIN CERTIFICATE-----')||
+    !caPem.endsWith('-----END CERTIFICATE-----')))
+    throw Error('ALPHA_AIVEN_CA_PEM inválido');
   delete pgEnv.DATABASE_URL;
-  return {directory:dir,database:SOURCE_DB,pgEnv};
+  delete pgEnv.ALPHA_AIVEN_CA_PEM;
+  return {directory:dir,database:SOURCE_DB,pgEnv,caPem};
 }
 export async function sha256File(path){
   const hash=createHash('sha256');
@@ -61,10 +66,15 @@ export async function createRebootV1Backup({env=process.env,runner=spawnSync,now
   if(!(now instanceof Date)||!Number.isFinite(now.getTime()))
     throw Error('Data inválida');
   const previousUmask=process.umask(0o077);
-  let partial;
+  let partial,caPath;
   try{
     mkdirSync(plan.directory,{recursive:true,mode:0o700});
     chmodSync(plan.directory,0o700);
+    if(plan.caPem){
+      caPath=join(plan.directory,'.aiven-ca-'+randomBytes(8).toString('hex')+'.pem');
+      writeFileSync(caPath,plan.caPem+'\n',{flag:'wx',mode:0o600});
+      plan.pgEnv.PGSSLROOTCERT=caPath;
+    }
     const file=join(plan.directory,archiveFileName(now));
     partial=file+'.partial';
     if(existsSync(file)||existsSync(partial))throw Error('Arquivo de backup já existe');
@@ -93,6 +103,7 @@ export async function createRebootV1Backup({env=process.env,runner=spawnSync,now
     return {archive:file,manifest:file+'.manifest.json',sha256:hash,
       bytes,tableDataEntries:dataTableCount,restoreTested:false};
   }finally{
+    if(caPath)rmSync(caPath,{force:true});
     if(partial)rmSync(partial,{force:true});
     process.umask(previousUmask);
   }
