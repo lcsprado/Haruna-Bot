@@ -25,7 +25,7 @@ test('minimo de 500k so para lendarias, nao remove XP e dinheiro de participacao
 test('inventario de caixas atualizado apenas na liquidação semanal de HP zero',()=>{
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
   assert.match(games,/if\(s\.hp<=0\)\{\s*const entries=Object\.entries\(s\.participants\)/)
-  assert.match(games,/const legendaryBoxes=weekly\?weeklyGolemLegendaryBoxCount/)
+  assert.match(games,/const legendaryBoxes=weekly&&!rebootEconomyEnabled\(\)\?weeklyGolemLegendaryBoxCount\(\{[\s\S]*?\}\):0/)
   assert.match(games,/VALUES\(\$1,'caixa_lendaria',\$2\)/)
   assert.match(games,/ON CONFLICT\(jid,item_id\) DO UPDATE SET quantity=inventories\.quantity\+EXCLUDED\.quantity/)
   assert.match(games,/if\(legendaryBoxes>0\)/)
