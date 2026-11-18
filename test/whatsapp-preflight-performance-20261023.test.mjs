@@ -9,9 +9,9 @@ const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const section=(source,start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)))
 
 test('evento de grupo mantém chance por mensagem e evita transação nos 96,5% sem sorteio',async()=>{
-  let transactions=0,queries=0,roll=0
+  let transactions=0,queries=0,roll=0,reboot=false
   const math=Object.create(Math);math.random=()=>roll
-  const context={Math:math,Date,randomGroupEventCash:()=>10000,
+  const context={Math:math,Date,randomGroupEventCash:()=>10000,rebootEconomyEnabled:()=>reboot,
     tx:async fn=>{transactions++;return fn({query:async sql=>{queries++;return {rows:sql.startsWith('SELECT *')?[]:[]}}})}}
   vm.createContext(context)
   vm.runInContext(section(progression,'export async function maybeSpawnGroupEvent','export async function claimGroupEvent').replace('export async function','async function'),context)
@@ -26,12 +26,22 @@ test('evento de grupo mantém chance por mensagem e evita transação nos 96,5% 
   assert.equal(event.reward,10000)
   assert.equal(await context.maybeSpawnGroupEvent('private@s.whatsapp.net'),null)
   assert.equal(transactions,1)
+  reboot=true
+  roll=.9
+  for(let i=0;i<100;i++)assert.equal(await context.maybeSpawnGroupEvent('group@g.us'),null)
+  assert.equal(transactions,1)
+  assert.equal(queries,3)
+  roll=.01
+  const v2event=await context.maybeSpawnGroupEvent('group@g.us')
+  assert.equal(v2event.reward,1000)
+  assert.equal(transactions,2)
+  assert.equal(queries,6)
 })
 
 test('evento ativo continua protegido pelo lock e pela leitura transacional',async()=>{
   let inserts=0,locks=0
   const math=Object.create(Math);math.random=()=>0
-  const context={Math:math,Date,randomGroupEventCash:()=>10000,
+  const context={Math:math,Date,randomGroupEventCash:()=>10000,rebootEconomyEnabled:()=>false,
     tx:async fn=>fn({query:async sql=>{
       if(sql.includes('pg_advisory_xact_lock'))locks++
       if(sql.startsWith('INSERT'))inserts++
