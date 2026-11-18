@@ -11,4 +11,6 @@ Modelo agora também inclui sequência de dias e proteção de um dia a cada 30 
 | 60 | 354464 | 692185 | 1169692 | 1551036 | 4,38 | 4,27 |
 | 120 | 1135450 | 2145730 | 3507472 | 4528983 | 3,99 | 3,97 |
 
-Patrimônio total base dia 120 R$11.317.635 (versus R$30.490.667 no relatório anterior sem sequências). Participação máxima de negócios 46,4%, liquidez mínima 7,42%, disparidade máxima 5,19x. Teste determinístico de hipótese, não homologação de produção. Não modela frequência real de turnos, capacidade de coleta em múltiplas sessões, níveis reais, GT/Poço/Bingo/cidade, caixa das sequências, custos de poder. Ações não são limites de runtime. Necessário estresse adicional com coleta frequente e progressão. Nenhum deploy/merge/reset/SQL.
+Patrimônio total base dia 120 R$11.317.635 (versus R$30.490.089 no relatório anterior sem sequências). Participação máxima de negócios 46,4%, liquidez mínima 7,42%, disparidade máxima 5,19x. Teste determinístico de hipótese, não homologação de produção. Não modela frequência real de turnos, capacidade de coleta em múltiplas sessões, níveis reais, GT/Poço/Bingo/cidade, caixa das sequências, custos de poder. Ações não são limites de runtime. Necessário estresse adicional com coleta frequente e progressão. Nenhum deploy/merge/reset/SQL.
+
+Precisão monetária: fórmula de produção V2 corrigida para calcular pontos percentuais inteiros antes de truncar, evitando perda de R$1 por representação binária. Resultados do simulador continuam aproximações de fluxos (podem diferir em poucos reais pela ordem dos arredondamentos).

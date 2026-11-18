@@ -151,7 +151,9 @@ export function businessIntervalGrossV2(business,row,now){
     !Number.isFinite(start)||!Number.isInteger(level)||level<1||level>5)
     throw new Error('Dados de coleta V2 inválidos.');
  const seconds=Math.min(Math.max(0,end-start),cap*3600);
- return Math.floor(seconds/3600*hourly*(1+(level-1)*V2_BUSINESS_ECONOMY.levelBonus));
+ // Inteiros em pontos percentuais: evita perder R$ 1 por erro binário em 1,4.
+ const growthPercent=100+(level-1)*Math.round(V2_BUSINESS_ECONOMY.levelBonus*100);
+ return Math.floor(seconds*hourly*growthPercent/(3600*100));
 }
 export function budgetReport(){
   const e=V2_EVENT_BUDGET;
