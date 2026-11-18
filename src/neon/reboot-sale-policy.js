@@ -9,8 +9,12 @@ export const V2_BOX_CASH=Object.freeze({
  caixa_rara:Object.freeze([400,1_200]),
  caixa_epica:Object.freeze([800,2_000])
 });
+// Materiais de Raid nunca são equipamentos lendários: manter a revenda original.
+const RAID_MATERIALS=new Set(['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse']);
 export function rebootResaleUnit(item,{enabled=classesOnlyRebootEnabled()}={}){
  if(!enabled)return null;
+ if(item?.sellable===false)return 0;
+ if(RAID_MATERIALS.has(String(item?.id||item?.item_id||'')))return 100;
  const price=Number(item?.price);
  if(!Number.isSafeInteger(price)||price<0)throw new RangeError('Preço inválido');
  if(price>0)return Math.max(1,Math.floor(price*.5));

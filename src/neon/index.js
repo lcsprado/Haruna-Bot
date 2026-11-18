@@ -134,6 +134,7 @@ const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(
 assertRebootWhatsappPermission()
 
 import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText} from './raid-lote-policy.js'
+import {shopForge5ServiceFee} from './shop-forge5-plan.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
@@ -5261,7 +5262,7 @@ const commandPages={
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)\n*!autoforja* — evolui cópias existentes, funde até onde alcançar e cobra taxa extra após confirmar
-*!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ 500 mil)
+*!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ ${fmt(shopForge5ServiceFee())})
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -12562,7 +12563,7 @@ await reply(text)
   text+='*'+(n+1)+'.* '+(i.category==='shield'?'🛡️':i.category==='armor'?'🛡️':'⚔️')
    +' '+i.name+' • R$ '+fmt(i.price)+'/copia\n'
  })
- text+='\n💰 O bot calcula as copias e upgrades que faltam, compra o necessario e cobra *R$ 500.000* pela automacao.\n'
+ text+='\n💰 O bot calcula as copias e upgrades que faltam, compra o necessario e cobra *R$ '+fmt(shopForge5ServiceFee())+'* pela automacao.\n'
  text+='🛑 Raids, eventos, collab e botas nao fazem parte desta forja.\n'
  text+='📋 Escolha um numero para ver a proposta. *Nenhuma cobranca sem confirmar.*\n0️⃣ Cancelar'
  return await reply(text)

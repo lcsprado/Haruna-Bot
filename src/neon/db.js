@@ -22,6 +22,7 @@ import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classesOnlyRebootEnabled,filterRebootStarterItems,assertRebootDatabaseTarget,assertRebootItemAllowed,isRebootCollabItemId} from './reboot-classes-policy.js'
 import {candidateShopCatalogItem} from './reboot-economy-policy.js'
+import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
@@ -2392,7 +2393,6 @@ export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS
 ...Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,Object.freeze({raidLevel:75,materialId:COLLAB_FRAGMENT_ITEM,materialName:'Fragmento da Ascensão',collab:true})]))})
 // As estrelas de itens comuns da loja usam o mesmo multiplicador das armas de Raid.
 const SHOP_FORGE5_STATS_IDS=new Set([...REGULAR_SHOP_IDS].filter(id=>['weapon','armor'].includes(EQUIPMENT[id]?.category)&&!RAID_GEAR_FORGE_ORIGINS[id]))
-const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
 if(classesOnlyRebootEnabled()&&isRebootCollabItemId(itemId))return null
 const eq=EQUIPMENT[itemId]
@@ -2413,16 +2413,16 @@ crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6)),
 }
 }
 function equipmentUpgradeCost(rarity,currentLevel){
-const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+const base=equipmentUpgradeBase(rarity)
 return base*Math.max(1,Number(currentLevel)||1)
 }
 function equipmentUpgradeInvested(rarity,level=1){
 const lv=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
-const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+const base=equipmentUpgradeBase(rarity)
 return base*((lv-1)*lv/2)
 }
 function equipmentUpgradeSellRefund(rarity,level=1){
-return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
+return equipmentUpgradeRefund(equipmentUpgradeInvested(rarity,level))
 }
 export async function getEquipmentStarLevels(jid,itemIds=[],client=db){
 const ids=[...new Set((itemIds||[]).filter(Boolean))]
@@ -2617,7 +2617,7 @@ async function autoForgeInventoryQuoteClient(c,jid,itemId,lock=false){
    materialName:origin?.materialName||'',materials:Number(material.rows[0]?.quantity||0),
    materialCosts:FORGE_STAR_MATERIALS,shieldFees:fees,
    shopStandard,collab:Boolean(origin?.collab),
-   upgradeBase:UPGRADE_BASE_COST[String(inv.rarity||'common')]||2500,cash,bank
+   upgradeBase:equipmentUpgradeBase(inv.rarity),cash,bank
  })
 }
 export async function listAutoForgeInventoryOptions(jid){
@@ -2733,7 +2733,7 @@ async function shopForge5QuoteClient(c,jid,itemId,lock=false){
   forged:forged?{stars:Number(forged.stars),level:Number(forged.level)}:null,
   protectedCount:bound.reduce((n,b)=>n+Number(b.quantity||0),0)+(equipped?1:0),
   equipped,cash:Number(wallet?.cash||0),bank:Number(wallet?.bank||0),
-  upgradeBase:UPGRADE_BASE_COST[String(item.rarity||'common')]||2500,shieldFees
+  upgradeBase:equipmentUpgradeBase(item.rarity),shieldFees
  })
 }
 export async function getShopForge5Quote(jid,itemId){
@@ -4289,7 +4289,7 @@ const names=new Map()
 const rarities=new Map()
 if(itemIds.length){
 const itemRows=await client.query(
-`SELECT id,name,rarity,price,
+`SELECT id,name,rarity,price,sellable,
 CASE
 WHEN price > 0 THEN GREATEST(1,FLOOR(price*0.50))
 WHEN rarity='legendary' THEN 100000

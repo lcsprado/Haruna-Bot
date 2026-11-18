@@ -1,6 +1,7 @@
 // !autoforja — planejamento puro. Usa apenas equipamentos, fragmentos e saldo
 // ja pertencentes ao jogador. Nao compra copias, nao usa item equipado/vinculado
 // como doador e nao permite completar etapas sem financiamento.
+import {effectiveAutoForgeFee} from './reboot-gear-economy.js'
 export const AUTO_FORGE_BASE_FEE_PER_STAR=25000
 export const AUTO_FORGE_SURCHARGE_RATE=0.10
 export const AUTO_FORGE_PLAN_VERSION='inventory-auto-v1'
@@ -14,7 +15,7 @@ const upgradeCost=(base,level)=>{
   if(lv<1||lv>10)throw new Error('Nivel invalido da copia.')
   return cost*(45-(lv-1)*lv/2)
 }
-const serviceCost=base=>AUTO_FORGE_BASE_FEE_PER_STAR+Math.ceil(base*AUTO_FORGE_SURCHARGE_RATE/1000)*1000
+const serviceCost=base=>effectiveAutoForgeFee(base)
 
 export function planInventoryAutoForge(input){
   const itemId=String(input.itemId||'')
