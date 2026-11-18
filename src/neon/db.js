@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {assertV2MarketListing} from './reboot-assets-policy.js'
 import {nextScheduledSummon} from './pet-summon-schedule.js'
 import {requireVerifiedAdminWalletJid} from './admin-wallet-identity.js'
 import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
@@ -6656,6 +6657,7 @@ export async function createMarketListing(jid,itemId,qty,price){
 assertRebootItemAllowed(itemId)
 qty=Number(qty); price=Number(price)
 if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
+assertV2MarketListing(qty,price)
 await expireMarketListings()
 return transaction(async client=>{
 const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
@@ -6714,6 +6716,7 @@ return transaction(async client=>{
 const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
 const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
 assertRebootItemAllowed(x.item_id)
+assertV2MarketListing(Number(x.quantity),Number(x.price))
 if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
 throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
 if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')

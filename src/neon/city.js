@@ -1,4 +1,6 @@
 import { db, grantExpInTransaction } from './db.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {v2DarkContractReward,v2CityRobbery} from './reboot-assets-policy.js'
 import { changeAlphaReputation, getAlphaReputation } from './progression.js'
 
 const TALK_PERIOD_SECONDS=6*60*60
@@ -389,8 +391,9 @@ export async function robCityNpc(jid,npcRef){
     const rep=Number(npcRep?.reputation||0)
     const chance=clamp(.32-rep*.0015,.18,.42)
     const success=Math.random()<chance
-    const reward=Math.min(15000,Math.round(2500+level*120))
-    const fine=Math.min(10000,Math.round(1800+level*80))
+    const v2=v2CityRobbery(level)
+    const reward=v2?.reward??Math.min(15000,Math.round(2500+level*120))
+    const fine=v2?.fine??Math.min(10000,Math.round(1800+level*80))
     await c.query(`
       INSERT INTO alpha_npc_robbery(jid,last_attempt_at,attempts,successes)
       VALUES($1,$2,1,$3)
@@ -807,6 +810,8 @@ export async function resolveCityEncounter(jid,id,choice){
 }
 
 function darkRewardForLevel(level,mission){
+  const v2=v2DarkContractReward(level)
+  if(v2)return v2
   const base=level>=80?{cash:10000,xp:1400}:level>=50?{cash:6500,xp:900}:level>=20?{cash:3000,xp:500}:{cash:1500,xp:250}
   const cash=Math.max(base.cash,Math.min(Number(mission?.cash||base.cash),base.cash*2))
   return {cash,xp:base.xp}
@@ -852,6 +857,7 @@ export async function buyDarkShopItem(jid,index){
   if(rep.karma>good.karma) throw new Error('🔒 Esta oferta exige Karma '+good.karma+' ou inferior.')
   const cyc=period(DARK_PERIOD_SECONDS)
   const result=await tx(async client=>{
+    if(classesOnlyRebootEnabled())await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['v2-dark-shop:'+jid])
     const used=Number((await client.query(
       'SELECT COUNT(*)::int AS n FROM alpha_dark_purchases WHERE jid=$1 AND cycle=$2',
       [jid,cyc]
@@ -941,7 +947,10 @@ export async function claimDarkContract(jid){
     if(Number(active.progress)<Number(active.target)) throw new Error('Missão ainda em andamento: '+active.progress+'/'+active.target+'.')
     const level=Number((await c.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
     const reward=darkRewardForLevel(level,active.mission)
-    await c.query('UPDATE alpha_dark_contracts SET claimed=TRUE WHERE jid=$1 AND cycle=$2',[jid,active.cycle])
+    if(classesOnlyRebootEnabled()){
+      const claimed=await c.query('UPDATE alpha_dark_contracts SET claimed=TRUE WHERE jid=$1 AND cycle=$2 AND claimed=FALSE RETURNING jid',[jid,active.cycle])
+      if(!claimed.rowCount)throw new Error('Essa missão já foi resgatada.')
+    }else await c.query('UPDATE alpha_dark_contracts SET claimed=TRUE WHERE jid=$1 AND cycle=$2',[jid,active.cycle])
     await c.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[reward.cash,jid])
     const xpResult=await grantExpInTransaction(c,jid,reward.xp)
     return {mission:active.mission,cash:reward.cash,xp:reward.xp,xpResult}

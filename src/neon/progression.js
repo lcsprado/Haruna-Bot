@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {effectiveAsset} from './reboot-assets-policy.js'
 import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
@@ -31,7 +32,7 @@ export const HOUSES=[
   {id:'sobrado',name:'Sobrado',price:200000,trainingXp:300,trainingPercent:1,petRestPercent:35,reserveRestSlots:1,sleepXpPercent:7},
   {id:'mansao',name:'Mansão',price:600000,trainingXp:450,trainingPercent:1.25,petRestPercent:50,reserveRestSlots:2,sleepXpPercent:9},
   {id:'cobertura',name:'Cobertura',price:1500000,trainingXp:650,trainingPercent:1.5,petRestPercent:70,reserveRestSlots:3,sleepXpPercent:12},
-]
+].map(row=>effectiveAsset(row))
 
 export const CARS=[
   {id:'popular',name:'Chevrolet Corsa',price:35000},
@@ -47,7 +48,7 @@ export const CARS=[
   {id:'lamborghini_revuelto',name:'Lamborghini Revuelto',price:3000000},
   {id:'mclaren_p1',name:'McLaren P1',price:4500000},
   {id:'hipercarro',name:'Bugatti Chiron Super Sport',price:6000000},
-]
+].map(row=>effectiveAsset(row))
 
 export const MOTORCYCLES=[
   {id:'bicicleta',name:'Bicicleta',price:1500},
@@ -56,7 +57,7 @@ export const MOTORCYCLES=[
   {id:'moto_300',name:'Moto 300cc',price:35000},
   {id:'moto_600',name:'Moto 600cc',price:90000},
   {id:'moto_1000',name:'Superbike 1000cc',price:220000},
-]
+].map(row=>effectiveAsset(row))
 
 export const UBER_TIERS={
   popular:{category:'UberX — Corsa',min:320,max:620},
@@ -1336,19 +1337,26 @@ function sqlCase(column,catalog){
   return 'CASE '+catalog.map(x=>`WHEN ${column}='${x.id}' THEN ${x.price}`).join(' ')+' ELSE 0 END'
 }
 const houseCase=sqlCase('h.house_id',HOUSES)
-const carCase=sqlCase('uc.car_id',CARS)
-const motorcycleCase=sqlCase('um.motorcycle_id',MOTORCYCLES)
+const carCase=rebootEconomyEnabled()?'FLOOR(GREATEST(0,uc.price_paid)*0.70)':sqlCase('uc.car_id',CARS)
+const motorcycleCase=rebootEconomyEnabled()?'FLOOR(GREATEST(0,um.price_paid)*0.70)':sqlCase('um.motorcycle_id',MOTORCYCLES)
 const RAID_MATERIAL_PATRIMONY_SQL = "('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')"
 const RAID_MATERIAL_PATRIMONY_VALUE=100 // Igual ao preço de recompra do bot; nunca R$100 mil por raridade.
+const inventoryPatrimonyCase=rebootEconomyEnabled()?`CASE
+        WHEN it.sellable=FALSE THEN 0
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
+        WHEN it.price>0 THEN GREATEST(1,FLOOR(it.price*0.50))
+        WHEN it.rarity='legendary' THEN 8000 WHEN it.rarity='epic' THEN 2000
+        WHEN it.rarity='rare' THEN 800 WHEN it.rarity='uncommon' THEN 250 ELSE 100 END`:
+        `CASE
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
+        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
+        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END`
 
 export async function getPatrimony(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
-        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
-        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
-        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*${inventoryPatrimonyCase}),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id
       WHERE i.jid=$1
       GROUP BY i.jid
@@ -1404,10 +1412,7 @@ export async function getPatrimony(jid){
 export async function patrimonyLeaderboard(limit=10){
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
-        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
-        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
-        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*${inventoryPatrimonyCase}),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id GROUP BY i.jid
     ),
     cars AS (
