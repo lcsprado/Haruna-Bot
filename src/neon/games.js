@@ -608,11 +608,16 @@ export async function answerQuiz(chat,jid,answer){
     }
     await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
-    const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-    const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-    const reward=correct?1000*moneyMultiplier*groupMultiplier:0
+    const reboot=rebootEconomyEnabled()
+    const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(c,'money')
+    const groupMultiplier=reboot?1:await groupGamesEventMultiplier(c,chat)
+    let reward=correct?(reboot?100:1000)*moneyMultiplier*groupMultiplier:0
+    if(reboot&&reward>0){
+      const cd=await claimCooldown(c,`v2:casual-game-reward:${jid}`,1800)
+      if(!cd.ok) reward=0
+    }
     if(reward) await credit(c,jid,reward,'quiz')
-    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier*groupMultiplier}
+    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier*groupMultiplier,...(reboot?{rewardCooldown:correct&&reward===0}:{})}
   })
 }
 
@@ -636,11 +641,17 @@ export async function guessNumber(chat,jid,guess){
     s.attempts++
     if(guess===Number(s.number)){
       await clearGame(c,chat,'numero')
-      const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-      const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-      const reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier*groupMultiplier
-      await credit(c,jid,reward,'adivinhar-numero')
-      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier*groupMultiplier}
+      const reboot=rebootEconomyEnabled()
+      const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(c,'money')
+      const groupMultiplier=reboot?1:await groupGamesEventMultiplier(c,chat)
+      let reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier*groupMultiplier
+      if(reboot){
+        reward=Math.floor(reward/10)
+        const cd=await claimCooldown(c,`v2:casual-game-reward:${jid}`,1800)
+        if(!cd.ok) reward=0
+      }
+      if(!reboot||reward>0) await credit(c,jid,reward,'adivinhar-numero')
+      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier*groupMultiplier,...(reboot?{rewardCooldown:reward===0}:{})}
     }
     if(s.attempts>=s.max){
       await clearGame(c,chat,'numero')
