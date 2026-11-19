@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 6
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: alpha_ci
           POSTGRES_PASSWORD: v2_disposable_ci_only
@@ -48,3 +48,24 @@ jobs:
           ln -s "$RUNNER_TEMP/alpha-v2-pg/node_modules" "$GITHUB_WORKSPACE/node_modules"
       - name: Teste real sem WhatsApp, Web ou servicos externos
         run: node --test test/reboot-postgres-real-combat.integration.test.mjs
+      - name: Validar dump e restore SINTETICOS no PostgreSQL descartavel
+        env:
+          LOCAL_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          test -n "$LOCAL_PG_CONTAINER"
+          DUMP="$RUNNER_TEMP/alpha-reboot-synthetic.dump"
+          docker exec "$LOCAL_PG_CONTAINER" pg_dump -U alpha_ci -d alpha_reboot_ci -Fc --no-owner --no-acl > "$DUMP"
+          test -s "$DUMP"
+          sha256sum "$DUMP" > "$DUMP.sha256"
+          sha256sum -c "$DUMP.sha256"
+          docker exec -i "$LOCAL_PG_CONTAINER" pg_restore --list < "$DUMP" > "$DUMP.toc"
+          test -s "$DUMP.toc"
+          docker exec "$LOCAL_PG_CONTAINER" createdb -U alpha_ci alpha_reboot_restore_ci
+          docker exec -i "$LOCAL_PG_CONTAINER" pg_restore --exit-on-error --no-owner --no-acl -U alpha_ci -d alpha_reboot_restore_ci < "$DUMP"
+          Q="SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM wallets),(SELECT coalesce(sum(cash+bank),0) FROM wallets),(SELECT count(*) FROM inventories),(SELECT coalesce(sum(quantity),0) FROM inventories),(SELECT count(*) FROM transactions),(SELECT count(*) FROM trevo_games),(SELECT count(*) FROM pet_collection),(SELECT count(*) FROM information_schema.tables WHERE table_schema='public');"
+          docker exec "$LOCAL_PG_CONTAINER" psql -XAt -v ON_ERROR_STOP=1 -U alpha_ci -d alpha_reboot_ci -c "$Q" > "$RUNNER_TEMP/alpha-original.counts"
+          docker exec "$LOCAL_PG_CONTAINER" psql -XAt -v ON_ERROR_STOP=1 -U alpha_ci -d alpha_reboot_restore_ci -c "$Q" > "$RUNNER_TEMP/alpha-restored.counts"
+          diff -u "$RUNNER_TEMP/alpha-original.counts" "$RUNNER_TEMP/alpha-restored.counts"
+          echo 'ALPHA_V2_SYNTHETIC_RESTORE_OK'
+          rm -f "$DUMP" "$DUMP.sha256" "$DUMP.toc" "$RUNNER_TEMP/alpha-original.counts" "$RUNNER_TEMP/alpha-restored.counts"

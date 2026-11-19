@@ -59,6 +59,15 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       await db.query('INSERT INTO player_class_levels(jid,class_id,level,xp) VALUES($1,$2,90,0) ON CONFLICT(jid,class_id) DO UPDATE SET level=90,xp=0',[jid,role])
       await db.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'espada_ferro',1),($1,'armadura_couro',1)",[jid])
     }
+    // Valid catalogue species with one unit of energy and two living allies.
+    // These are synthetic test assets, never copied from production.
+    const species=['cervo_aurora_viva','guardiao_nucleo_vital','quimera_rubra']
+    for(let n=0;n<species.length;n++){
+      const jid=jids[0],energy=n===0?1:2
+      const r=await db.query('INSERT INTO pet_collection(jid,species,name,level,xp,hp,max_hp,energy,active) VALUES($1,$2,$2,90,0,400,400,$3,$4) RETURNING id',[jid,species[n],energy,n===0])
+      await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,n+1,r.rows[0].id])
+      if(n===0)await db.query('INSERT INTO pets(jid,species,name,level,xp,hp,max_hp,energy) VALUES($1,$2,$2,90,0,400,400,$3)',[jid,species[n],energy])
+    }
     let clock=realNow()+10000
     Date.now=()=>clock
     Math.random=()=>.75
@@ -68,6 +77,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     assert.equal(active.status,'active')
     assert.equal(Object.keys(active.players).length,4)
     assert.equal(active.maxHp,Math.round(cfg.hp*1.36))
+    assert.equal(active.players[jids[0]].teamSynergy?.vitalPulse,.05)
     for(const jid of jids){
       assert.equal(Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])).rows[0].quantity),0)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0].cash),98000)
@@ -82,6 +92,12 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       assert.equal(progressed.length,1)
       outcome=progressed[0]
       rounds++
+      if(rounds===1||rounds===2){
+        const saved=(await db.query("SELECT state FROM trevo_games WHERE chat_jid=$1 AND game_type='raid:10'",[chat])).rows[0].state.players[jids[0]]
+        assert.equal(saved.pet.energy,0)
+        assert.equal(saved.pet.turns,1)
+        assert.equal(Number(saved.teamSynergy?.vitalPulse||0),rounds===1?.05:0)
+      }
       if(outcome.victory||outcome.failed)break
     }
     assert.equal(outcome?.victory,true)
@@ -146,7 +162,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     await createRaid(highChat,jids[1],'Solo',70)
     await assert.rejects(startRaid(highChat,jids[1],70),/3 jogadores/)
     assert.equal(Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jids[1],high.keyId])).rows[0].quantity),1)
-    console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true}))
+    console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom
     await db.end()
