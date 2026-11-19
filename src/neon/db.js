@@ -5393,8 +5393,9 @@ await client.query(
 )
 const elapsed=Math.max(0,now-Number(row.started_at))
 const progress=Math.min(1,elapsed/total)
-const xp=Math.floor(Number(row.xp_reward||0)*progress)
-const cashReward=Math.floor(Number(row.cash_reward||0)*progress)
+const partialPlan=CARPINAR_PLANS[Number(row.hours)]
+const xp=Math.floor((classesOnlyRebootEnabled()?Math.max(0,Math.min(Number(row.xp_reward||0),Number(partialPlan?.xp||0))):Number(row.xp_reward||0))*progress)
+const cashReward=Math.floor((classesOnlyRebootEnabled()?Math.max(0,Math.min(Number(row.cash_reward||0),Number(partialPlan?.cash||0))):Number(row.cash_reward||0))*progress)
 const level=xp>0?await applyExp(client,jid,xp):null
 if(cashReward>0){
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashReward,jid])
