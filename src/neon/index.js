@@ -456,7 +456,7 @@ if(r.dead){
 const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017'||r.eventId===COLLAB_FARM_ID) && Boolean(r.nextPhase)
 completed=!nextPecado;
 for(const player of r.rewards||[]){
-if(Number(player.share||0)>=0.02){
+if(Number(player.share||0)>=0.02&&(!classesOnlyRebootEnabled()||r.mode!=='common'||Number(player.exp||0)>0)){
 await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
 await recordAscensionVeteranActivity(db,player.jid,'boss')
   .catch(err=>console.error('[ASCENSAO] prova Boss',err?.message||err))
@@ -1277,7 +1277,7 @@ for(const c of board.contracts){
 const eligible=board.level>=c.level
 const selected=board.active?.contract_id===c.id
 const status=selected?(board.active.claimed?'✅ RESGATADO':`📌 ACEITO • ${board.active.progress}/${board.active.target}`):(eligible?'🟢 Disponível':'🔒 Bloqueado')
-text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 Caixa Épica':''}\n${status}\n\n`
+text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 '+(c.item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n${status}\n\n`
 }
 text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
 return text.trim()
@@ -3519,7 +3519,7 @@ return q
 async function quizAnswerRequested(chat,sender,answer,reply,isGroup){
 const r=await answerQuiz(chat,sender,answer)
 if(r.correct&&isGroup)await progressGroupMission(chat,sender,'quiz')
-await reply((r.correct?'✅ *Acertou!* +R$ '+fmt(r.reward)+'\nResposta: *'+r.correctText+'*':
+await reply((r.correct?'✅ *Acertou!* '+(r.rewardCooldown?'Prêmio em recarga (30 min entre Quiz e Número).':'+R$ '+fmt(r.reward))+'\nResposta: *'+r.correctText+'*':
 '❌ Errou. A resposta correta era *'+r.correctAnswer+'. '+r.correctText+'*.')+'\n\n'+quizFinishPrompt)
 quizAwaitChoice(chat)
 return r
@@ -5369,7 +5369,7 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • ${classesOnlyRebootEnabled()?'150 mil HP • ATK 45 • fundo R$ 40 mil':'8–9,5 milhões HP • ATK 200'} • 1 Boss global por fim de semana
 💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
 ⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
-${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e chance de Caixa da Sorte com 2% de participação.':'🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã\n🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único'}
+${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e chance de Caixa da Sorte com 2% de participação. Prêmio por jogador a cada 1h, compartilhado entre grupos.':'🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã\n🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único'}
 🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
 9️⃣ Voltar • 0️⃣ Fechar`,
 '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
@@ -7168,7 +7168,7 @@ return true
 }
 const r=await guessNumber(chat,sender,n)
 if(r.won){
-await afterGame('number',{},`🎉 *ACERTOU!* O número era *${r.number}*.\n💰 +R$ ${fmt(r.reward)}\nTentativas: ${r.attempts}`)
+await afterGame('number',{},`🎉 *ACERTOU!* O número era *${r.number}*.\n${r.rewardCooldown?'⏳ Prêmio em recarga (30 min entre Quiz e Número).':'💰 +R$ '+fmt(r.reward)}\nTentativas: ${r.attempts}`)
 }else if(r.lost){
 await afterGame('number',{},`💀 Acabaram as tentativas. O número era *${r.number}*.`)
 }else{
@@ -12115,10 +12115,10 @@ await reply(out)
 await reply(await alphaContractBoardMessage(sender))
 } else if(['aceitarcontrato','contratoaceitar'].includes(cmd)){
 const r=await acceptAlphaContract(sender,args[0])
-await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + Caixa Épica':''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
+await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + '+(r.reward_item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
 } else if(['resgatarcontrato','contratoresgatar'].includes(cmd)){
 const r=await claimAlphaContract(sender)
-await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 Caixa Épica':''}\n✅ Prêmios creditados na sua conta!`)
+await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 '+(r.reward_item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n✅ Prêmios creditados na sua conta!`)
 } else if(['pegar'].includes(cmd)){
 if(!isGroup) return
 const r=await claimGroupEvent(chat,sender)
@@ -13243,7 +13243,7 @@ await reply(`🔢 *ADIVINHE O NÚMERO*\n\nEscolhi um número de *1 a 100*.\nVoc�
 } else if(['chute'].includes(cmd)){
 const guess=parseInt(args[0]||'0',10)
 const r=await guessNumber(chat,sender,guess)
-if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
+if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n${r.rewardCooldown?'⏳ Prêmio em recarga (30 min entre Quiz e Número).':'💰 Prêmio: R$ '+fmt(r.reward)}`)
 if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
 await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
 } else if(['invocarpet','altarpets','altarpets','lojalendaria'].includes(cmd)){
