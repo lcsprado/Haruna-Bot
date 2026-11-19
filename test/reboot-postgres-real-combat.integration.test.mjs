@@ -15,13 +15,19 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
   assert.equal(process.env.ALPHA_REBOOT_MODE,'classes_only')
   assert.equal(process.env.ALPHA_REBOOT_DB_CONFIRMED,'isolated-v2')
   assert.notEqual(process.env.ALPHA_REBOOT_ALLOW_WHATSAPP,'cutover-approved')
-  const {db,initDatabase,initCommunityPack,ensureUser,transaction,grantExpInTransaction,claimCooldown}=await import('../src/neon/db.js')
+  const {db,initDatabase,initCommunityPack,ensureUser,grantExpInTransaction,claimCooldown}=await import('../src/neon/db.js')
   const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
   const {initAwakening}=await import('../src/neon/awakening.js')
   const {initRelics}=await import('../src/neon/relics.js')
   const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
   const {initRaidLoteStore}=await import('../src/neon/raid-lote-store.js')
   const {initGames,getRaidCatalog,createRaid,joinRaid,startRaid,raidRound}=await import('../src/neon/games.js')
+  async function transaction(fn){
+    const c=await db.connect()
+    try{await c.query('BEGIN');const value=await fn(c);await c.query('COMMIT');return value}
+    catch(e){await c.query('ROLLBACK');throw e}
+    finally{c.release()}
+  }
   const realNow=Date.now,realRandom=Math.random
   const jids=['5511000000001','5511000000002','5511000000003','5511000000004'].map(x=>x+'@s.whatsapp.net')
   const roles=['paladin','samurai','berserker','necromancer']
