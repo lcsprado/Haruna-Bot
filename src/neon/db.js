@@ -5248,16 +5248,7 @@ const CARPINAR_PLANS={
 export function getCarpinarPlans(){
 return Object.values(CARPINAR_PLANS).map(x=>({...x}))
 }
-export async function resolvePlayerCarpinar(jid){
-await ensureUser(jid)
-return transaction(async client=>{
-const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-if(!row) return null
-const now=Math.floor(Date.now()/1000)
-const currentPlan=CARPINAR_PLANS[Number(row.hours)]||null
-const upgradedXp=Math.max(Number(row.xp_reward||0),Number(currentPlan?.xp||0))
-const upgradedCash=Math.max(Number(row.cash_reward||0),Number(currentPlan?.cash||0))
-if(Number(row.ends_at)>now) return {active:true,...row,xp_reward:upgradedXp,cash_reward:upgradedCash,rare_box_chance:Number(currentPlan?.rareBoxChance||0),remaining:Number(row.ends_at)-now}
+async function settleCompletedCarpinar(client,jid,row,upgradedXp,upgradedCash){
 const xp=upgradedXp
 const cash=upgradedCash
 const level=await applyExp(client,jid,xp)
@@ -5310,6 +5301,18 @@ found={type:'cash',label:'Dinheiro encontrado',cash:bonusCash}
 }
 await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
 return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),found,level}
+}
+export async function resolvePlayerCarpinar(jid){
+await ensureUser(jid)
+return transaction(async client=>{
+const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!row) return null
+const now=Math.floor(Date.now()/1000)
+const currentPlan=CARPINAR_PLANS[Number(row.hours)]||null
+const upgradedXp=classesOnlyRebootEnabled()?Math.min(Number(row.xp_reward||0),Number(currentPlan?.xp||0)):Math.max(Number(row.xp_reward||0),Number(currentPlan?.xp||0))
+const upgradedCash=classesOnlyRebootEnabled()?Math.min(Number(row.cash_reward||0),Number(currentPlan?.cash||0)):Math.max(Number(row.cash_reward||0),Number(currentPlan?.cash||0))
+if(Number(row.ends_at)>now) return {active:true,...row,xp_reward:upgradedXp,cash_reward:upgradedCash,rare_box_chance:Number(currentPlan?.rareBoxChance||0),remaining:Number(row.ends_at)-now}
+return settleCompletedCarpinar(client,jid,row,upgradedXp,upgradedCash)
 })
 }
 export async function startPlayerCarpinar(jid,hours){
@@ -5325,9 +5328,15 @@ const existing=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 F
 if(existing&&Number(existing.ends_at)>now){
 return {active:true,...existing,remaining:Number(existing.ends_at)-now,started:false}
 }
+let previousSettlement=null
 if(existing){
+if(classesOnlyRebootEnabled()){
+const oldPlan=CARPINAR_PLANS[Number(existing.hours)]
+previousSettlement=await settleCompletedCarpinar(client,jid,existing,Math.min(Number(existing.xp_reward||0),Number(oldPlan?.xp||0)),Math.min(Number(existing.cash_reward||0),Number(oldPlan?.cash||0)))
+}else{
 await applyExp(client,jid,Number(existing.xp_reward||0))
 await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+}
 }
 const activeRaid=await client.query(
 "SELECT 1 FROM trevo_games WHERE game_type='raid' AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",
@@ -5348,6 +5357,7 @@ ends_at:endsAt,
 xp_reward:plan.xp,
 cash_reward:plan.cash,
 rare_box_chance:plan.rareBoxChance,
+...(previousSettlement?{previousSettlement}:{}),
 remaining:plan.hours*60*60
 }
 })
@@ -5360,6 +5370,11 @@ if(!row) throw new Error('Você não está carpindo.')
 const now=Math.floor(Date.now()/1000)
 const remaining=Math.max(0,Number(row.ends_at)-now)
 if(remaining<=0){
+if(classesOnlyRebootEnabled()){
+const plan=CARPINAR_PLANS[Number(row.hours)]
+const settlement=await settleCompletedCarpinar(client,jid,row,Math.min(Number(row.xp_reward||0),Number(plan?.xp||0)),Math.min(Number(row.cash_reward||0),Number(plan?.cash||0)))
+return {...settlement,natural:true,fee:0,remaining:0}
+}
 const xp=Number(row.xp_reward||0)
 const level=xp>0?await applyExp(client,jid,xp):null
 await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
