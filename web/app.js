@@ -1085,6 +1085,7 @@ async function openWebPage(page){
   window.scrollTo({top:0,left:0,behavior:'auto'});
 }
 function actionFeedback(name,result){
+  if((name==='game.quiz.answer'||name==='game.number.guess')&&result?.rewardCooldown) return '✅ Acertou! Prêmio em recarga (30 min entre Quiz e Número).';
   if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
   if(name==='daily'&&result&&result.ok) return '🎁 Bônus diário recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
