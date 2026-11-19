@@ -1365,6 +1365,18 @@ if(!jid) return jid
 if(jid.endsWith('@s.whatsapp.net')) return jid.replace(/:\\d+(?=@)/,'')
 return jid
 }
+// V2: compare full identities, never just digits across phone and LID namespaces.
+function verifiedRebootOwner({sender,rawSender,ownerJid,ownerNumber,ownerLid,pairingNumber}){
+  const normalize=value=>String(value||'').replace(/:\d+(?=@)/,'')
+  const configured=normalize(ownerJid|| (ownerNumber?ownerNumber+'@s.whatsapp.net':''))
+  const expected=configured || (!ownerLid&&pairingNumber?pairingNumber+'@s.whatsapp.net':'')
+  const phone=/^\d{10,15}@s\.whatsapp\.net$/
+  const lid=/^\d+@lid$/
+  const resolved=normalize(sender),raw=normalize(rawSender)
+  if(phone.test(expected)) return resolved===expected && (phone.test(raw)?raw===expected:lid.test(raw))
+  if(lid.test(expected)) return raw===expected && (resolved===expected||phone.test(resolved))
+  return false
+}
 function normalizedAddressJid(jid){
 return String(jid||'').replace(/:\d+(?=@)/,'')
 }
@@ -1431,7 +1443,7 @@ if(!phoneJid && canonicalLid(jid) && !identityConflict){
 try{phoneJid=await verifiedLidDirectory.lookup(jid) || await verifiedLidDirectory.recoverFromActiveGroups(jid,sock);if(phoneJid)aliases.add(phoneJid)}catch(err){console.warn('[Identity] verified lookup unavailable',String(err?.message||err).slice(0,100))}
 }
 if(identityConflict){for(const alias of [...aliases])if(canonicalLid(alias))aliases.delete(alias);if(canonicalLid(jid))phoneJid=null}
-if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
+if(ownerLid && ownerNumber && (!classesOnlyRebootEnabled()||(!identityConflict&&normalizedAddressJid(jid)===ownerLid&&(!phoneJid||phoneJid===ownerNumber+'@s.whatsapp.net'))) && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
 const canonicalOwner=ownerNumber+'@s.whatsapp.net'
 aliases.add(ownerLid)
 aliases.add(canonicalOwner)
@@ -10492,7 +10504,9 @@ const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt,...(senderIdentit
 .filter(Boolean)
 .map(v=>String(canonicalPlayerJid(v)).split('@')[0].replace(/\D/g,''))
 const configuredOwnerDigits=ownerDigits || pairingNumber
-const isOwner=Boolean(configuredOwnerDigits) && (
+const isOwner=classesOnlyRebootEnabled()
+?verifiedRebootOwner({sender,rawSender,ownerJid,ownerNumber,ownerLid,pairingNumber})
+:Boolean(configuredOwnerDigits) && (
 sender===ownerJid ||
 senderCanonical===ownerCanonical ||
 senderDigits===configuredOwnerDigits ||
@@ -10620,7 +10634,7 @@ if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
 let ownerTarget=sender
 // A menção crua do WhatsApp pode ser @lid; nunca passar isso ao financeiro.
-if(isOwner && ['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)){
+if(isOwner && (['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='daritem'))){
   const ownerMention=mentionsOf(msg)[0]
   if(ownerMention){
     ownerTarget=await resolveVerifiedAdminTarget(sock,chat,ownerMention,msg)
