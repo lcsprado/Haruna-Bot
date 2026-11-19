@@ -121,9 +121,11 @@ test('unrelated progression and daily data remain frozen while approved hero mec
   // SHA-256 recalculados a partir da whatsapp-only oficial (71f065b1, 16/11/2026).
   // O reboot opt-in autorizou mudança em daily-v2.js, mas os valores da V1 e a proteção SHA continuam verificados.
   // Revisão V2 de 18/11: apenas a apresentação de nextMark usa os valores da nova política.
+  // Revisão 19/11: init diário V2 sem reparo histórico; validação dos marcos da temporada.
+  // SHA confirmado na regressão d83e0f4, com teste real de PostgreSQL aprovado.
   // A proteção continua estrita: qualquer alteração futura exige revisão do teste.
   const expected={
-    'daily-v2.js':'70670996c0532b161267878fb39c6dfdf81aaf48f1601c9f8463ac920d34ed56'
+    'daily-v2.js':'51f55c4fff5fe932cfced143bd6885f1027eb7df5e7b5df6f37b2eb41c993566'
   }
   // A mudança em progression.js é autorizada SOMENTE no caminho opt-in da V2.
   const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
