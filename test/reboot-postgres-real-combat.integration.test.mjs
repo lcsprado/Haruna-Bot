@@ -400,6 +400,56 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         assert.deepEqual(failures,[])
         console.log('ALPHA_V2_CHROMIUM_OK',JSON.stringify({desktop:true,mobile390:true,fourClasses:true,oldAccountClearedOnCode:true,reloadRequiresPassword:true,accountSwitch:true,logout:true}))
         await context.close()
+        // A separate browser context allows the real service worker to install.
+        // Seed a deliberately obsolete cache before loading the current shell.
+        const pwa=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'})
+        await pwa.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort())
+        const installed=await pwa.newPage()
+        await installed.goto(origin+'/version.json')
+        await installed.evaluate(async()=>{
+          const old=await caches.open('alpha-rpg-pwa-20261116-no-npcs-v1')
+          await old.put('/app.js',new Response('obsolete-test-placeholder',{headers:{'content-type':'text/javascript'}}))
+        })
+        await installed.goto(origin+'/rpg')
+        await installed.waitForFunction(()=>Boolean(navigator.serviceWorker.controller),{},{timeout:20000})
+        const cacheInfo=await installed.evaluate(async()=>{
+          const names=await caches.keys()
+          const active=await caches.open('alpha-rpg-pwa-20261119-identity-v2')
+          const entries=(await active.keys()).map(req=>new URL(req.url).pathname)
+          const js=await (await active.match('/app.js')).text()
+          return {names,entries,current:js.includes('alpha-web-reboot-20261119-identity-v2')&&js.includes("window.addEventListener('hashchange'")}
+        })
+        assert.ok(!cacheInfo.names.includes('alpha-rpg-pwa-20261116-no-npcs-v1'))
+        assert.ok(cacheInfo.names.includes('alpha-rpg-pwa-20261119-identity-v2'))
+        assert.ok(cacheInfo.current)
+        for(const path of ['/rpg','/app.js','/styles.css','/manifest.webmanifest','/racing-ui.js','/clan-siege-ui.js'])assert.ok(cacheInfo.entries.includes(path),'missing PWA shell '+path)
+        await installed.reload()
+        await installed.locator('#loginPhone').fill(phoneB)
+        await installed.locator('#loginPassword').fill(passwordB)
+        await installed.locator('#passwordLoginForm button[type=submit]').click()
+        await installed.locator('#miniProfile').getByText('CI samurai',{exact:true}).waitFor({timeout:15000})
+        assert.deepEqual(await installed.evaluate(async()=>{
+          const matches=[]
+          for(const name of await caches.keys()){
+            for(const entry of await (await caches.open(name)).keys())if(new URL(entry.url).pathname.startsWith('/api/'))matches.push('API')
+          }
+          return matches
+        }),[],'Authenticated API must never be cached by PWA')
+        await pwa.setOffline(true)
+        const apiOffline=await installed.evaluate(async()=>{
+          try{await fetch('/api/v1/me/bootstrap',{headers:{authorization:'Bearer '+localStorage.getItem('alphaWebTokenV1')}});return false}catch{return true}
+        })
+        assert.equal(apiOffline,true,'Service worker must not serve authenticated profile while offline')
+        await pwa.setOffline(false)
+        await installed.locator('#menuBtn').click()
+        await installed.locator('#logoutBtn').click()
+        await installed.locator('#loginOverlay').waitFor({state:'visible'})
+        assert.equal(await installed.evaluate(()=>localStorage.getItem('alphaWebTokenV1')),null)
+        await installed.reload()
+        await installed.locator('#passwordLoginForm').waitFor({state:'visible'})
+        assert.equal(await installed.locator('#app').isVisible(),false)
+        await pwa.close()
+        console.log('ALPHA_V2_PWA_OK',JSON.stringify({workerActivated:true,oldCachePurged:true,currentAssets:true,apiNotCached:true,offlineApiDenied:true,logoutPersists:true}))
       }finally{
         if(browser)await browser.close()
         await new Promise(ok=>server.close(ok))
