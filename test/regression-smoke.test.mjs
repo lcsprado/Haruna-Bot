@@ -310,9 +310,10 @@ test('fuzzy equipment art matching is category gated',()=>{
 
 test('Lucky 3x multiplies roulette profit, not returned stake',()=>{
   assert.ok(games.includes("const baseProfit=basePayout-amount"),'single roulette must separate stake from profit')
-  assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'single roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=amount+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)"),'single roulette must preserve V1 profit multiplier and disable it in V2')
   assert.ok(games.includes("const baseProfit=basePayout-stake"),'group roulette must separate stake from profit')
-  assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'group roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=stake+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)"),'group roulette must preserve V1 profit multiplier and disable it in V2')
+  assert.ok(games.includes("async function groupGamesEventMultiplier(queryable,chat){\n  if(rebootEconomyEnabled()) return 1"),'V2 must ignore legacy group multiplier')
 })
 
 
