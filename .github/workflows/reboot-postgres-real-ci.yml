@@ -1,0 +1,50 @@
+name: Alpha V2 - PostgreSQL descartavel
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/**'
+      - 'test/reboot-postgres-real-combat.integration.test.mjs'
+      - '.github/workflows/reboot-postgres-real-ci.yml'
+      - 'STATUS_V2.md'
+permissions:
+  contents: read
+jobs:
+  v2-real-raid:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/reboot-classes-only-20261117'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: alpha_ci
+          POSTGRES_PASSWORD: v2_disposable_ci_only
+          POSTGRES_DB: alpha_reboot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_ci -d alpha_reboot_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ALPHA_V2_TEST_DATABASE_URL: postgresql://alpha_ci:v2_disposable_ci_only@127.0.0.1:5432/alpha_reboot_ci
+      DATABASE_URL: postgresql://alpha_ci:v2_disposable_ci_only@127.0.0.1:5432/alpha_reboot_ci
+      ALPHA_REBOOT_MODE: classes_only
+      ALPHA_REBOOT_DB_CONFIRMED: isolated-v2
+      RAID_LOTE_V1_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar somente driver pg
+        run: |
+          mkdir -p "$RUNNER_TEMP/alpha-v2-pg"
+          npm install --prefix "$RUNNER_TEMP/alpha-v2-pg" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund pg@8.13.0
+          ln -s "$RUNNER_TEMP/alpha-v2-pg/node_modules" "$GITHUB_WORKSPACE/node_modules"
+      - name: Teste real sem WhatsApp, Web ou servicos externos
+        run: node --test test/reboot-postgres-real-combat.integration.test.mjs
