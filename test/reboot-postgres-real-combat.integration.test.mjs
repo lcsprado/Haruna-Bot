@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {Readable} from 'node:stream'
 
 // Only a disposable local PostgreSQL made for this CI job; never remote DSNs.
 const dsn=process.env.ALPHA_V2_TEST_DATABASE_URL
@@ -243,6 +244,69 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       assert.equal(Number((await db.query("SELECT COUNT(*)::int AS n FROM transactions WHERE to_jid=$1 AND type='minigame' AND note='raid_70'",[jid])).rows[0].n),1)
     }
     console.log('ALPHA_V2_RAID70_COOP_OK',JSON.stringify({rounds:highState.round,cash:264000,netBeforeConsumables:24000,consumableCost,netAfterConsumables:24000-consumableCost,carryDenied:true}))
+    // Invoke the real Web HTTP handler with in-process requests, no listener,
+    // no real WhatsApp connection, no external HTTP or credentials.
+    const {handleWebApi,createWebLinkCode}=await import('../src/neon/web-api.js')
+    const {webTokenHash}=await import('../src/neon/web-password-auth.js')
+    async function request(method,path,body,token,origin){
+      const req=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))])
+      Object.assign(req,{method,url:path,headers:{...(token?{authorization:'Bearer '+token}:{}),...(origin?{origin}:{})},socket:{remoteAddress:'127.0.0.1'}})
+      let status,raw='',headers={}
+      const res={setHeader(k,v){headers[k.toLowerCase()]=v},writeHead(n,h={}){status=n;headers={...headers,...h}},end(v){raw=v===undefined?'':String(v)}}
+      assert.equal(await handleWebApi(req,res),true)
+      return {status,headers,body:raw?JSON.parse(raw):null}
+    }
+    const root='/api/v1',passwordA='CITest-Alpha-A-2026!',passwordB='CITest-Alpha-B-2026!',passwordNew='CITest-Alpha-New-2026!'
+    const phoneA=jids[0].split('@')[0],phoneB=jids[1].split('@')[0]
+    await db.query('UPDATE wallets SET cash=5000,bank=0 WHERE jid=ANY($1::text[])',[jids.slice(0,2)])
+    assert.equal((await request('GET',root+'/health')).status,200)
+    const catalogResponse=await request('GET',root+'/catalog')
+    assert.equal(catalogResponse.status,200)
+    assert.deepEqual(catalogResponse.body.data.classes.map(c=>c.id).sort(),roles.slice().sort())
+    assert.ok(!catalogResponse.body.data.raids.some(r=>Number(r.level)===75))
+    assert.equal((await request('GET',root+'/me/event-center')).status,401)
+    const codeA=await createWebLinkCode(jids[0]),codeB=await createWebLinkCode(jids[1])
+    assert.equal((await request('POST',root+'/auth/exchange',{code:codeA.code})).status,410)
+    const statusA=await request('POST',root+'/auth/code/status',{code:codeA.code})
+    assert.equal(statusA.body.mode,'register')
+    // An adversarial body cannot bind someone else's identity.
+    const registeredA=await request('POST',root+'/auth/register',{code:codeA.code,password:passwordA,phone:phoneB,jid:jids[1]})
+    assert.equal(registeredA.status,200)
+    assert.equal(registeredA.body.phone,phoneA)
+    assert.equal((await request('POST',root+'/auth/register',{code:codeA.code,password:passwordA})).status,400)
+    assert.equal((await request('POST',root+'/auth/register',{code:codeB.code,password:passwordB})).status,200)
+    assert.equal((await request('POST',root+'/auth/login',{phone:phoneB,password:passwordA})).status,400)
+    const login=await request('POST',root+'/auth/login',{phone:phoneA,password:passwordA,jid:jids[1]})
+    assert.equal(login.status,200)
+    const token=login.body.token
+    const session=(await db.query('SELECT jid,auth_method FROM web_sessions WHERE token_hash=$1',[webTokenHash(token)])).rows[0]
+    assert.equal(session.jid,jids[0])
+    assert.equal(session.auth_method,'password')
+    assert.equal((await request('GET',root+'/me/event-center',undefined,token)).status,200)
+    // Legacy tokens must no longer grant access even with a password account.
+    const legacy='ci-legacy-token-only'
+    await db.query("INSERT INTO web_sessions(token_hash,jid,expires_at,created_at,last_seen_at,auth_method) VALUES($1,$2,$3,$4,$4,'legacy')",[webTokenHash(legacy),jids[0],clock+60000,clock])
+    assert.equal((await request('GET',root+'/me/event-center',undefined,legacy)).status,401)
+    const deposited=await request('POST',root+'/action/deposit',{amount:1000,jid:jids[1],phone:phoneB},token)
+    assert.equal(deposited.status,200)
+    const wallets=(await db.query('SELECT jid,cash,bank FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid',[jids.slice(0,2)])).rows
+    assert.deepEqual(wallets.map(w=>[Number(w.cash),Number(w.bank)]),[[4000,1000],[5000,0]])
+    const hiddenPet=(await db.query('SELECT id FROM pet_collection WHERE jid=$1 LIMIT 1',[highJids[0]])).rows[0].id
+    assert.equal((await request('GET',root+'/me/pet-team-preview?ids='+hiddenPet,undefined,token)).status,400)
+    assert.notEqual((await request('POST',root+'/action/hero.select',{heroId:'pecado_ban'},token)).status,200)
+    assert.notEqual((await request('POST',root+'/action/raid.create',{level:75},token)).status,200)
+    const recover=await createWebLinkCode(jids[0])
+    assert.equal((await request('POST',root+'/auth/code/status',{code:recover.code})).body.mode,'recover')
+    const recovered=await request('POST',root+'/auth/recover',{code:recover.code,password:passwordNew})
+    assert.equal(recovered.status,200)
+    assert.equal((await request('GET',root+'/me/event-center',undefined,token)).status,401)
+    assert.equal((await request('POST',root+'/auth/login',{phone:phoneA,password:passwordA})).status,400)
+    const fresh=await request('POST',root+'/auth/login',{phone:phoneA,password:passwordNew})
+    assert.equal(fresh.status,200)
+    assert.equal((await request('POST',root+'/auth/logout',{},fresh.body.token)).status,200)
+    assert.equal((await request('GET',root+'/me/event-center',undefined,fresh.body.token)).status,401)
+    // No secret, token, phone or password is included in the marker.
+    console.log('ALPHA_V2_WEB_HTTP_OK',JSON.stringify({passwordRequired:true,codeSingleUse:true,sessionIsolation:true,legacyTokenDenied:true,foreignPetDenied:true,recoveryRevokes:true,logoutRevokes:true,catalogFourClasses:true}))
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom

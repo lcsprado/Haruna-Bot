@@ -44,7 +44,7 @@ jobs:
       - name: Instalar somente driver pg
         run: |
           mkdir -p "$RUNNER_TEMP/alpha-v2-pg"
-          npm install --prefix "$RUNNER_TEMP/alpha-v2-pg" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund pg@8.13.0
+          npm install --prefix "$RUNNER_TEMP/alpha-v2-pg" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund pg@8.13.0 dotenv@16.4.7
           ln -s "$RUNNER_TEMP/alpha-v2-pg/node_modules" "$GITHUB_WORKSPACE/node_modules"
       - name: Teste real sem WhatsApp, Web ou servicos externos
         run: node --test test/reboot-postgres-real-combat.integration.test.mjs
