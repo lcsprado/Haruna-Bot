@@ -1689,6 +1689,7 @@ export async function raidRound(chat,level){
     const events=[]
     // Mantém apenas um débito automático por pet por rodada (inclusive reanimação prévia).
     const preRoundPetHeals=new Map()
+    const classFinalRoundHealing=new Map()
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
@@ -1822,6 +1823,11 @@ export async function raidRound(chat,level){
         p.hp=Math.min(Number(p.maxHp),hpBefore+Number(classHit.heal))
         const healed=Math.max(0,Number(p.hp)-hpBefore)
         p.classHealing=Number(p.classHealing||0)+healed
+        if(rebootEconomyEnabled()&&!p.heroId&&healed>0){
+          const max=Number(p.heroPersistentMaxHp||p.maxHp)
+          const delta=restoreVitalPersistentHp(p.hp,p.maxHp,max)-restoreVitalPersistentHp(hpBefore,p.maxHp,max)
+          if(delta>0)classFinalRoundHealing.set(p.jid,{delta,max})
+        }
         if(healed>0) p.classHealingActivations=Number(p.classHealingActivations||0)+1
       }
       if(p.heroId==='pecado_king'&&Number(classHit.allyHeal||0)>0){
@@ -1848,7 +1854,15 @@ export async function raidRound(chat,level){
       // Finalização antes da fase defensiva: persistir cura do último ataque
       // e não perder a diferença fracionária quando o herói dá o golpe final.
       for(const player of Object.values(s.players||{})){
-        if(!player.heroId)continue;
+        if(!player.heroId){
+          // Em V2, somar somente a cura real da última fase ofensiva.
+          // Não substituir o HP persistido por um snapshot antigo nem ressuscitar.
+          const heal=classFinalRoundHealing.get(player.jid)
+          if(rebootEconomyEnabled()&&heal){
+            await c.query('UPDATE stats SET hp=LEAST($1,hp+$2) WHERE jid=$3 AND hp>0 AND hp<$1',[heal.max,heal.delta,player.jid])
+          }
+          continue;
+        }
         const settled=persistHeroHpDelta({
           previousPersistentHp:player.heroStoredHp,
           previousCombatHp:player.heroLastHp,currentCombatHp:player.hp,
