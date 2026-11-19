@@ -1,6 +1,7 @@
 // Central de Eventos do Owner — somente o roteador !admin pode alterar estados.
 // As recompensas consultam o banco no momento da ação, sem timers de polling.
 import {db} from './db.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 
 export const OWNER_EVENT_TYPES=Object.freeze({
   xp:{label:'✨ XP do Jogador',max:3,defaultMinutes:20},
@@ -36,16 +37,19 @@ function windowState(type,value,now=Date.now()){
 }
 export async function getOwnerEventMultiplier(queryable=db,type){
   type=validType(type)
+  if(classesOnlyRebootEnabled())return 1
   const {rows}=await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',[valueKey(type)])
   const state=windowState(type,rows[0]?.value)
   return state.active?Math.min(state.max,state.multiplier):1
 }
 export async function getOwnerEvent(type){
   type=validType(type)
+  if(classesOnlyRebootEnabled())return windowState(type,null)
   const {rows}=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[valueKey(type)])
   return windowState(type,rows[0]?.value)
 }
 export async function listOwnerEvents(){
+  if(classesOnlyRebootEnabled())return keys.map(type=>windowState(type,null))
   const {rows}=await db.query('SELECT key,value FROM trevo_settings WHERE key LIKE $1',[prefix+'%'])
   const byKey=new Map(rows.map(r=>[r.key,r.value]))
   return keys.map(type=>windowState(type,byKey.get(valueKey(type))))
@@ -65,6 +69,7 @@ export function parseOwnerEventBrazilDate(dateText,timeText){
   return utc
 }
 export async function setOwnerEvent(type,{minutes,multiplier=2,startsAt=Date.now(),owner='owner'}={}){
+  if(classesOnlyRebootEnabled())throw new Error('Multiplicadores da central antiga indisponíveis na V2; eventos precisam de orçamento próprio.')
   type=validType(type)
   const def=OWNER_EVENT_TYPES[type]
   minutes=Number(minutes??def.defaultMinutes)

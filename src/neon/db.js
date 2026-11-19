@@ -4533,6 +4533,7 @@ return {ok:true,success:false,fine,chance}
 })
 }
 async function readDoubleRewardEvent(queryable=db){
+if(classesOnlyRebootEnabled())return {active:false,scheduled:false,startsAt:0,startedAt:0,endsAt:0,moneyMultiplier:1,xpMultiplier:1,activatedBy:'',remainingMs:0,startsInMs:0}
 const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")
 const raw=rows[0]?.value || {}
 const startsAt=Number(raw?.startsAt||raw?.startedAt||0)
@@ -4565,12 +4566,14 @@ const max=type==='xp'||type==='pet'?3:2
 return Math.min(max,Math.max(1,Number(row.multiplier||1)))
 }
 export async function getDoubleEventMultiplier(queryable=db,kind='money'){
+if(classesOnlyRebootEnabled())return 1
 const event=await readDoubleRewardEvent(queryable)
 const legacy=event.active?(kind==='xp'?event.xpMultiplier:event.moneyMultiplier):1
 const owner=await readOwnerMultiplier(queryable,kind==='xp'?'xp':'dinheiro')
 return Math.max(legacy,owner)
 }
 export async function getPetXpEventMultiplier(queryable=db){
+if(classesOnlyRebootEnabled())return 1
 const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='pet_care_event'")
 const raw=rows[0]?.value||{}
 const now=Date.now()
@@ -4580,6 +4583,7 @@ const legacy=startsAt&&startsAt<=now&&endsAt>now?Math.max(1,Number(raw.multiplie
 return Math.max(legacy,await readOwnerMultiplier(queryable,'pet'))
 }
 export async function startDoubleRewardEvent(minutes=20,activatedBy='owner',moneyMultiplier=2,xpMultiplier=2){
+if(classesOnlyRebootEnabled())throw new Error('Bônus 2x legado indisponível na V2; use os eventos com orçamento da nova temporada.')
 minutes=Number(minutes)
 moneyMultiplier=Number(moneyMultiplier)
 xpMultiplier=Number(xpMultiplier)
@@ -4621,6 +4625,7 @@ ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_
 return readDoubleRewardEvent(db)
 }
 async function readLuckyBoxEvent(queryable=db){
+if(classesOnlyRebootEnabled())return {active:false,scheduled:false,startsAt:0,endsAt:0,multiplier:1,remainingMs:0,startsInMs:0}
 const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")
 const raw=rows[0]?.value || {}
 const startsAt=Number(raw?.startsAt||0)
@@ -4641,6 +4646,7 @@ export async function getLuckyBoxEvent(){
 return readLuckyBoxEvent(db)
 }
 export async function getLuckyBoxMultiplier(queryable=db){
+if(classesOnlyRebootEnabled())return 1
 const event=await readLuckyBoxEvent(queryable)
 return Math.max(event.active?event.multiplier:1,await readOwnerMultiplier(queryable,'sorte'))
 }
