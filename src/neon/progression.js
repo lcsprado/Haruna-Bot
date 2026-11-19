@@ -1805,10 +1805,23 @@ function alphaContractPeriod(now=Date.now()){
   // UTC-3: janelas locais às 00h/04h/08h/12h/16h/20h.
   return Math.floor((now/1000-3*3600)/ALPHA_CONTRACT_SECONDS)
 }
+function effectiveAlphaContractReward(template){
+  if(!rebootEconomyEnabled()) return template
+  return {...template,cash:Math.floor(template.cash/10),xp:Math.floor(template.xp/4),...(template.item?{item:'caixa_rara'}:{})}
+}
+function effectiveAlphaContractRecord(row){
+  if(!row||!rebootEconomyEnabled()||row.claimed) return row
+  const template=ALPHA_CONTRACT_TEMPLATES.flat().find(x=>x.id===row.contract_id)
+  if(!template) throw new Error('Contrato indisponível na V2.')
+  const cap=effectiveAlphaContractReward(template)
+  return {...row,reward_cash:Math.max(0,Math.min(Number(row.reward_cash),cap.cash)),
+    reward_xp:Math.max(0,Math.min(Number(row.reward_xp),cap.xp)),
+    reward_item:row.reward_item&&cap.item?cap.item:null}
+}
 function alphaContractBoardFor(period){
   return ALPHA_CONTRACT_TEMPLATES.map((variants,i)=>{
     const variant=variants[(period+i)%variants.length]
-    return {...variant,number:i+1}
+    return {...effectiveAlphaContractReward(variant),number:i+1}
   })
 }
 export async function getAlphaContractBoard(jid){
@@ -1823,7 +1836,7 @@ export async function getAlphaContractBoard(jid){
     level:Number(levelRow.rows[0]?.level||1),
     nextAt:((period+1)*ALPHA_CONTRACT_SECONDS+3*3600)*1000,
     contracts:alphaContractBoardFor(period),
-    active:activeRow.rows[0]||null
+    active:effectiveAlphaContractRecord(activeRow.rows[0]||null)
   }
 }
 export async function acceptAlphaContract(jid,number){
@@ -1873,13 +1886,14 @@ export async function claimAlphaContract(jid){
       'SELECT * FROM alpha_contracts WHERE jid=$1 AND period=$2 FOR UPDATE',[jid,period]
     )).rows
     if(!rows.length) throw new Error('Você não aceitou nenhum contrato neste quadro. Use !contratos.')
-    const contract=rows[0]
+    const contract=effectiveAlphaContractRecord(rows[0])
     if(contract.claimed) throw new Error('Este contrato já foi resgatado.')
     if(Number(contract.expires_at)<=now) throw new Error('Este contrato expirou.')
     if(Number(contract.progress)<Number(contract.target)) throw new Error(
       `Contrato ainda em andamento: ${contract.progress}/${contract.target}.`
     )
-    await client.query('UPDATE alpha_contracts SET claimed=TRUE WHERE jid=$1 AND period=$2',[jid,period])
+    if(rebootEconomyEnabled()) await client.query('UPDATE alpha_contracts SET claimed=TRUE,reward_cash=$3,reward_xp=$4,reward_item=$5 WHERE jid=$1 AND period=$2',[jid,period,contract.reward_cash,contract.reward_xp,contract.reward_item])
+    else await client.query('UPDATE alpha_contracts SET claimed=TRUE WHERE jid=$1 AND period=$2',[jid,period])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[contract.reward_cash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'alpha_contract',$3)",
       [jid,contract.reward_cash,contract.contract_id])
