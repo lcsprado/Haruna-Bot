@@ -202,6 +202,7 @@ const lucky3xMultiplier=()=>lucky3xActive()?3:1
 const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
 async function groupGamesEventMultiplier(queryable,chat){
+  if(rebootEconomyEnabled()) return 1
   if(!String(chat||'').endsWith('@g.us')) return 1
   const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_games_event:'+chat])).rows[0]
   const raw=row?.value||{}
@@ -225,6 +226,27 @@ async function credit(client,jid,amount,note){
   `,[jid,amount,note])
 }
 
+// V2: o estorno e a remoção da partida devem ser confirmados antes do aviso de erro.
+async function gameTxWithExpiry(fn){
+  const result=await tx(fn)
+  if(result?.v2ExpiredRefund) throw new Error('A partida expirou. Os valores reservados foram devolvidos.')
+  return result
+}
+async function refundExpiredGameV2(c,chat,type,state){
+  if(!rebootEconomyEnabled()||!state||Number(state.expiresAt||0)>Date.now()) return false
+  let reservations
+  if(type==='roulette_group') reservations=Object.entries(state.players||{}).map(([jid,bet])=>[jid,Number(bet.amount)])
+  else if(type==='tournament') reservations=[...new Set(state.players||[])].map(jid=>[jid,Number(state.amount)])
+  else if(type.startsWith('coin_duel:')||type.startsWith('rps_duel:')) reservations=[[state.challenger,Number(state.amount)]]
+  else throw new Error('Tipo de partida inválido para estorno.')
+  for(const [jid,amount] of reservations.sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+    if(!jid||!Number.isSafeInteger(amount)||amount<0) throw new Error('Reserva inválida para estorno.')
+    if(amount>0) await credit(c,jid,amount,'v2-game-expiry-refund:'+type)
+  }
+  await clearGame(c,chat,type)
+  return true
+}
+
 export async function roulette(jid,amount,choice,chat=null){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
@@ -238,12 +260,12 @@ export async function roulette(jid,amount,choice,chat=null){
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
-    if(choice===color && lucky3xPlayerWins()){
+    if(choice===color && (rebootEconomyEnabled()||lucky3xPlayerWins())){
       const basePayout=choice==='verde'?amount*36:amount*2
       const baseProfit=basePayout-amount
       const groupMultiplier=await groupGamesEventMultiplier(c,chat)
       // Eventos multiplicam só o lucro; a aposta devolvida continua 1x.
-      payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)
+      payout=amount+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)
     }
     if(payout) await credit(c,jid,payout,'roleta')
     return {number:n,color,choice,amount,payout,profit:payout-amount}
@@ -258,6 +280,7 @@ export async function createGroupRoulette(chat,host,amount,choice){
   return tx(async c=>{
     const old=await loadGame(c,chat,'roulette_group')
     if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma roleta coletiva aberta neste grupo.')
+    await refundExpiredGameV2(c,chat,'roulette_group',old)
     await debit(c,host,amount)
     const state={host,players:{[host]:{amount,choice}},expiresAt:Date.now()+120000}
     await saveGame(c,chat,'roulette_group',state)
@@ -270,8 +293,9 @@ export async function joinGroupRoulette(chat,jid,amount,choice){
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
   if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
   await ensureUser(jid)
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const state=await loadGame(c,chat,'roulette_group')
+    if(await refundExpiredGameV2(c,chat,'roulette_group',state)) return {v2ExpiredRefund:true}
     if(!state || Number(state.expiresAt||0)<Date.now()) throw new Error('Não existe roleta coletiva aberta.')
     if(state.players?.[jid]) throw new Error('Você já entrou nesta rodada.')
     await debit(c,jid,amount)
@@ -282,8 +306,9 @@ export async function joinGroupRoulette(chat,jid,amount,choice){
 }
 
 export async function spinGroupRoulette(chat,jid){
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const state=await loadGame(c,chat,'roulette_group')
+    if(await refundExpiredGameV2(c,chat,'roulette_group',state)) return {v2ExpiredRefund:true}
     if(!state) throw new Error('Não existe roleta coletiva aberta.')
     if(state.host!==jid) throw new Error('Só quem abriu a roleta pode girar.')
     const n=Math.floor(Math.random()*37)
@@ -292,12 +317,12 @@ export async function spinGroupRoulette(chat,jid){
     const results=[]
     for(const [player,bet] of Object.entries(state.players||{})){
       let payout=0
-      if(bet.choice===color && lucky3xPlayerWins()){
+      if(bet.choice===color && (rebootEconomyEnabled()||lucky3xPlayerWins())){
         const stake=Number(bet.amount)
         const basePayout=bet.choice==='verde'?stake*36:stake*2
         const baseProfit=basePayout-stake
         const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-        payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)
+        payout=stake+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)
       }
       if(payout) await credit(c,player,payout,'roleta-coletiva')
       results.push({jid:player,amount:Number(bet.amount),choice:bet.choice,payout})
@@ -317,10 +342,10 @@ export async function coinFlip(jid,amount,choice,chat=null){
   return tx(async c=>{
     await debit(c,jid,amount)
     const normalResult=Math.random()<0.5?'cara':'coroa'
-    const won=lucky3xActive()?Math.random()<0.20:normalResult===choice
+    const won=!rebootEconomyEnabled()&&lucky3xActive()?Math.random()<0.20:normalResult===choice
     const result=won?choice:(choice==='cara'?'coroa':'cara')
     const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-    const payout=won?amount+(amount*lucky3xMultiplier()*groupMultiplier):0
+    const payout=won?amount+(amount*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier):0
     if(payout) await credit(c,jid,payout,'cara-ou-coroa')
     return {result,choice,amount,payout,profit:payout-amount,eventMultiplier:groupMultiplier}
   })
@@ -333,10 +358,14 @@ export async function createCoinDuel(chat,challenger,target,amount,choice){
   if(!target || target===challenger) throw new Error('Marque outra pessoa para desafiar.')
   await ensureUser(challenger); await ensureUser(target)
   return tx(async c=>{
-    await debit(c,challenger,amount)
+    if(!rebootEconomyEnabled()) await debit(c,challenger,amount)
     const type='coin_duel:'+target
     const old=await loadGame(c,chat,type)
     if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio pendente neste grupo.')
+    if(rebootEconomyEnabled()){
+      await refundExpiredGameV2(c,chat,type,old)
+      await debit(c,challenger,amount)
+    }
     const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
     await saveGame(c,chat,type,state)
     return state
@@ -344,9 +373,10 @@ export async function createCoinDuel(chat,challenger,target,amount,choice){
 }
 
 export async function acceptCoinDuel(chat,target){
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const type='coin_duel:'+target
     const state=await loadGame(c,chat,type)
+    if(await refundExpiredGameV2(c,chat,type,state)) return {v2ExpiredRefund:true}
     if(!state) throw new Error('Você não tem desafio de cara ou coroa pendente.')
     if(Number(state.expiresAt||0)<Date.now()){
       await credit(c,state.challenger,Number(state.amount),'cara-ou-coroa-pvp-estorno')
@@ -371,6 +401,7 @@ export async function createRpsDuel(chat,challenger,target,amount,choice){
   return tx(async c=>{
     const old=await loadGame(c,chat,'rps_duel:'+target)
     if(old&&Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio de PPT pendente.')
+    await refundExpiredGameV2(c,chat,'rps_duel:'+target,old)
     await debit(c,challenger,amount)
     const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
     await saveGame(c,chat,'rps_duel:'+target,state); return state
@@ -378,8 +409,9 @@ export async function createRpsDuel(chat,challenger,target,amount,choice){
 }
 export async function acceptRpsDuel(chat,target,choice){
   choice=String(choice||'').toLowerCase(); if(!['pedra','papel','tesoura'].includes(choice)) throw new Error('Use !aceitarppt pedra, papel ou tesoura.')
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const type='rps_duel:'+target,s=await loadGame(c,chat,type); if(!s) throw new Error('Você não tem desafio de PPT pendente.')
+    if(await refundExpiredGameV2(c,chat,type,s)) return {v2ExpiredRefund:true}
     if(Number(s.expiresAt||0)<Date.now()){await credit(c,s.challenger,Number(s.amount),'ppt-pvp-estorno');await clearGame(c,chat,type);throw new Error('O desafio expirou. A aposta foi devolvida.')}
     await debit(c,target,Number(s.amount)); const a=s.choice,b=choice
     let winner=null; if(a!==b) winner=((a==='pedra'&&b==='tesoura')||(a==='papel'&&b==='pedra')||(a==='tesoura'&&b==='papel'))?s.challenger:target
@@ -391,13 +423,13 @@ export async function acceptRpsDuel(chat,target,choice){
 export async function createTournament(chat,host,amount){
   amount=Number(amount); if(!Number.isInteger(amount)||amount<0) throw new Error('Valor inválido.')
   await ensureUser(host)
-  return tx(async c=>{const old=await loadGame(c,chat,'tournament');if(old&&Number(old.expiresAt||0)>Date.now())throw new Error('Já existe um torneio aberto neste grupo.');if(amount)await debit(c,host,amount);const st={host,amount,players:[host],started:false,expiresAt:Date.now()+5*60*1000};await saveGame(c,chat,'tournament',st);return st})
+  return tx(async c=>{const old=await loadGame(c,chat,'tournament');if(old&&Number(old.expiresAt||0)>Date.now())throw new Error('Já existe um torneio aberto neste grupo.');await refundExpiredGameV2(c,chat,'tournament',old);if(amount)await debit(c,host,amount);const st={host,amount,players:[host],started:false,expiresAt:Date.now()+5*60*1000};await saveGame(c,chat,'tournament',st);return st})
 }
 export async function joinTournament(chat,jid){
-  await ensureUser(jid); return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s||s.started||Number(s.expiresAt||0)<Date.now())throw new Error('Não existe torneio aberto.');if(s.players.includes(jid))return s;if(s.amount)await debit(c,jid,Number(s.amount));s.players.push(jid);await saveGame(c,chat,'tournament',s);return s})
+  await ensureUser(jid); return gameTxWithExpiry(async c=>{const s=await loadGame(c,chat,'tournament');if(await refundExpiredGameV2(c,chat,'tournament',s))return {v2ExpiredRefund:true};if(!s||s.started||Number(s.expiresAt||0)<Date.now())throw new Error('Não existe torneio aberto.');if(s.players.includes(jid))return s;if(s.amount)await debit(c,jid,Number(s.amount));s.players.push(jid);await saveGame(c,chat,'tournament',s);return s})
 }
 export async function startTournament(chat,jid){
-  return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s)throw new Error('Não existe torneio aberto.');if(s.host!==jid)throw new Error('Só quem criou pode iniciar.');if(s.players.length<2)throw new Error('É preciso pelo menos 2 jogadores.');const shuffled=[...s.players].sort(()=>Math.random()-.5);const winner=shuffled[Math.floor(Math.random()*shuffled.length)],pot=Number(s.amount)*s.players.length;if(pot)await credit(c,winner,pot,'torneio');await clearGame(c,chat,'tournament');return {winner,pot,players:s.players}})
+  return gameTxWithExpiry(async c=>{const s=await loadGame(c,chat,'tournament');if(await refundExpiredGameV2(c,chat,'tournament',s))return {v2ExpiredRefund:true};if(!s)throw new Error('Não existe torneio aberto.');if(s.host!==jid)throw new Error('Só quem criou pode iniciar.');if(s.players.length<2)throw new Error('É preciso pelo menos 2 jogadores.');const shuffled=[...s.players].sort(()=>Math.random()-.5);const winner=shuffled[Math.floor(Math.random()*shuffled.length)],pot=Number(s.amount)*s.players.length;if(pot)await credit(c,winner,pot,'torneio');await clearGame(c,chat,'tournament');return {winner,pot,players:s.players}})
 }
 
 export function rps(choice){
