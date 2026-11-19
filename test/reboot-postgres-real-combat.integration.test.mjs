@@ -307,6 +307,97 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     assert.equal((await request('GET',root+'/me/event-center',undefined,fresh.body.token)).status,401)
     // No secret, token, phone or password is included in the marker.
     console.log('ALPHA_V2_WEB_HTTP_OK',JSON.stringify({passwordRequired:true,codeSingleUse:true,sessionIsolation:true,legacyTokenDenied:true,foreignPetDenied:true,recoveryRevokes:true,logoutRevokes:true,catalogFourClasses:true}))
+    if(process.env.ALPHA_V2_BROWSER_CI==='1'){
+      const {initProgression}=await import('../src/neon/progression.js')
+      const {initLoans}=await import('../src/neon/loans.js')
+      await initProgression()
+      await initLoans()
+      // Real Chromium + actual static frontend + actual API and disposable DB.
+      const {chromium}=await import('playwright')
+      const {createServer}=await import('node:http')
+      const {readFile}=await import('node:fs/promises')
+      const {resolve,extname,sep}=await import('node:path')
+      const {fileURLToPath}=await import('node:url')
+      const webRoot=fileURLToPath(new URL('../web/',import.meta.url))
+      const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css','.json':'application/json','.webmanifest':'application/manifest+json','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml'}
+      const failures=[]
+      const server=createServer(async(req,res)=>{
+        try{
+          if(await handleWebApi(req,res))return
+          const path=new URL(req.url,'http://localhost').pathname
+          const file=resolve(webRoot,path==='/'||path==='/rpg'?'index.html':'.'+decodeURIComponent(path))
+          if(!file.startsWith(resolve(webRoot)+sep)){res.writeHead(403);res.end();return}
+          const data=await readFile(file)
+          res.writeHead(200,{'content-type':types[extname(file)]||'application/octet-stream','cache-control':'no-store'})
+          res.end(data)
+        }catch(error){
+          const missing=error.code==='ENOENT'
+          if(!missing)failures.push(String(error.message))
+          if(!res.headersSent)res.writeHead(missing?404:500)
+          res.end()
+        }
+      })
+      let browser
+      try{
+        await new Promise((ok,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',ok)})
+        const origin='http://127.0.0.1:'+server.address().port
+        browser=await chromium.launch({headless:true})
+        const context=await browser.newContext({viewport:{width:1280,height:800},serviceWorkers:'block'})
+        await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort())
+        const page=await context.newPage()
+        const jsErrors=[]
+        page.on('pageerror',err=>jsErrors.push(err.message))
+        await page.goto(origin+'/rpg')
+        await page.locator('#passwordLoginForm').waitFor({state:'visible'})
+        assert.equal(await page.locator('#app').isVisible(),false)
+        await page.locator('#loginPhone').fill(phoneA)
+        await page.locator('#loginPassword').fill(passwordNew)
+        await page.locator('#passwordLoginForm button[type=submit]').click()
+        await page.locator('#app').waitFor({state:'visible',timeout:15000})
+        await page.locator('#miniProfile').getByText('CI paladin',{exact:true}).waitFor()
+        await page.locator('#nav [data-page=character]').click()
+        await page.getByRole('heading',{name:'Seu personagem'}).waitFor()
+        const classes=await page.locator('#content [data-character-select]').evaluateAll(buttons=>buttons.map(x=>x.dataset.characterSelect).sort())
+        assert.deepEqual(classes,roles.slice().sort())
+        assert.equal(await page.locator('#content .collab-hero-card').count(),0)
+        // No group linked means no group raid buttons.
+        await page.locator('#nav [data-page=raids]').click()
+        await page.getByText('Esta sessão foi vinculada no privado.',{exact:false}).waitFor()
+        // New code for B must clear A from the same browser before any password.
+        const switchCode=await createWebLinkCode(jids[1])
+        await page.goto(origin+'/rpg#code='+switchCode.code)
+        await page.locator('#recoverForm').waitFor({state:'visible'})
+        assert.equal(await page.locator('#app').isVisible(),false)
+        assert.equal(await page.evaluate(()=>localStorage.getItem('alphaWebTokenV1')),null)
+        await page.reload()
+        await page.locator('#recoverForm').waitFor({state:'visible'})
+        assert.equal(await page.locator('#app').isVisible(),false)
+        await page.locator('#backToPasswordBtn').click()
+        await page.locator('#loginPhone').fill(phoneB)
+        await page.locator('#loginPassword').fill(passwordB)
+        await page.locator('#passwordLoginForm button[type=submit]').click()
+        await page.locator('#miniProfile').getByText('CI samurai',{exact:true}).waitFor({timeout:15000})
+        await page.setViewportSize({width:390,height:844})
+        await page.locator('#menuBtn').click()
+        await page.locator('#nav [data-page=character]').click()
+        await page.getByRole('heading',{name:'Seu personagem'}).waitFor()
+        assert.equal(await page.locator('#sidebar').evaluate(el=>el.classList.contains('open')),false)
+        assert.equal(await page.locator('#content [data-character-select]').count(),4)
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'mobile horizontal overflow')
+        await page.locator('#menuBtn').click()
+        await page.locator('#logoutBtn').click()
+        await page.locator('#loginOverlay').waitFor({state:'visible'})
+        assert.equal(await page.locator('#app').isVisible(),false)
+        assert.equal(await page.evaluate(()=>localStorage.getItem('alphaWebTokenV1')),null)
+        assert.deepEqual(jsErrors,[])
+        assert.deepEqual(failures,[])
+        console.log('ALPHA_V2_CHROMIUM_OK',JSON.stringify({desktop:true,mobile390:true,fourClasses:true,oldAccountClearedOnCode:true,reloadRequiresPassword:true,accountSwitch:true,logout:true}))
+        await context.close()
+      }finally{
+        if(browser)await browser.close()
+        await new Promise(ok=>server.close(ok))
+      }
+    }
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom
