@@ -2,7 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1';
+const WEB_ASSET_ID='alpha-web-reboot-20261119-identity-v2';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -3933,6 +3933,17 @@ setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
   if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing'&&updateRacingClocks()&&Date.now()>=(ui.racingNextCompletionRefreshAt||0)){ui.racingNextCompletionRefreshAt=Date.now()+30000;void loadRacing(true);}}
 },1000);
+
+// A mudança apenas de fragmento não executa boot novamente.
+window.addEventListener('hashchange',()=>{
+  if(!new URLSearchParams(location.hash.slice(1)).get('code'))return;
+  ui.token='';ui.data=null;ui.catalog=null;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(SWITCH_PENDING_KEY);
+  stopRaidAuto();stopBossAuto();
+  showLogin();
+  location.reload();
+});
 
 (async function boot(){
   renderNav();

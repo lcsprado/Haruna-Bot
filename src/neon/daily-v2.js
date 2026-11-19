@@ -80,6 +80,11 @@ export async function initDailyV2(){
    );
  `)
  console.log('[DAILY V2] schema ready')
+ if(rebootEconomyEnabled()){
+   // Do not run historical user repair or create a smoke-test user in V2.
+   validateDailyV2Formulas()
+   return
+ }
  try{await auditAndRepairLp20261010()}catch(err){console.error('[DAILY V2] LP repair audit failed; no speculative repair',err?.message||err)}
  try{await runDailyV2SmokeTest()}catch(err){console.error('[DAILY V2 SMOKE FAIL]',err?.stack||err)}
 }
@@ -347,6 +352,16 @@ export function validateDailyV2Formulas(){
   for(let t=0;t<5;t++){
     if(MONEY[t]!==money[t]||XP[t]!==xp[t])throw new Error('Multiplier mismatch for tier '+t)
   }
+  if(rebootEconomyEnabled()){
+    const expectedMilestones=[[3,500,null],[7,1000,'caixa_rara'],[14,1500,'caixa_rara'],[21,2000,'caixa_epica'],[30,3000,'caixa_epica']]
+    for(const [day,cash,item] of expectedMilestones){
+      const reward=milestone(day)
+      if(reward?.cash!==cash||(reward?.item||null)!==item||(item&&reward.qty!==1))throw Error('V2 sequence milestone invalid: '+day)
+    }
+    for(let day=1;day<=30;day++)if(!expectedMilestones.some(m=>m[0]===day)&&milestone(day)!==null)throw Error('V2 unexpected milestone: '+day)
+    if(milestone(31)!==null||milestone(33)?.cash!==500)throw Error('V2 sequence cycle invalid')
+    return {status:'pass',mode:'classes_only',milestoneDays:[3,7,14,21,30],day31Continues:true}
+  }
   if(milestone(3)?.cash!==50000||milestone(7)?.item!=='caixa_epica'||milestone(14)?.qty!==2
     ||milestone(21)?.cash!==500000||milestone(30)?.item!=='caixa_lendaria'
     ||milestone(31)!==null||milestone(33)?.cash!==50000)
@@ -357,6 +372,7 @@ export function validateDailyV2Formulas(){
 
 export async function runDailyV2SmokeTest(){
   const checks=validateDailyV2Formulas()
+  if(rebootEconomyEnabled())return checks
   const jid='5511948523167@s.whatsapp.net'
   const catalog=await db.query("SELECT id FROM items WHERE id=ANY($1::text[])",[['caixa_rara','caixa_epica','caixa_lendaria']])
   const found=new Set(catalog.rows.map(x=>x.id))

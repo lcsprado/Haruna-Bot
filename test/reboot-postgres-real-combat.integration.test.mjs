@@ -312,6 +312,13 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       const {initLoans}=await import('../src/neon/loans.js')
       await initProgression()
       await initLoans()
+      const {validateDailyV2Formulas,runDailyV2SmokeTest,getDailyMissionsV2}=await import('../src/neon/daily-v2.js')
+      assert.equal(validateDailyV2Formulas().mode,'classes_only')
+      assert.equal((await runDailyV2SmokeTest()).status,'pass')
+      assert.equal((await getDailyMissionsV2(jids[0])).missions.length,6)
+      // Earlier raid joins intentionally update display names. Set explicit fixture names.
+      await db.query('UPDATE users SET push_name=$2 WHERE jid=$1',[jids[0],'CI paladin'])
+      await db.query('UPDATE users SET push_name=$2 WHERE jid=$1',[jids[1],'CI samurai'])
       // Real Chromium + actual static frontend + actual API and disposable DB.
       const {chromium}=await import('playwright')
       const {createServer}=await import('node:http')
@@ -354,7 +361,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         await page.locator('#loginPassword').fill(passwordNew)
         await page.locator('#passwordLoginForm button[type=submit]').click()
         await page.locator('#app').waitFor({state:'visible',timeout:15000})
-        await page.locator('#miniProfile').getByText('CI paladin',{exact:true}).waitFor()
+        await page.locator('#miniProfile').getByText('CI paladin',{exact:true}).waitFor({timeout:15000})
         await page.locator('#nav [data-page=character]').click()
         await page.getByRole('heading',{name:'Seu personagem'}).waitFor()
         const classes=await page.locator('#content [data-character-select]').evaluateAll(buttons=>buttons.map(x=>x.dataset.characterSelect).sort())
@@ -365,7 +372,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         await page.getByText('Esta sessão foi vinculada no privado.',{exact:false}).waitFor()
         // New code for B must clear A from the same browser before any password.
         const switchCode=await createWebLinkCode(jids[1])
-        await page.goto(origin+'/rpg#code='+switchCode.code)
+        await page.evaluate(code=>{location.hash='code='+code},switchCode.code)
         await page.locator('#recoverForm').waitFor({state:'visible'})
         assert.equal(await page.locator('#app').isVisible(),false)
         assert.equal(await page.evaluate(()=>localStorage.getItem('alphaWebTokenV1')),null)
