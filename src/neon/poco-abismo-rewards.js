@@ -4,6 +4,7 @@
 // pode ser enviada se a gravação do estado/recorde falhar.
 import {randomInt,createHash} from 'node:crypto'
 import {POCO_SEASON,pocoCashForFloor,pocoRollDrop} from './poco-abismo-rules.js'
+import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 import {POCO_ABISMO_GEAR_IDS,POCO_ABISMO_GEAR_ID_SET,pocoGearById} from './poco-abismo-gear.js'
 const POCO_EXPEDITION_GEAR_IDS=POCO_ABISMO_GEAR_IDS
 import {syncEffectiveGear} from './equipment-star-logic.js'
@@ -77,6 +78,7 @@ async function grantExclusive(c,jid,itemId,claimKey){
  await c.query(`INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
  VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,source_key) DO NOTHING`,
  [jid,itemId,POCO_SEASON.id+':'+claimKey])
+ if(rebootEconomyEnabled())return {kind:'exclusive',itemId,stars:1,level:1,needsForja:true}
  await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at)
  VALUES($1,$2,5,10,EXTRACT(EPOCH FROM NOW())::bigint)
  ON CONFLICT(jid,item_id) DO UPDATE SET stars=5,level=10,updated_at=EXCLUDED.updated_at`,[jid,itemId])
@@ -119,7 +121,7 @@ export async function pocoClaimBossDropInTx(c,jid,floor,day,random=()=>randomInt
    return {kind:drop.kind,itemId:'coroa_abissal',quantity:2,floor,day}
   }
   if(drop.kind==='cash_bonus'){
-   const cash=randomInt(30,71)*1000
+   const cash=rebootEconomyEnabled()?randomInt(500,1501):randomInt(30,71)*1000
    await addCash(c,jid,cash,'poco_boss_cash',key)
    return {kind:drop.kind,cash,floor,day}
   }
@@ -168,7 +170,7 @@ export async function pocoClaimExpeditionDropInTx(c,jid,floor,random=()=>randomI
   if(roll<3680){await addItem(c,jid,POCO_BOX_EPIC_ID);return {kind:'epic_box',itemId:POCO_BOX_EPIC_ID,quantity:1,floor}}
   if(roll<5180){await addItem(c,jid,'fragmento_universal_raid',3);return {kind:'forge_materials',itemId:'fragmento_universal_raid',quantity:3,floor}}
   if(roll<6180){
-   const cash=(10+Math.floor((roll-5180)/100))*1000;
+   const cash=rebootEconomyEnabled()?300+Math.floor((roll-5180)/100)*100:(10+Math.floor((roll-5180)/100))*1000;
    await addCash(c,jid,cash,'poco_expedition_cash',key);
    return {kind:'cash_bonus',cash,floor}
   }
@@ -179,7 +181,7 @@ export async function pocoClaimExpeditionDropInTx(c,jid,floor,random=()=>randomI
 export async function pocoClaimRankPrizeInTx(c,jid,position){
  if(!Number.isInteger(position)||position<1||position>3)throw new RangeError('Classificação inválida')
  return claim(c,jid,'ranking',async()=>{
-  const cash=POCO_SEASON.prizes[position-1]
+  const cash=rebootEconomyEnabled()?V2_EVENT_BUDGET.pocoRankPrizes[position-1]:POCO_SEASON.prizes[position-1]
   await addCash(c,jid,cash,'poco_ranking','ranking:'+position)
   return {kind:'ranking',position,cash}
  })

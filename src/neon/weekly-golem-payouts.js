@@ -37,3 +37,19 @@ export function weeklyGolemLegendaryBoxCount({weekendKey,position,damage}={}){
     !Number.isFinite(realDamage)||realDamage<500_000)return 0;
   return [3,2,1][rank-1];
 }
+
+// Temporada 2.0: XP proporcional ao dano, bônus de posição limitado e
+// no máximo uma caixa por jogador qualificado. Não consulta nem altera banco.
+export function rebootWeeklyBossReward({position,damage,totalDamage,weekendKey}={}){
+ const empty={xp:0,box:null,exclusiveChance:0};
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(weekendKey||''))||
+    !Number.isSafeInteger(position)||position<1||
+    !Number.isSafeInteger(damage)||damage<=0||
+    !Number.isSafeInteger(totalDamage)||totalDamage<damage)return empty;
+ const share=damage/totalDamage;
+ const qualified=damage>=10_000&&share>=.05;
+ const rankBonus=qualified?([1000,750,500,250,100][position-1]||0):0;
+ const box=qualified?(['caixa_epica','caixa_rara','caixa_rara','caixa_sorte','caixa_sorte'][position-1]||null):null;
+ return {xp:Math.floor(3000*share)+rankBonus,box,
+   exclusiveChance:qualified?([.05,.03,.02][position-1]||0):0};
+}

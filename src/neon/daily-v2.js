@@ -1,5 +1,6 @@
 import {db,ensureUser,grantExpInTransaction,petMaxHp,petMaxEnergy} from './db.js'
 import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity} from './daily-mission-rotation.js'
+import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 
 const TYPES=[...DAILY_MAIN_TYPES,'legend_raid']
 const MAIN=[...DAILY_MAIN_TYPES]
@@ -37,6 +38,11 @@ const dateDiff=(a,b)=>Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:0
 const nowDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
 const milestone=streak=>{
  const d=((streak-1)%30)+1
+ if(rebootEconomyEnabled()){
+   const cash=V2_EVENT_BUDGET.dailyStreakMilestones[d]
+   const item=d===7||d===14?'caixa_rara':d===21||d===30?'caixa_epica':null
+   return cash?{cash,...(item?{item,qty:1}:{})}:null
+ }
  const m={3:{cash:50000},7:{cash:150000,item:'caixa_epica',qty:1},14:{cash:300000,item:'caixa_epica',qty:2},21:{cash:500000,item:'caixa_epica',qty:3},30:{cash:1000000,item:'caixa_lendaria',qty:1}}
  return m[d]||null
 }
@@ -74,6 +80,11 @@ export async function initDailyV2(){
    );
  `)
  console.log('[DAILY V2] schema ready')
+ if(rebootEconomyEnabled()){
+   // Do not run historical user repair or create a smoke-test user in V2.
+   validateDailyV2Formulas()
+   return
+ }
  try{await auditAndRepairLp20261010()}catch(err){console.error('[DAILY V2] LP repair audit failed; no speculative repair',err?.message||err)}
  try{await runDailyV2SmokeTest()}catch(err){console.error('[DAILY V2 SMOKE FAIL]',err?.stack||err)}
 }
@@ -99,19 +110,20 @@ async function ensureRows(c,jid){
  // ensureRows retorna antes daqui. O novo quadro começa em 14/11.
  const insert=[...(today>=DAILY_V3_START?dailyV3MainMissions(today):dailyRotatedDefinitions(today)),special]
  for(const m of insert){
-   const cash=Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
+   const cash=rebootEconomyEnabled()?V2_EVENT_BUDGET.dailyMissionCash[m.type]
+     :Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
    const xp=Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
    const petXp=Math.round(m.petXp*(m.type==='legend_raid'?1:XP[tier]))
    await c.query(`INSERT INTO daily_missions
      (jid,day_key,mission_type,title,target,reward_cash,reward_xp,reward_pet_xp,reward_box,level_snapshot,money_factor,xp_factor)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,$11)
      ON CONFLICT(jid,day_key,mission_type) DO NOTHING`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
    // Só migra missões legadas NÃO resgatadas. O snapshot após isso nunca muda.
    await c.query(`UPDATE daily_missions SET title=$4,target=$5,reward_cash=$6,reward_xp=$7,
        reward_pet_xp=$8,level_snapshot=$9,money_factor=$10,xp_factor=$11,reward_box=0
      WHERE jid=$1 AND day_key=$2 AND mission_type=$3 AND claimed=FALSE AND level_snapshot=0`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
  }
  return {today,level,tier}
 }
@@ -184,16 +196,17 @@ async function claimDailyInTx(c,jid,day){
  const level=Number((await c.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
  const tier=levelTier(level)
  const baseCash=[15000,30000,50000,75000,100000][tier],exp=[300,500,800,1000,1500][tier]
+ const effectiveBaseCash=rebootEconomyEnabled()?V2_EVENT_BUDGET.dailyBaseByTier[tier]:baseCash
  const extra=milestone(streak),bonusCash=Number(extra?.cash||0)
  if(extra?.item)await creditBox(c,jid,extra.item,extra.qty)
- await creditCash(c,jid,baseCash+bonusCash,'daily',day)
+ await creditCash(c,jid,effectiveBaseCash+bonusCash,'daily',day)
  await grantExpInTransaction(c,jid,exp)
  await c.query(`UPDATE daily_streaks SET streak=$2,best_streak=$3,last_claim_day=$4::date,
    last_protection_used_day=CASE WHEN $5 THEN $4::date ELSE last_protection_used_day END,
    updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1`,
    [jid,streak,bestStreak,day,protectedGap])
- console.log('[DAILY V2 CLAIM]',JSON.stringify({jid,day,level,streak,cash:baseCash+bonusCash,exp,protectedGap}))
- return {ok:true,amount:baseCash,bonusCash,totalCash:baseCash+bonusCash,exp,streak,bestStreak,
+ console.log('[DAILY V2 CLAIM]',JSON.stringify({jid,day,level,streak,cash:effectiveBaseCash+bonusCash,exp,protectedGap}))
+ return {ok:true,amount:effectiveBaseCash,bonusCash,totalCash:effectiveBaseCash+bonusCash,exp,streak,bestStreak,
    protectedGap,continued,eventMultiplier:1,reward:extra?{label:extra.item?(extra.qty+'x '+(extra.item==='caixa_lendaria'?'Caixa Lendária':'Caixa Épica')):'Bônus de sequência',itemId:extra.item||null,qty:extra.qty||0,bonusCash}:null,
    next:nextMark(streak)}
 }
@@ -201,7 +214,9 @@ async function claimDailyInTx(c,jid,day){
 function nextMark(streak){
  const day=((Math.max(1,streak)-1)%30)+1
  const next=[3,7,14,21,30].find(n=>n>day)||30
- const label={3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'}[next]
+ const label=(rebootEconomyEnabled()
+   ?Object.fromEntries(Object.entries(V2_EVENT_BUDGET.dailyStreakMilestones).map(([d,cash])=>[d,'R$ '+cash.toLocaleString('pt-BR')+([7,14].includes(Number(d))?' + Caixa Rara':[21,30].includes(Number(d))?' + Caixa Épica':'')]))
+   :{3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'})[next]
  return {day:next,days:Math.max(0,next-day),label}
 }
 
@@ -337,6 +352,16 @@ export function validateDailyV2Formulas(){
   for(let t=0;t<5;t++){
     if(MONEY[t]!==money[t]||XP[t]!==xp[t])throw new Error('Multiplier mismatch for tier '+t)
   }
+  if(rebootEconomyEnabled()){
+    const expectedMilestones=[[3,500,null],[7,1000,'caixa_rara'],[14,1500,'caixa_rara'],[21,2000,'caixa_epica'],[30,3000,'caixa_epica']]
+    for(const [day,cash,item] of expectedMilestones){
+      const reward=milestone(day)
+      if(reward?.cash!==cash||(reward?.item||null)!==item||(item&&reward.qty!==1))throw Error('V2 sequence milestone invalid: '+day)
+    }
+    for(let day=1;day<=30;day++)if(!expectedMilestones.some(m=>m[0]===day)&&milestone(day)!==null)throw Error('V2 unexpected milestone: '+day)
+    if(milestone(31)!==null||milestone(33)?.cash!==500)throw Error('V2 sequence cycle invalid')
+    return {status:'pass',mode:'classes_only',milestoneDays:[3,7,14,21,30],day31Continues:true}
+  }
   if(milestone(3)?.cash!==50000||milestone(7)?.item!=='caixa_epica'||milestone(14)?.qty!==2
     ||milestone(21)?.cash!==500000||milestone(30)?.item!=='caixa_lendaria'
     ||milestone(31)!==null||milestone(33)?.cash!==50000)
@@ -347,6 +372,7 @@ export function validateDailyV2Formulas(){
 
 export async function runDailyV2SmokeTest(){
   const checks=validateDailyV2Formulas()
+  if(rebootEconomyEnabled())return checks
   const jid='5511948523167@s.whatsapp.net'
   const catalog=await db.query("SELECT id FROM items WHERE id=ANY($1::text[])",[['caixa_rara','caixa_epica','caixa_lendaria']])
   const found=new Set(catalog.rows.map(x=>x.id))

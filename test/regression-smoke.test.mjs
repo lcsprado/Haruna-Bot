@@ -310,9 +310,10 @@ test('fuzzy equipment art matching is category gated',()=>{
 
 test('Lucky 3x multiplies roulette profit, not returned stake',()=>{
   assert.ok(games.includes("const baseProfit=basePayout-amount"),'single roulette must separate stake from profit')
-  assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'single roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=amount+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)"),'single roulette must preserve V1 profit multiplier and disable it in V2')
   assert.ok(games.includes("const baseProfit=basePayout-stake"),'group roulette must separate stake from profit')
-  assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'group roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=stake+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)"),'group roulette must preserve V1 profit multiplier and disable it in V2')
+  assert.ok(games.includes("async function groupGamesEventMultiplier(queryable,chat){\n  if(rebootEconomyEnabled()) return 1"),'V2 must ignore legacy group multiplier')
 })
 
 
@@ -338,7 +339,7 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
   assert.ok(db.includes("if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0)"),'direct purchase of drop-only items must be blocked')
   assert.ok(games.includes("if(Number(user?.level||1)<100) return null"),'reclass scroll must require level 100')
   assert.ok(games.includes("const chance=mode==='weekly'?.03:.01"),'Boss drop chances must be 3% weekly and 1% common/event')
-  assert.ok(games.includes("const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
+  assert.ok(games.includes("const reclassDrop=s.eventId===NIGHT_EVENT_ID||(commonV2&&commonV2.xp===0)?null:await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
 })
 
 

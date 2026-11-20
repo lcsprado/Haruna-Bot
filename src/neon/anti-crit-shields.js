@@ -1,4 +1,5 @@
 import {POCO_ABISMO_GEAR} from './poco-abismo-gear.js'
+import {effectiveShieldForgeFee} from './reboot-gear-economy.js'
 // Escudos são equipamentos anti-crítico, não alteram atributos-base de heróis ou classes.
 // Resistência reduz a chance efetiva (em pontos percentuais); guarda reduz somente
 // o bônus do dano crítico, nunca o dano normal.
@@ -28,7 +29,7 @@ export function shieldForgeCost(itemId,currentStars=1){
   const stars=Math.trunc(Number(currentStars)||0);
   if(!shield||stars<1||stars>=5)return null;
   const reference=Number(shield.price||({egide_celestial:100000,egide_crepusculo:225000,bastiao_eclipse:250000,escudo_monarca_caido_20261116:160000,muralha_abismo_imperial_20261116:160000,baluarte_trovao_eterno_20261116:160000}[shield.id]||100000));
-  return Math.ceil(reference*stars*.5);
+  return effectiveShieldForgeFee(Math.ceil(reference*stars*.5));
 }
 export function antiCritShieldStats(itemId,level=1,stars=1){
   const shield=SHIELDS_BY_ID[String(itemId||'')];

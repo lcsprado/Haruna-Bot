@@ -1,10 +1,13 @@
 import crypto from 'node:crypto'
+import {effectiveAsset} from './reboot-assets-policy.js'
 import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2} from './reboot-economy-policy.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
+import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -29,7 +32,7 @@ export const HOUSES=[
   {id:'sobrado',name:'Sobrado',price:200000,trainingXp:300,trainingPercent:1,petRestPercent:35,reserveRestSlots:1,sleepXpPercent:7},
   {id:'mansao',name:'Mansão',price:600000,trainingXp:450,trainingPercent:1.25,petRestPercent:50,reserveRestSlots:2,sleepXpPercent:9},
   {id:'cobertura',name:'Cobertura',price:1500000,trainingXp:650,trainingPercent:1.5,petRestPercent:70,reserveRestSlots:3,sleepXpPercent:12},
-]
+].map(row=>effectiveAsset(row))
 
 export const CARS=[
   {id:'popular',name:'Chevrolet Corsa',price:35000},
@@ -45,7 +48,7 @@ export const CARS=[
   {id:'lamborghini_revuelto',name:'Lamborghini Revuelto',price:3000000},
   {id:'mclaren_p1',name:'McLaren P1',price:4500000},
   {id:'hipercarro',name:'Bugatti Chiron Super Sport',price:6000000},
-]
+].map(row=>effectiveAsset(row))
 
 export const MOTORCYCLES=[
   {id:'bicicleta',name:'Bicicleta',price:1500},
@@ -54,7 +57,7 @@ export const MOTORCYCLES=[
   {id:'moto_300',name:'Moto 300cc',price:35000},
   {id:'moto_600',name:'Moto 600cc',price:90000},
   {id:'moto_1000',name:'Superbike 1000cc',price:220000},
-]
+].map(row=>effectiveAsset(row))
 
 export const UBER_TIERS={
   popular:{category:'UberX — Corsa',min:320,max:620},
@@ -898,7 +901,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
   const busy=(await db.query('SELECT motorcycle_id FROM clt_ifood_drivers WHERE jid=$1 AND shift_ends_at>$2',[jid,Math.floor(Date.now()/1000)])).rows
   const busyIds=new Set(busy.map(x=>x.motorcycle_id))
-  const freeGarage=garage.filter(x=>!busyIds.has(x.id))
+  const freeGarage=v2ManualPaidFleet(garage.filter(x=>!busyIds.has(x.id)))
   if(!freeGarage.length)throw new Error('Todas as motos estão em turno CLT iFood.')
   const tiers={
     bicicleta:{category:'Bike',min:45,max:95}, moto_125:{category:'Básica',min:130,max:230},
@@ -916,18 +919,19 @@ export async function deliverIfood(jid,taxMultiplier=1){
       const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
       const fare=Math.max(1,Math.round(base*delivery.factor))
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
-      return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
+      const paidFare=v2TransportFare(fare,'ifood'),paidTip=v2TransportFare(tip,'ifood')
+      return {vehicle:v,category:tier.category,delivery:delivery.name,fare:paidFare,tip:paidTip,total:paidFare+paidTip}
     })
-    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
+    const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
-    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
+    const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | iFood`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -938,7 +942,7 @@ export async function driveUber(jid,taxMultiplier=1){
   const now=Math.floor(Date.now()/1000)
   const active=(await db.query('SELECT car_id FROM clt_uber_drivers WHERE jid=$1 AND car_id IS NOT NULL AND shift_ends_at>$2',[jid,now])).rows
   const busy=new Set(active.map(x=>x.car_id))
-  const garage=fullGarage.filter(x=>!busy.has(x.id))
+  const garage=v2ManualPaidFleet(fullGarage.filter(x=>!busy.has(x.id)))
   if(!garage.length) throw new Error('Todos os seus carros estão em turno no CLT Uber. Use !centraluber para acompanhar.')
   const tiers=UBER_TIERS
   return tx(async client=>{
@@ -952,18 +956,19 @@ export async function driveUber(jid,taxMultiplier=1){
       const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
       const fare=Math.max(1,Math.round(base*ride.factor))
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
-      return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
+      const paidFare=v2TransportFare(fare,'uber'),paidTip=v2TransportFare(tip,'uber')
+      return {car:v,category:tier.category,ride:ride.name,fare:paidFare,tip:paidTip,total:paidFare+paidTip}
     })
-    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
+    const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
-    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
+    const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | Uber`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -996,7 +1001,7 @@ function cltUberTripNet(carId,driverType){
   const avgRideFactor=(.85+1+1.25+1.6)/4
   const avgTipFactor=1+(.22*.125)
   const gross=avgBase*avgRideFactor*avgTipFactor*d.efficiency
-  return Math.max(1,Math.round(gross*(1-d.commission)*.90))
+  return v2CltTripNet(gross,d.commission,'uber')
 }
 
 async function accrueCltUber(client,jid){
@@ -1238,7 +1243,7 @@ function cltIfoodNet(motoId,typeId){
   const fare=IFOOD_FARES[motoId]||IFOOD_FARES.bicicleta
   const d=CLT_IFOOD_TYPES.find(x=>x.id===typeId)||CLT_IFOOD_TYPES[0]
   const gross=((fare[0]+fare[1])/2)*1.15*1.018*d.efficiency
-  return Math.max(1,Math.round(gross*(1-d.commission)*.9))
+  return v2CltTripNet(gross,d.commission,'ifood')
 }
 async function accrueCltIfood(c,jid){
   const now=Math.floor(Date.now()/1000)
@@ -1332,19 +1337,26 @@ function sqlCase(column,catalog){
   return 'CASE '+catalog.map(x=>`WHEN ${column}='${x.id}' THEN ${x.price}`).join(' ')+' ELSE 0 END'
 }
 const houseCase=sqlCase('h.house_id',HOUSES)
-const carCase=sqlCase('uc.car_id',CARS)
-const motorcycleCase=sqlCase('um.motorcycle_id',MOTORCYCLES)
+const carCase=rebootEconomyEnabled()?'FLOOR(GREATEST(0,uc.price_paid)*0.70)':sqlCase('uc.car_id',CARS)
+const motorcycleCase=rebootEconomyEnabled()?'FLOOR(GREATEST(0,um.price_paid)*0.70)':sqlCase('um.motorcycle_id',MOTORCYCLES)
 const RAID_MATERIAL_PATRIMONY_SQL = "('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')"
 const RAID_MATERIAL_PATRIMONY_VALUE=100 // Igual ao preço de recompra do bot; nunca R$100 mil por raridade.
+const inventoryPatrimonyCase=rebootEconomyEnabled()?`CASE
+        WHEN it.sellable=FALSE THEN 0
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
+        WHEN it.price>0 THEN GREATEST(1,FLOOR(it.price*0.50))
+        WHEN it.rarity='legendary' THEN 8000 WHEN it.rarity='epic' THEN 2000
+        WHEN it.rarity='rare' THEN 800 WHEN it.rarity='uncommon' THEN 250 ELSE 100 END`:
+        `CASE
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
+        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
+        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END`
 
 export async function getPatrimony(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
-        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
-        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
-        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*${inventoryPatrimonyCase}),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id
       WHERE i.jid=$1
       GROUP BY i.jid
@@ -1400,10 +1412,7 @@ export async function getPatrimony(jid){
 export async function patrimonyLeaderboard(limit=10){
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
-        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
-        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
-        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*${inventoryPatrimonyCase}),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id GROUP BY i.jid
     ),
     cars AS (
@@ -1439,7 +1448,7 @@ export async function patrimonyLeaderboard(limit=10){
 export async function getBusinesses(jid){
   await ensureUser(jid)
   const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at,level,accrued_gross FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
-  return rows.map(r=>({...BUSINESSES.find(b=>b.id===r.business_id),...r,id:r.business_id}))
+  return rows.map(r=>({...candidateBusinessCatalog(BUSINESSES.find(b=>b.id===r.business_id)),...r,id:r.business_id}))
 }
 
 export async function buyBusiness(jid,input){
@@ -1455,7 +1464,7 @@ export async function buyBusiness(jid,input){
     const now=Math.floor(Date.now()/1000)
     await client.query('INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at) VALUES($1,$2,$3,$4,$4)',[jid,business.id,business.price,now])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_purchase',$3)",[jid,business.price,business.name])
-    return business
+    return candidateBusinessCatalog(business)
   })
 }
 
@@ -1482,7 +1491,8 @@ export async function collectBusinesses(jid){
     for(const row of rows){
       const b=BUSINESSES.find(x=>x.id===row.business_id)
       if(!b) continue
-      const earned=Number(row.accrued_gross||0)+businessIntervalGross(b,row,now)
+      const earned=Number(row.accrued_gross||0)+(rebootEconomyEnabled()
+        ?businessIntervalGrossV2(b,row,now):businessIntervalGross(b,row,now))
       if(earned>0){
         total+=earned
         details.push({name:b.name,earned})
@@ -1492,12 +1502,13 @@ export async function collectBusinesses(jid){
       }
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10),net=gross-tax
+    const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')
+    const gross=Math.round(total*moneyMultiplier)
+    const {tax,operating,net}=rebootEconomyEnabled()?businessSettlementV2(gross):{tax:Math.floor(gross*.10),operating:0,net:gross-Math.floor(gross*.10)}
     // Settle a documented economy recovery from future net business profits.
     // No player's wallet goes negative; all changes share the collection transaction.
     const recoveryKey='economy_recovery:'+jid
-    const recovery=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
+    const recovery=rebootEconomyEnabled()?null:(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
     const pending=Math.max(0,Math.trunc(Number(recovery?.remaining||0)))
     // Augusto: o saldo anterior já cobre a parcela final do estorno.
     // Quitá-la separadamente preserva a auditoria, sem reter mais lucros futuros.
@@ -1525,7 +1536,8 @@ export async function collectBusinesses(jid){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
+    if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_operating','operacao 10% V2')",[jid,operating])
+    return {total:creditedNet,gross,tax,operating,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
   })
 }
 
@@ -1542,11 +1554,15 @@ export function businessUpgradeQuote(business,currentLevel,targetLevel){
   let cost=0
   for(let level=fromLevel;level<toLevel;level++)
     cost+=Math.floor(Number(business.price)*rates[level])
+  const effectiveBusiness=candidateBusinessCatalog(business)
+  const base=effectiveBusiness.profitHour
+  const growth=rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:0.25
+  const extraHours=rebootEconomyEnabled()?0:1
   return {fromLevel,toLevel,levelsGained:toLevel-fromLevel,cost,
-    previousProfitHour:Math.floor(business.profitHour*(1+(fromLevel-1)*0.25)),
-    profitHour:Math.floor(business.profitHour*(1+(toLevel-1)*0.25)),
-    previousCapacityHours:business.capacityHours+fromLevel-1,
-    capacityHours:business.capacityHours+toLevel-1}
+    previousProfitHour:Math.floor(base*(1+(fromLevel-1)*growth)),
+    profitHour:Math.floor(base*(1+(toLevel-1)*growth)),
+    previousCapacityHours:effectiveBusiness.capacityHours+extraHours*(fromLevel-1),
+    capacityHours:effectiveBusiness.capacityHours+extraHours*(toLevel-1)}
 }
 
 export async function upgradeBusiness(jid,input,targetLevel=null){
@@ -1566,11 +1582,13 @@ export async function upgradeBusiness(jid,input,targetLevel=null){
     // Uma cobrança e uma atualização no Neon: sem níveis parciais se faltar saldo.
     await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[quote.cost,jid])
     const now=Math.floor(Date.now()/1000)
-    const accrued=businessIntervalGross(business,own.rows[0],now)
+    const accrued=rebootEconomyEnabled()?businessIntervalGrossV2(business,own.rows[0],now)
+      :businessIntervalGross(business,own.rows[0],now)
     await client.query('UPDATE user_businesses SET level=$1,accrued_gross=accrued_gross+$2,last_collected_at=$3 WHERE jid=$4 AND business_id=$5',[target,accrued,now,jid,business.id])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",
       [jid,quote.cost,business.name+' Lv.'+level+' → Lv.'+target])
-    return {...business,...quote,level:target,cost:quote.cost,multiplier:1+(target-1)*0.25,cash:cash-quote.cost}
+    return {...candidateBusinessCatalog(business),...quote,level:target,cost:quote.cost,
+      multiplier:1+(target-1)*(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25),cash:cash-quote.cost}
   })
 }
 
@@ -1583,7 +1601,8 @@ function groupWeekKey(){
 
 export async function getGroupMission(chatJid){
   const week=groupWeekKey()
-  const m=groupWeeklyChoice(chatJid,week)
+  const base=groupWeeklyChoice(chatJid,week)
+  const m=rebootEconomyEnabled()?{...base,reward:Math.floor(base.reward/10)}:base
   // Missões de quiz abertas são convertidas sem apagar progresso, membros ou
   // resgates. Missões concluídas e semanas anteriores são preservadas.
   // Se o progresso legado superar a nova meta, falta uma ação válida para fechar.
@@ -1598,7 +1617,8 @@ export async function getGroupMission(chatJid){
       AND group_missions.completed=FALSE`,
     [chatJid,week,m.type,m.title,m.target,m.reward])
   const {rows}=await db.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2',[chatJid,week])
-  return rows[0]
+  const row=rows[0]
+  return rebootEconomyEnabled()?{...row,reward_cash:Math.min(Number(row.reward_cash),m.reward)}:row
 }
 
 export async function progressGroupMission(chatJid,jid,type,amount=1){
@@ -1640,10 +1660,19 @@ export async function claimGroupMission(chatJid,jid){
     const mem=await client.query('SELECT * FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND jid=$3 FOR UPDATE',[chatJid,m.week_key,jid])
     if(!mem.rows.length || Number(mem.rows[0].contribution)<1) throw new Error('Você precisa ter contribuído para essa missão.')
     if(mem.rows[0].claimed) throw new Error('Você já resgatou sua recompensa.')
+    const reboot=rebootEconomyEnabled()
+    if(reboot){
+      // Global por jogador e semana: troca de grupo/canal não cria novo resgate.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`v2:group-mission:${m.week_key}:${jid}`])
+      const previous=await client.query('SELECT 1 FROM group_mission_members WHERE week_key=$1 AND jid=$2 AND claimed=TRUE LIMIT 1',[m.week_key,jid])
+      if(previous.rows.length) throw new Error('Você já resgatou uma missão coletiva nesta semana, em outro grupo.')
+    }
     const contribution=Number(mem.rows[0].contribution)
     const total=Math.max(1,board.total)
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const share=Math.round(Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))*moneyMultiplier)
+    const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(client,'money')
+    const proportional=Math.floor(Number(m.reward_cash)*contribution/total)
+    const share=reboot?proportional:Math.round(Math.max(1,proportional)*moneyMultiplier)
+    if(reboot&&share<=0) throw new Error('Sua contribuição ainda não gera uma recompensa monetária.')
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
     await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva proporcional')",[jid,share])
@@ -1683,6 +1712,7 @@ export async function maybeSpawnGroupEvent(chatJid){
       {type:'tesouro',reward:randomGroupEventCash(6000,12000),text:'🧰 Um *Tesouro Alpha* apareceu!',hint:'Menos dinheiro, mas chance alta de item.'}
     ]
     const e=events[Math.floor(Math.random()*events.length)]
+    if(rebootEconomyEnabled()) e.reward=Math.floor(e.reward/10)
     await client.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
       VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
       event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
@@ -1700,7 +1730,13 @@ export async function claimGroupEvent(chatJid,jid){
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
 
     // Eventos-relâmpago do grupo têm economia própria e não recebem multiplicador global.
-    const rewardCash=Math.round(Number(e.reward_cash||0))
+    const reboot=rebootEconomyEnabled()
+    if(reboot){
+      // O cooldown é transacional e compartilhado entre WhatsApp, Web e grupos.
+      const cd=await claimCooldown(client,`v2:group-event:${jid}`,24*60*60)
+      if(!cd.ok) throw new Error('Você já resgatou um evento-relâmpago nas últimas 24 horas.')
+    }
+    const rewardCash=reboot?Math.max(0,Math.min(2000,Math.round(Number(e.reward_cash||0)))):Math.round(Number(e.reward_cash||0))
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])
@@ -1769,10 +1805,23 @@ function alphaContractPeriod(now=Date.now()){
   // UTC-3: janelas locais às 00h/04h/08h/12h/16h/20h.
   return Math.floor((now/1000-3*3600)/ALPHA_CONTRACT_SECONDS)
 }
+function effectiveAlphaContractReward(template){
+  if(!rebootEconomyEnabled()) return template
+  return {...template,cash:Math.floor(template.cash/10),xp:Math.floor(template.xp/4),...(template.item?{item:'caixa_rara'}:{})}
+}
+function effectiveAlphaContractRecord(row){
+  if(!row||!rebootEconomyEnabled()||row.claimed) return row
+  const template=ALPHA_CONTRACT_TEMPLATES.flat().find(x=>x.id===row.contract_id)
+  if(!template) throw new Error('Contrato indisponível na V2.')
+  const cap=effectiveAlphaContractReward(template)
+  return {...row,reward_cash:Math.max(0,Math.min(Number(row.reward_cash),cap.cash)),
+    reward_xp:Math.max(0,Math.min(Number(row.reward_xp),cap.xp)),
+    reward_item:row.reward_item&&cap.item?cap.item:null}
+}
 function alphaContractBoardFor(period){
   return ALPHA_CONTRACT_TEMPLATES.map((variants,i)=>{
     const variant=variants[(period+i)%variants.length]
-    return {...variant,number:i+1}
+    return {...effectiveAlphaContractReward(variant),number:i+1}
   })
 }
 export async function getAlphaContractBoard(jid){
@@ -1787,7 +1836,7 @@ export async function getAlphaContractBoard(jid){
     level:Number(levelRow.rows[0]?.level||1),
     nextAt:((period+1)*ALPHA_CONTRACT_SECONDS+3*3600)*1000,
     contracts:alphaContractBoardFor(period),
-    active:activeRow.rows[0]||null
+    active:effectiveAlphaContractRecord(activeRow.rows[0]||null)
   }
 }
 export async function acceptAlphaContract(jid,number){
@@ -1837,13 +1886,14 @@ export async function claimAlphaContract(jid){
       'SELECT * FROM alpha_contracts WHERE jid=$1 AND period=$2 FOR UPDATE',[jid,period]
     )).rows
     if(!rows.length) throw new Error('Você não aceitou nenhum contrato neste quadro. Use !contratos.')
-    const contract=rows[0]
+    const contract=effectiveAlphaContractRecord(rows[0])
     if(contract.claimed) throw new Error('Este contrato já foi resgatado.')
     if(Number(contract.expires_at)<=now) throw new Error('Este contrato expirou.')
     if(Number(contract.progress)<Number(contract.target)) throw new Error(
       `Contrato ainda em andamento: ${contract.progress}/${contract.target}.`
     )
-    await client.query('UPDATE alpha_contracts SET claimed=TRUE WHERE jid=$1 AND period=$2',[jid,period])
+    if(rebootEconomyEnabled()) await client.query('UPDATE alpha_contracts SET claimed=TRUE,reward_cash=$3,reward_xp=$4,reward_item=$5 WHERE jid=$1 AND period=$2',[jid,period,contract.reward_cash,contract.reward_xp,contract.reward_item])
+    else await client.query('UPDATE alpha_contracts SET claimed=TRUE WHERE jid=$1 AND period=$2',[jid,period])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[contract.reward_cash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'alpha_contract',$3)",
       [jid,contract.reward_cash,contract.contract_id])

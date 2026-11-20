@@ -1,10 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {candidateBusinessCatalog,V2_BUSINESS_ECONOMY} from '../src/neon/reboot-economy-policy.js'
 const source=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const helperSource=source.slice(source.indexOf('export function businessUpgradeQuote'),source.indexOf('export async function upgradeBusiness')).replace(/^export /gm,'')
-const quote=new Function(helperSource+';return businessUpgradeQuote')()
+const quote=new Function('candidateBusinessCatalog','rebootEconomyEnabled','V2_BUSINESS_ECONOMY',
+  helperSource+';return businessUpgradeQuote')(candidateBusinessCatalog,()=>false,V2_BUSINESS_ECONOMY)
 const hotel={price:4500000,profitHour:55000,capacityHours:16}
 test('Upgrade hotel soma os custos reais sem desconto nem duplicação',()=>{
   assert.equal(quote(hotel,1,5).cost,6300000)

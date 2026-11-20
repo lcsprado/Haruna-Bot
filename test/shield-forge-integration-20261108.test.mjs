@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import vm from 'node:vm'
 import {ANTI_CRIT_SHIELDS,shieldForgeCost,antiCritShieldStats} from '../src/neon/anti-crit-shields.js'
+import {assertRebootItemAllowed} from '../src/neon/reboot-classes-policy.js'
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
 const db=read('../src/neon/db.js')
@@ -96,6 +97,7 @@ test('forja de escudo executa em transação isolada sem ReferenceError, consumi
   const sandbox={
     ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
     ensureUser:async()=>{},transaction:async action=>action(client),
+    assertRebootItemAllowed,
     sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
     shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
     nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -131,6 +133,7 @@ test('forja de escudo protege equipamento vinculado/equipado sem cobrar taxa',as
   const sandbox={
     ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
     ensureUser:async()=>{},transaction:async action=>action(client),
+    assertRebootItemAllowed,
     sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
     shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
     nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'

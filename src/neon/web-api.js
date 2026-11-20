@@ -10,7 +10,7 @@ import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
-  listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
+  listMyMarketListings, getGroupLicense, groupLicenseIsActive, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel, getEquipmentInfo, equipmentStatsAtLevel, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
@@ -26,7 +26,7 @@ import {
 } from './db.js'
 import {
   getRaidCatalog, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound,
-  startBoss, attackBoss,
+  startBoss, attackBoss, bossWeekendInfo,
   coinFlip, roulette, rps, startQuiz, answerQuiz, startNumberGame, guessNumber,
   startHangman, hangmanLetter, hangmanWord, createCoinDuel, acceptCoinDuel,
   createRpsDuel, acceptRpsDuel, createGroupRoulette, joinGroupRoulette, spinGroupRoulette,
@@ -49,8 +49,19 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
-import {getAuctionWebStatus,placeAuctionWebBid} from './auction-bonus-20261101.js'
+import {getAuctionWebStatus as getLegacyAuctionWebStatus,placeAuctionWebBid as placeLegacyAuctionWebBid} from './auction-bonus-20261101.js'
+import {bingoV2Status,buyBingoV2Ticket,auctionV2Status,bidAuctionV2} from './reboot-events-service.js'
+import {classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
+import {candidateBusinessCatalog} from './reboot-economy-policy.js'
+import {rebootWebBossScope} from './reboot-web-boss-scope.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
+
+async function getAuctionWebStatus(args){
+  return classesOnlyRebootEnabled()?auctionV2Status(db):getLegacyAuctionWebStatus(args)
+}
+async function placeAuctionWebBid(args){
+  return classesOnlyRebootEnabled()?bidAuctionV2(db,args.sender,Number(args.amount)):placeLegacyAuctionWebBid(args)
+}
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -371,7 +382,7 @@ function petCatalog(){
       source:'raid'
     }))
   )
-  const adoptable=ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
+  const adoptable=classesOnlyRebootEnabled()?[]:ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
   const all=[...adoptable,...legendary]
   return all.map(p=>({
     ...p,
@@ -431,10 +442,11 @@ function sanitizeActionResult(actionName,result){
 
 async function groupSnapshot(chatJid){
   if(!chatJid) return null
+  const scope=classesOnlyRebootEnabled()?rebootWebBossScope(chatJid,bossWeekendInfo()):null
   const [raids,license,gameRows,baseRoster]=await Promise.all([
     getRaidStatuses(chatJid),
     getGroupLicense(chatJid),
-    db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
+    scope?db.query("SELECT game_type,state,updated_at FROM trevo_games WHERE (chat_jid=$1 AND game_type NOT IN ('boss','boss_event')) OR (chat_jid=$2 AND game_type='boss' AND ($3::text IS NULL OR (state->>'weekendKey'=$3 AND state->>'rebootV2'='true'))) ORDER BY game_type",[chatJid,scope.chat,scope.weekendKey]):db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
     weeklyActivityLeaderboard(chatJid,20)
   ])
   const rosterJids=(baseRoster||[]).map(x=>x.jid).filter(Boolean)
@@ -496,7 +508,7 @@ async function groupSnapshot(chatJid){
   return {
     chatJid,license,raids,roster,
     boss:games.boss||null,
-    bossEvent:games.boss_event||null,
+    bossEvent:classesOnlyRebootEnabled()?null:games.boss_event||null,
     games
   }
 }
@@ -528,8 +540,8 @@ async function playerBootstrap(session){
     getRelationship(jid),
     getRelationshipProposals(jid),
     groupSnapshot(session.chatJid),
-    getDoubleRewardEvent(),
-    getLuckyBoxEvent(),
+    classesOnlyRebootEnabled()?Promise.resolve(null):getDoubleRewardEvent(),
+    classesOnlyRebootEnabled()?Promise.resolve(null):getLuckyBoxEvent(),
     db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
     db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
     db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
@@ -555,6 +567,7 @@ async function playerBootstrap(session){
     ?await getPlayableHeroCombatSheet(jid,combatProfile):null
   return {
     syncedAt:now(),
+    rebootV2:classesOnlyRebootEnabled(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,combatProfile,activeHeroCombat,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
@@ -619,7 +632,7 @@ async function publicCatalog(){
     if(!['weapon','armor','boots'].includes(item.category)) return true
     return Boolean(getEquipmentInfo(item.id))
   })
-  const allItems=(allItemRows.rows||[]).map(item=>({
+  const allItems=(allItemRows.rows||[]).filter(item=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(item.id)).map(item=>({
     ...item,
     equipment:['weapon','armor','boots'].includes(item.category)?getEquipmentInfo(item.id):null
   }))
@@ -627,13 +640,15 @@ async function publicCatalog(){
     generatedAt:now(),
     pets:petCatalog(),
     raids:getRaidCatalog(),
-    relics:relicCatalog,
+    relics:classesOnlyRebootEnabled()
+      ?Object.fromEntries(Object.entries(relicCatalog).filter(([id])=>!isRebootCollabItemId(id)))
+      :relicCatalog,
     shop,
     allItems,
     houses:HOUSES,
     cars:CARS,
     motorcycles:MOTORCYCLES,
-    businesses:BUSINESSES,
+    businesses:BUSINESSES.map(b=>candidateBusinessCatalog(b)),
     classes:Object.values(SELECTABLE_PLAYER_CLASSES),
     cltUberTypes:CLT_UBER_TYPES,
     loanRules:LOAN_RULES
@@ -1160,7 +1175,24 @@ async function startRaidServerRun(session,level){
 
 async function runAction(session,name,body={}){
   const jid=session.jid
-  // This action is verified and executed by the same auction handler as WhatsApp.
+  // Esta ação passa pela mesma política que o comando WhatsApp da V2.
+  if(name==='bingoV2.buy'){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+    return buyBingoV2Ticket(db,jid)
+  }
+  if(name==='auctionV2.bid'){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+    return bidAuctionV2(db,jid,Number(body.amount))
+  }
+  if(name==='auction.bid'&&classesOnlyRebootEnabled()){
+    await enforceWebActionPolicy(session,name)
+    const group=requireGroup(session)
+    if(!groupLicenseIsActive(await getGroupLicense(group)))throw Error('Grupo sem licença ativa')
+  }
   if(name==='auction.bid')return placeAuctionWebBid({
     chat:requireGroup(session),sender:jid,name:await playerDisplayName(jid),amount:body.amount
   })
@@ -1486,7 +1518,8 @@ export async function handleWebApi(req,res){
         json(res,200,{ok:true,data:{changed:false,version:'none'}})
         return true
       }
-      const {rows}=await db.query(
+      const scope=classesOnlyRebootEnabled()?rebootWebBossScope(session.chatJid,bossWeekendInfo()):null
+      const {rows}=scope?await db.query("SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,state->>'mode' AS mode,state->>'weekendKey' AS weekend_key,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type='boss' AND ($2::text IS NULL OR (state->>'weekendKey'=$2 AND state->>'rebootV2'='true'))",[scope.chat,scope.weekendKey]):await db.query(
         "SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event') ORDER BY game_type",
         [session.chatJid]
       )
@@ -1494,12 +1527,26 @@ export async function handleWebApi(req,res){
       for(const r of rows){
         states[r.game_type]={
           hp:Number(r.hp||0),maxHp:Number(r.max_hp||0),
-          status:String(r.status||''),updatedAt:Number(r.updated_at||0)
+          status:String(r.status||''),updatedAt:Number(r.updated_at||0),...(scope?{mode:r.mode||null,weekendKey:r.weekend_key||null}:{})
         }
       }
       const version=sha256(JSON.stringify(states)).slice(0,20)
       const unchanged=String(url.searchParams.get('v')||'')===version
       json(res,200,{ok:true,data:unchanged?{changed:false,version}:{changed:true,version,boss:states.boss||null,bossEvent:states.boss_event||null}})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/bingo-v2'){
+      requireGroup(session)
+      const data=await bingoV2Status(db,session.jid)
+      json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/auction-v2'){
+      requireGroup(session)
+      const data=await auctionV2Status(db)
+      json(res,200,{ok:true,data})
       return true
     }
 
@@ -1587,7 +1634,7 @@ export async function handleWebApi(req,res){
       const body=await readJson(req)
       const rawResult=await runAction(session,actionName,body)
       // Auction broadcasts are already queued for both groups by auction-alpha.
-      if(actionName!=='auction.bid')await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
+      if(!['auction.bid','auctionV2.bid','bingoV2.buy'].includes(actionName))await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
       const result=sanitizePrivateRefs(sanitizeActionResult(actionName,rawResult),session)
       json(res,200,{ok:true,result})
       return true

@@ -2,7 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1';
+const WEB_ASSET_ID='alpha-web-reboot-20261119-identity-v2';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -22,6 +22,9 @@ const ui = {
   lootReveal: null,
   page: 'home',
   auction: null,
+  bingoV2: null,
+  bingoV2Loading: false,
+  bingoV2Busy: false,
   racing: null,
   racingFetchedAt: 0,
   racingLoading: false,
@@ -956,6 +959,7 @@ async function syncBossLive(){
         return;
       }
       if(!existing || !next) continue;
+      if(ui.data?.rebootV2&&(String(existing.mode||'')!==String(next.mode||'')||String(existing.weekendKey||'')!==String(next.weekendKey||''))){await sync(true,true);return;}
       existing.hp=Number(next.hp||0);
       existing.maxHp=Number(next.maxHp||0);
       existing.status=String(next.status||existing.status||'');
@@ -967,6 +971,32 @@ async function syncBossLive(){
   }finally{ui.bossPolling=false;}
 }
 
+async function loadBingoV2(){
+  if(!ui.token||ui.bingoV2Loading)return;
+  ui.bingoV2Loading=true;
+  try{
+    const response=await api('/api/v1/me/bingo-v2');
+    ui.bingoV2=response.data||null;
+  }catch(err){
+    ui.bingoV2={enabled:false,requiresApproval:true,error:String(err.message||'Consulta indisponível')};
+  }finally{
+    ui.bingoV2Loading=false;
+    if(ui.page==='events'&&ui.data&&ui.catalog)render();
+  }
+}
+async function buyBingoV2Web(){
+  if(ui.bingoV2Busy)return;
+  const b=ui.bingoV2;
+  if(!b?.enabled||!b.available||b.phase!=='registration'||!b.startAt||Date.now()>=b.startAt)
+    return toast('Não existem inscrições abertas no Bingo V2.');
+  ui.bingoV2Busy=true;
+  try{
+    const response=await api('/api/v1/action/bingoV2.buy',{method:'POST',body:'{}'});
+    toast(response.result?.alreadyOwned?'Sua cartela já estava registrada.':'Cartela V2 comprada por R$ 500.');
+    await Promise.all([loadBingoV2(),sync(true,true)]);
+  }catch(err){toast(String(err.message||'Falha ao adquirir a cartela.'));}
+  finally{ui.bingoV2Busy=false;if(ui.page==='events')render();}
+}
 async function loadAuction(){
   if(!ui.token || ui.auctionLoading) return;
   ui.auctionLoading=true;
@@ -989,8 +1019,11 @@ async function auctionBid(amount){
   ui.auctionSubmitting=true;
   try{
     if(!ui.auction?.acceptingBids) throw new Error('Este lote já não aceita lances.');
-    const response=await api('/api/v1/action/auction.bid',{
-      method:'POST',body:JSON.stringify({amount})
+    const v2=Boolean(ui.auction?.enabled);
+    const offered=v2&&/^\+\d+$/.test(String(amount))?
+      Number(ui.auction?.nextMinimum||0):v2?Number(amount):amount;
+    const response=await api(v2?'/api/v1/action/auctionV2.bid':'/api/v1/action/auction.bid',{
+      method:'POST',body:JSON.stringify({amount:offered})
     });
     ui.auctionAmount='';
     await loadAuction();
@@ -1043,7 +1076,7 @@ async function openWebPage(page){
   if(page==='inventory')jobs.push(loadRelics());
   if(['social','market','clan','games','activities','progression','rankings','loans','contracts','events'].includes(page))
     jobs.push(syncExtras(false).catch(()=>null));
-  if(page==='events')jobs.push(loadEventCenter(false));
+  if(page==='events'){jobs.push(loadEventCenter(false));jobs.push(loadBingoV2());}
   if(page==='auction')jobs.push(loadAuction());
   if(page==='racing')jobs.push(loadRacing(false));
   if(page==='clan'){jobs.push(loadSiege(true));jobs.push(checkWebBuild());}
@@ -1052,6 +1085,7 @@ async function openWebPage(page){
   window.scrollTo({top:0,left:0,behavior:'auto'});
 }
 function actionFeedback(name,result){
+  if((name==='game.quiz.answer'||name==='game.number.guess')&&result?.rewardCooldown) return '✅ Acertou! Prêmio em recarga (30 min entre Quiz e Número).';
   if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
   if(name==='daily'&&result&&result.ok) return '🎁 Bônus diário recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
@@ -1397,6 +1431,7 @@ function renderHome(){
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
+    (raw.daily_xp?'<div class="home-exp"><div><span>📊 XP diário</span><strong>'+num(raw.daily_xp.used)+'/'+num(raw.daily_xp.cap)+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.daily_xp.used)/Math.max(1,Number(raw.daily_xp.cap))*100)+'%"></span></div><small>'+ (Number(raw.daily_xp.rate)===0?'Limite atingido':Number(raw.daily_xp.rate)===1?num(raw.daily_xp.fullRemaining)+' XP a 100% restantes':'Ganho a 25%')+' • reinicia à meia-noite (Brasília)</small></div>':'')+
     '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ Rotina completa</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
     '<div class="home-action-status"><span>🎁 Bônus diário: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'recarga '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
@@ -2275,7 +2310,7 @@ function renderRaids(){
       }
       const ranked=players.slice().sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
-      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'';
+      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+(ui.data?.rebootV2&&Number(p.alliedProtection||0)>0?' • Proteção '+num(p.alliedProtection):'')+(ui.data?.rebootV2&&Number(p.curseTeamDamage||0)>0?' • Maldição +'+num(p.curseTeamDamage):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'';
       const timeLeft=s&&Number(s.expiresAt||0)>Date.now()?Math.ceil((Number(s.expiresAt)-Date.now())/60000):null;
       const autoExpanded=Boolean(s&&(s.status==='active'||(s.status==='lobby'&&(meJoined||isHost))));
       const expanded=autoExpanded||Number(ui.selectedRaidLevel)===Number(r.level);
@@ -2286,6 +2321,7 @@ function renderRaids(){
       return '<div class="card raid-card'+(expanded?' expanded':'')+'"><div class="raid-summary"><div class="raid-thumb">'+artSprite(raidSpriteKey(r.level,r.name),'raid-thumb-art',r.name)+'</div><div class="raid-summary-body">'+
         '<div class="tag-row"><span class="tag">LV.'+num(r.level)+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(raidStatusLabel(s.status)).toUpperCase():'DISPONÍVEL')+'</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+
         '<div class="raid-metrics"><span>❤️ '+num(hp)+'/'+num(max)+'</span><span>⚔️ '+num(r.atk)+' ATK</span><span>🔑 '+money(r.keyPrice)+'</span><span>👥 '+players.length+'/5</span></div>'+
+        (ui.data?.rebootV2&&Number(r.level)===70?'<p>Exige 3 jogadores Lv.90+ e contribuição efetiva. RaidLote indisponível neste nível.</p>':'')+
         '<div class="raid-actions">'+quickAction+toggle+'</div></div></div>'+details+'</div>';
     }).join('')+'</div>';
 }
@@ -2294,7 +2330,7 @@ function activeBoss(){
   const g=currentGroup();
   if(!g) return null;
   if(g.bossEvent && Number(g.bossEvent.hp)>0 && g.bossEvent.active!==false) return Object.assign({event:true},g.bossEvent);
-  if(g.boss && Number(g.boss.hp)>0) return g.boss;
+  if(g.boss && Number(g.boss.hp)>0 && (!ui.data?.rebootV2||g.boss.mode!=='completed')) return g.boss;
   return null;
 }
 function renderBoss(){
@@ -2602,7 +2638,38 @@ function gameStatePanel(type,state){
   return '<div class="game-state"><span class="tag good">ATIVO</span></div>';
 }
 
+function renderAuctionV2(){
+  const a=ui.auction||{};
+  if(!a.available)return '<div class="page-head"><h2>🔨 Leilão 2.0</h2></div>'+
+    '<div class="card"><h3>Leilão indisponível</h3><p>'+
+    (a.requiresApproval?'Aguardando homologação no banco isolado.':'Nenhuma edição da nova temporada foi agendada.')+
+    '</p><button class="btn" data-auction-refresh>Atualizar</button></div>';
+  const accepting=Boolean(a.acceptingBids);
+  const remaining=Math.max(0,Math.ceil((Number(a.endsAt||0)-Date.now()-ui.auctionClockOffset)/1000));
+  const rows=(a.history||[]).map((h,i)=>'<div class="list-row"><span>Lote '+num(i+1)+' • '+esc(h.lot||'')+
+    '</span><strong>'+(h.amount?money(h.amount):'Sem arremate')+'</strong></div>').join('');
+  const input='<form data-auction-form><label for="auctionCustomAmount">Lance total (R$)</label>'+
+    '<div class="game-answer"><input id="auctionCustomAmount" class="game-input" data-auction-amount type="number" inputmode="numeric" step="1" min="'+
+    num(a.nextMinimum||500)+'" max="25000" placeholder="Mínimo: '+num(a.nextMinimum||500)+
+    '" value="'+esc(ui.auctionAmount||'')+'" required'+(accepting?'':' disabled')+'>'+
+    '<button class="btn primary" type="submit"'+(accepting&&!ui.auctionSubmitting?'':' disabled')+
+    '>Registrar lance</button></div></form>';
+  return '<div class="page-head"><div><h2>🔨 Leilão Alpha 2.0</h2>'+
+    '<p>Prêmios iniciais ★1 Lv1. O valor do lance fica reservado e é devolvido se for superado.</p></div>'+
+    '<span class="tag '+(accepting?'good':'')+'">'+(a.phase==='completed'?'ENCERRADO':accepting?'LANCES ABERTOS':'AGUARDANDO')+'</span></div>'+
+    '<div class="grid stats">'+
+    statCard('LOTE',num(a.lotIndex+1)+' / 3',a.lot?.itemId||'Sem lote')+
+    statCard('MAIOR LANCE',a.bid?money(a.bid):'Nenhum','Sem dados pessoais de outros jogadores')+
+    statCard('PRÓXIMO MÍNIMO',a.nextMinimum?money(a.nextMinimum):'—','Acréscimo de R$ 500')+
+    statCard('TEMPO',a.endsAt?formatRemaining(remaining):'—','Cronometração do servidor')+'</div>'+
+    '<section class="card section"><h3>Participar</h3><div class="hero-actions">'+
+    '<button class="btn good" data-auction-increment'+(accepting&&!ui.auctionSubmitting?'':' disabled')+'>Lance mínimo '+money(a.nextMinimum||0)+'</button>'+
+    '<button class="btn" data-auction-refresh>Atualizar</button></div>'+input+'</section>'+
+    '<section class="card section"><h3>Lotes encerrados</h3>'+
+    (rows?'<div class="list">'+rows+'</div>':'<p class="muted">Nenhum lote encerrado.</p>')+'</section>';
+}
 function renderAuction(){
+  if(ui.auction?.enabled||ui.auction?.requiresApproval)return renderAuctionV2();
   const a=ui.auction;
   if(ui.auctionError)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card"><p>'+esc(ui.auctionError)+'</p><button class="btn" data-auction-refresh>Atualizar</button></div>';
   if(!a)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card">Carregando leilão...</div>';
@@ -2784,6 +2851,31 @@ function eventCenterMimicCard(mimic){
     actions
   });
 }
+function renderBingoV2Card(){
+ const b=ui.bingoV2;
+ if(!b?.enabled&&!b?.requiresApproval)return '';
+ if(!b.enabled||!b.available)return '<section class="event-center-section"><div class="card">'+
+  '<h3>🎰 Bingo 2.0</h3><p class="muted">'+
+  (b.error?esc(b.error):b.requiresApproval?'Em homologação. Sem sorteio ou cobrança ativa.':'Nenhuma edição agendada.')+
+  '</p><button class="btn" data-bingo-v2-refresh>Atualizar</button></div></section>';
+ const marked=new Set(b.drawn||[]);
+ const card=b.card?'<div class="event-center-player"><strong>Sua cartela</strong><div class="event-center-pieces">'+
+   b.card.map(n=>'<span>'+(n==null?'⭐ LIV':(marked.has(n)?'✅ ':'○ ')+num(n))+'</span>').join('')+
+   '</div></div>':'<p class="muted">Você ainda não comprou sua cartela.</p>';
+ const register=b.phase==='registration'&&Date.now()<Number(b.startAt||0)&&!b.card;
+ const prizes=Object.entries(b.prizes||{}).map(([name,x])=>'<span>'+esc(name)+' • '+money(x.amount||0)+'</span>').join('');
+ return '<section class="event-center-section"><div class="card"><div class="section-title"><h3>🎰 Bingo Alpha 2.0</h3>'+
+  '<small>'+esc(b.phase||'')+'</small></div>'+
+  '<p>Uma cartela por jogador • R$ 500 • até R$ 9.000 de premiação global.</p>'+
+  '<p class="muted">Início: '+new Date(Number(b.startAt)).toLocaleString('pt-BR')+
+  ' • '+num((b.drawn||[]).length)+'/40 números sorteados</p>'+card+
+  (prizes?'<div class="event-center-pieces">'+prizes+'</div>':'')+
+  '<div class="hero-actions"><button class="btn primary" data-bingo-v2-buy'+
+    (register&&!ui.bingoV2Busy?'':' disabled')+'>'+
+    (b.card?'Cartela adquirida':register?'Comprar cartela por R$ 500':'Inscrições fechadas')+'</button>'+
+  '<button class="btn" data-bingo-v2-refresh>Atualizar</button></div></div></section>';
+}
+
 function renderEvents(){
   const now=Date.now();
   const data=ui.eventCenter||{},group=currentGroup(),extras=ui.extras||{};
@@ -2902,6 +2994,8 @@ function renderEvents(){
     (!group?'<div class="notice warn">Use !web dentro de um grupo ativo para acompanhar os eventos coletivos.</div>':'')+
     (ui.eventCenterError?'<div class="notice warn">⚠️ '+esc(ui.eventCenterError)+' — tente atualizar a Central.</div>':'')+
     (!ui.eventCenter?'<div class="notice">'+(ui.eventCenterLoading?'Carregando eventos…':'Abra a Central novamente para carregar os eventos.')+'</div>':'')+
+    renderBingoV2Card()+
+    (data.rebootV2&&data.weeklyBoss?'<div class="card"><h3>Superboss 2.0</h3><p>'+esc(data.weeklyBoss.schedule)+'</p><p>❤️ '+num(data.weeklyBoss.hp)+' HP • ⚔️ '+num(data.weeklyBoss.atk)+' ATK • Fundo '+money(data.weeklyBoss.cashPool)+'</p><button class="btn" data-go-page="boss">Abrir Boss</button></div>':'')+
     '<div class="event-center-summary"><div><strong>'+active.length+'</strong><span>Em andamento</span></div><div><strong>'+upcoming.length+'</strong><span>Próximos</span></div><div><strong>'+finished.length+'</strong><span>Encerrados</span></div></div>'+
     groupCards('🔴 Acontecendo agora',active,'Nenhum evento em andamento neste momento.')+
     groupCards('🕒 Próximos eventos',upcoming,'Nenhum próximo evento confirmado.')+
@@ -3238,6 +3332,8 @@ function render(){
 function bind(){
   if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
   if(ui.page==='clan')bindClanSiegePreview(ui,{render,submit:submitSiege,refresh:loadSiege});
+  document.querySelectorAll('[data-bingo-v2-refresh]').forEach(x=>x.onclick=()=>loadBingoV2());
+  document.querySelectorAll('[data-bingo-v2-buy]').forEach(x=>x.onclick=()=>buyBingoV2Web());
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+'+String(ui.auction?.step||100000)));
@@ -3837,6 +3933,17 @@ setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
   if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing'&&updateRacingClocks()&&Date.now()>=(ui.racingNextCompletionRefreshAt||0)){ui.racingNextCompletionRefreshAt=Date.now()+30000;void loadRacing(true);}}
 },1000);
+
+// A mudança apenas de fragmento não executa boot novamente.
+window.addEventListener('hashchange',()=>{
+  if(!new URLSearchParams(location.hash.slice(1)).get('code'))return;
+  ui.token='';ui.data=null;ui.catalog=null;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(SWITCH_PENDING_KEY);
+  stopRaidAuto();stopBossAuto();
+  showLogin();
+  location.reload();
+});
 
 (async function boot(){
   renderNav();

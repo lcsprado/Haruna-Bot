@@ -1,5 +1,7 @@
 // Planejamento puro do !forja5. Nenhuma alteracao de banco ocorre nesta etapa.
+import {effectiveShopForge5Fee} from './reboot-gear-economy.js'
 export const FORJA5_SERVICE_FEE = 500000
+export const shopForge5ServiceFee=()=>effectiveShopForge5Fee(FORJA5_SERVICE_FEE)
 const FORJA5_PLAN_VERSION = 'v2-lv10-all-donors'
 const MAX_STARS = 5
 const MAX_LEVEL = 10
@@ -93,7 +95,7 @@ export function planShopForge5(input) {
     }
   }
   const alreadyFull = Boolean(forged && stars===MAX_STARS && forgedLevel===MAX_LEVEL)
-  const serviceFee = alreadyFull ? 0 : FORJA5_SERVICE_FEE
+  const serviceFee = alreadyFull ? 0 : shopForge5ServiceFee()
   const total = purchases+upgrades+forgeFees+serviceFee
   if (![purchases,upgrades,forgeFees,total].every(Number.isSafeInteger)) {
     throw new Error('Custo da forja excede limite de seguranca.')

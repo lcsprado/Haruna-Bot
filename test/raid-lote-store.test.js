@@ -178,3 +178,46 @@ test('cancelamento nao altera carteira nem reembolsa tentativas',async()=>{
   assert.equal(r.total_paid,5280000)
   assert.equal(seen.some(s=>/UPDATE wallets|INSERT INTO transactions/.test(s)),false)
 })
+
+test('V2 compra por horas usa limite diário, ignora passe legado e persiste horário sem cobrar novamente',async()=>{
+ const old=process.env.ALPHA_REBOOT_MODE
+ process.env.ALPHA_REBOOT_MODE='classes_only'
+ const catalogV2=()=>[{level:50,minLevel:50,keyPrice:1000}]
+ const at=Date.now(),pass={activatedAt:at-1000,expiresAt:at+3600000,maxPackages:3}
+ const req={...order,level:50,attempts:6,durationHours:8}
+ try{
+  const f=dbForPurchase({pass})
+  const r=await purchaseRaidLote(f.db,req,{getCatalog:catalogV2})
+  assert.equal(r.job.duration_hours,8)
+  assert.equal(r.job.auction_pass_manual_rewards,false)
+  assert.equal(r.quote.attempts,6)
+  assert.equal(r.quote.totalPrice,6600)
+  assert.equal(f.amounts.job[14],8)
+  assert.equal(f.amounts.job[15],80)
+  const blocked=dbForPurchase({pass,purchased:5})
+  await assert.rejects(()=>purchaseRaidLote(blocked.db,req,{getCatalog:catalogV2}),/Limite de 10/)
+  assert.equal(blocked.amounts.wallet,null)
+  const wrong=dbForPurchase()
+  await assert.rejects(()=>purchaseRaidLote(wrong.db,{...req,attempts:9},{getCatalog:catalogV2}),/divergentes/)
+  assert.equal(wrong.statements.length,0)
+ }finally{
+  if(old===undefined)delete process.env.ALPHA_REBOOT_MODE
+  else process.env.ALPHA_REBOOT_MODE=old
+ }
+})
+test('horário futuro não reserva nova tentativa nem realiza escrita; reinício mantém horário',async()=>{
+ const job={id:'timed-job',jid:order.jid,status:'queued',started:0,requested:3,
+  current_attempt_id:null,cancel_requested:false,level:50,duration_hours:4,
+  next_attempt_at:new Date(Date.now()+60000)}
+ const statements=[]
+ const db={connect:async()=>({release(){},async query(sql){
+  statements.push(sql)
+  if(sql.includes('SELECT jid FROM raid_lote_jobs'))return {rows:[{jid:job.jid}]}
+  if(sql.includes('SELECT * FROM raid_lote_jobs WHERE id='))return {rows:[job]}
+  if(sql.startsWith('BEGIN')||sql.startsWith('COMMIT')||sql.includes('pg_advisory_xact_lock'))return {rows:[]}
+  throw Error('Consulta inesperada: '+sql)
+ }})}
+ assert.equal((await reserveNextRaidLoteAttempt(db,job.id)).status,'waiting_schedule')
+ assert.equal((await reserveNextRaidLoteAttempt(db,job.id)).status,'waiting_schedule')
+ assert.equal(statements.some(s=>/INSERT|UPDATE/.test(s.replace('FOR UPDATE',''))),false)
+})

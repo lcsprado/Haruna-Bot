@@ -1,0 +1,183 @@
+name: Reboot Alpha — auditoria isolada sem banco
+on:
+  pull_request:
+    paths:
+      - 'docs/reboot-classes-only-20261117.md'
+      - 'docs/reboot-data-inventory-20261117.md'
+      - 'docs/reboot-economy-simulation-20261117.md'
+      - 'docs/reboot-economy-flows-20261117.md'
+      - 'docs/reboot-career-v2-20261117.md'
+      - 'docs/reboot-vehicle-roi-v2-20261117.md'
+      - 'docs/reboot-economy-integrated-v2-20261117.md'
+      - 'docs/reboot-economy-stress-v2-20261117.md'
+      - 'docs/reboot-economy-c4e-v2-20261117.md'
+      - 'docs/reboot-economy-c4f-v2-20261117.md'
+      - 'docs/reboot-economy-c4g-v2-20261117.md'
+      - 'docs/reboot-events-c4h-v2-20261117.md'
+      - 'docs/reboot-events-c4i-v2-20261117.md'
+      - 'docs/reboot-isolated-db-runbook-20261117.md'
+      - 'docs/reboot-db-capacity-v2-20261117.md'
+      - 'docs/reboot-backup-v1-20261117.md'
+      - 'scripts/reboot-audit.mjs'
+      - 'scripts/reboot-economy-baseline.mjs'
+      - 'scripts/reboot-economy-sim.mjs'
+      - 'scripts/reboot-economy-flow-audit.mjs'
+      - 'scripts/reboot-vehicle-roi.mjs'
+      - 'scripts/reboot-economy-integrated.mjs'
+      - 'scripts/reboot-economy-stress.mjs'
+      - 'scripts/reboot-economy-ancillary-audit.mjs'
+      - 'scripts/reboot-reset-manifest.mjs'
+      - 'scripts/reboot-backup-v1.mjs'
+      - 'src/neon/reboot-classes-policy.js'
+      - 'src/neon/reboot-economy-policy.js'
+      - 'src/neon/reboot-gear-economy.js'
+      - 'src/neon/reboot-progression-rewards.js'
+      - 'src/neon/reboot-pet-economy.js'
+      - 'src/neon/reboot-combat-progression.js'
+      - 'test/reboot-combat-progression.test.mjs'
+      - 'test/reboot-event-legacy-isolation.test.mjs'
+      - 'src/neon/weekly-boss-prize-pool.js'
+      - 'src/neon/reboot-events-whatsapp.js'
+      - 'test/reboot-pet-economy.test.mjs'
+      - 'src/neon/pet-potion-economy.js'
+      - 'src/neon/npc-shops.js'
+      - 'test/reboot-progression-rewards.test.mjs'
+      - 'test/reboot-gear-economy.test.mjs'
+      - 'src/neon/reboot-transport-policy.js'
+      - 'src/neon/reboot-career-policy.js'
+      - 'src/neon/reboot-vehicle-roi.js'
+      - 'src/neon/reboot-sale-policy.js'
+      - 'src/neon/reboot-bingo-policy.js'
+      - 'src/neon/reboot-auction-policy.js'
+      - 'src/neon/reboot-events-service.js'
+      - 'src/neon/reboot-events-whatsapp.js'
+      - 'src/neon/reboot-events-scheduler.js'
+      - 'src/neon/gt-alpha-rules.js'
+      - 'src/neon/gt-alpha-sponsor-rules.js'
+      - 'src/neon/gt-alpha-sponsors.js'
+      - 'src/neon/gt-alpha-event.js'
+      - 'src/neon/weekly-boss-prize-pool.js'
+      - 'src/neon/daily-v2.js'
+      - 'src/neon/progression.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/raid-lote-policy.js'
+      - 'src/neon/raid-lote-worker.js'
+      - 'test/raid-lote-store.test.js'
+      - 'test/reboot-raid-lote-hours.test.mjs'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/games.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/web-event-center.js'
+      - 'src/neon/web-api.js'
+      - 'src/neon/relics.js'
+      - 'src/neon/auction-bonus-20261101.js'
+      - 'src/neon/npc-shops.js'
+      - 'src/neon/auction-20261115-rewards.js'
+      - 'src/neon/auction-forged-rewards.js'
+      - 'test/reboot-audit.test.mjs'
+      - 'test/reboot-economy-baseline.test.mjs'
+      - 'test/reboot-economy-sim.test.mjs'
+      - 'test/reboot-transport-policy.test.mjs'
+      - 'test/reboot-career-policy.test.mjs'
+      - 'test/reboot-vehicle-roi.test.mjs'
+      - 'test/reboot-economy-integrated.test.mjs'
+      - 'test/reboot-economy-stress.test.mjs'
+      - 'test/reboot-economy-ancillary-audit.test.mjs'
+      - 'test/reboot-economy-c4g.test.mjs'
+      - 'test/reboot-events-c4h.test.mjs'
+      - 'test/gt-alpha-sponsor-numeric.test.mjs'
+      - 'test/reboot-economy-flow-audit.test.mjs'
+      - 'test/reboot-reset-manifest.test.mjs'
+      - 'test/reboot-backup-v1.test.mjs'
+      - 'test/reboot-classes-policy.test.mjs'
+      - 'test/reboot-economy-policy.test.mjs'
+      - 'test/reboot-web-collab.test.mjs'
+      - '.github/workflows/reboot-classes-only-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check scripts/reboot-audit.mjs
+          node --check scripts/reboot-economy-baseline.mjs
+          node --check scripts/reboot-economy-sim.mjs
+          node --check scripts/reboot-economy-flow-audit.mjs
+          node --check scripts/reboot-reset-manifest.mjs
+          node --check scripts/reboot-backup-v1.mjs
+          node --check src/neon/reboot-classes-policy.js
+          node --check src/neon/reboot-economy-policy.js
+          node --check src/neon/reboot-gear-economy.js
+          node --check src/neon/reboot-progression-rewards.js
+          node --check src/neon/reboot-pet-economy.js
+          node --check src/neon/reboot-combat-progression.js
+          node --check src/neon/pet-potion-economy.js
+          node --check src/neon/npc-shops.js
+          node --check src/neon/gt-alpha-rules.js
+          node --check src/neon/gt-alpha-event.js
+          node --check src/neon/weekly-boss-prize-pool.js
+          node --check src/neon/daily-v2.js
+          node --check src/neon/progression.js
+          node --check src/neon/raid-lote-store.js
+          node --check src/neon/playable-heroes.js
+          node --check src/neon/games.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/reboot-transport-policy.js
+          node --check src/neon/reboot-career-policy.js
+          node --check src/neon/reboot-vehicle-roi.js
+          node --check src/neon/reboot-sale-policy.js
+          node --check src/neon/reboot-bingo-policy.js
+          node --check src/neon/reboot-auction-policy.js
+          node --check src/neon/reboot-events-service.js
+          node --check src/neon/reboot-events-whatsapp.js
+          node --check src/neon/reboot-events-scheduler.js
+          node --check web/app.js
+          node --check src/neon/auction-forged-rewards.js
+          node --check scripts/reboot-vehicle-roi.mjs
+          node --check scripts/reboot-economy-integrated.mjs
+          node --check scripts/reboot-economy-stress.mjs
+          node --check scripts/reboot-economy-ancillary-audit.mjs
+          node --check src/neon/gt-alpha-sponsor-rules.js
+          node --check src/neon/gt-alpha-sponsors.js
+          node --check src/neon/web-event-center.js
+          node --check src/neon/web-api.js
+          node --check src/neon/relics.js
+          node --check src/neon/auction-bonus-20261101.js
+          node --check src/neon/npc-shops.js
+          node --check src/neon/auction-20261115-rewards.js
+      - name: Testes dedicados, sem dependencias ou credenciais
+        run: node --test test/reboot-audit.test.mjs test/reboot-economy-baseline.test.mjs test/reboot-economy-sim.test.mjs test/reboot-transport-policy.test.mjs test/reboot-career-policy.test.mjs test/reboot-vehicle-roi.test.mjs test/reboot-economy-integrated.test.mjs test/reboot-economy-stress.test.mjs test/reboot-economy-ancillary-audit.test.mjs test/reboot-economy-c4g.test.mjs test/reboot-events-c4h.test.mjs test/reboot-economy-flow-audit.test.mjs test/reboot-economy-policy.test.mjs test/reboot-reset-manifest.test.mjs test/reboot-backup-v1.test.mjs test/reboot-classes-policy.test.mjs test/reboot-web-collab.test.mjs test/reboot-raid-lote-hours.test.mjs test/reboot-gear-economy.test.mjs test/reboot-progression-rewards.test.mjs test/reboot-pet-economy.test.mjs test/reboot-combat-progression.test.mjs test/reboot-event-legacy-isolation.test.mjs test/level-reward-safety-20261020.test.mjs test/auction-pass-manual-rewards-20261116.test.mjs test/raid-lote-store.test.js test/raid-lote-worker.test.js test/raid-lote-public.test.js
+      - name: Regressões do jogo anterior (sem DB)
+        run: node --test test/regression-smoke.test.mjs test/playable-seven-sins-20261027.test.mjs
+      - name: Auditorias somente leitura
+        run: |
+          node scripts/reboot-audit.mjs --json > /tmp/reboot-dependencies.json
+          node scripts/reboot-economy-baseline.mjs --json > /tmp/reboot-business-baseline.json
+          node scripts/reboot-economy-sim.mjs --json > /tmp/reboot-economy-sim.json
+          node scripts/reboot-economy-flow-audit.mjs --json > /tmp/reboot-flow-audit.json
+          node scripts/reboot-vehicle-roi.mjs --json > /tmp/reboot-vehicle-roi.json
+          node scripts/reboot-economy-integrated.mjs --json > /tmp/reboot-economy-integrated.json
+          node scripts/reboot-economy-stress.mjs --json > /tmp/reboot-economy-stress.json
+          node scripts/reboot-economy-ancillary-audit.mjs --json > /tmp/reboot-economy-ancillary.json
+          node scripts/reboot-economy-ancillary-audit.mjs
+          node scripts/reboot-economy-stress.mjs
+          node scripts/reboot-economy-integrated.mjs
+          node scripts/reboot-economy-sim.mjs
+          node scripts/reboot-reset-manifest.mjs --json > /tmp/reboot-reset-manifest.json
+          node -e "const d=require('/tmp/reboot-dependencies.json');const e=require('/tmp/reboot-business-baseline.json');const r=require('/tmp/reboot-reset-manifest.json');const sim=require('/tmp/reboot-economy-sim.json');const flow=require('/tmp/reboot-flow-audit.json');if(!flow.readOnly||flow.mixedPeriodStressTotal!==129000000||flow.ignoreLast12Hours!==true)process.exit(1);if(!d.readOnly||!r.readOnly||!r.classes.valid||d.sourceFilesScanned<1||e.length<1||d.tablesFound.length!==r.total||!sim.readOnly||sim.profiles.length!==12||sim.profiles.some(p=>!p.current.accountingBalanced||!p.proposed.accountingBalanced))process.exit(1);console.log('Auditados',d.sourceFilesScanned,'arquivos,',d.tablesFound.length,'tabelas e',e.length,'cenarios de negocio');console.log('CLASSES:',r.classes.actual.join(', '));console.log('TABELAS POR CATEGORIA:',JSON.stringify(r.counts));console.log('TABELAS A REVISAR:',r.groups.unclassified_blocker.join(', '));"

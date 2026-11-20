@@ -1,0 +1,8 @@
+# Suporte cooperativo e sinergias V2 — 18/11/2026
+
+- Necromante IV+: maldição de +3% em ataques de aliados, sem acumular por número de necromantes; escolhe primeiro ativo, não beneficia seu próprio ataque. Bônus limitado ao HP remanescente após golpe base. Dano efetivo permanece creditado uma única vez ao atacante; bônus separado como contribuição de suporte, não soma novamente ao ranking.
+- Paladino IV+: mantém aura existente de 2% sem empilhamento; registra mitigação bruta limitada ao dano e HP, não conta esquiva/absorção integral. Não ativa a função legada de redirecionar 18% para evitar penalizar tank e inconsistência de HP após persistência. Não altera Samurai/Berserker nem cria classes.
+- Cura/mitigação/maldição efetiva podem qualificar suporte (>=200 e >=0,2% do dano total), dano mínimo 2% e regra Raid70 5%/3 participantes preservados. Campos de relatório incluídos em rewards; renderização WA/Web a revisar.
+- Sinergia de combate requer 3 membros aptos; HP/energia do ativo e reserva sobrepõem snapshot antigo. Último turno de energia conta. A perda de membro suspende sinergia nos próximos cálculos, recuperação restaura. HP máximo de abertura permanece fixo durante a Raid para evitar manipulação/reprojeção. Slot passivo usa snapshot da luta; não adiciona consulta. Boss e PvP também verificam membros aptos. Prévia de composição não muda. Bônus de elmo Halloween não soma em Boss/Raid V2. V1 preservada.
+- Corrigidas duas asserções de regressão desatualizadas (5 workflows) do Superboss; proteções preservadas.
+- Validação unitária e integração estática, não homologação completa. Pendentes: ensaio de composição real com pet de nível baixo, consumo de cura, UI de relatórios, revisão WA/Web, backup e restauração. Sem produção/merge/deploy/SQL.

@@ -1,5 +1,7 @@
 import { db, ensureUser } from './db.js'
 import { getPlayerClass } from './game-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {effectiveAwakeningTier} from './reboot-combat-progression.js'
 
 // Progressão por missões; dinheiro somente ao concluir um despertar.
 // Valores pactuados I–V. Nenhuma passiva ou dano é alterado nesta etapa.
@@ -73,7 +75,7 @@ export async function initAwakening(){
       }
     }
   })
-  console.log('[Despertar] progressão I–V (etapas II/III/IV/V nos níveis 150/200/250/300); estágio inicial I')
+  console.log('[Despertar] progressão I–V (etapas II/III/IV/V nos níveis '+AWAKENING_TIERS.map(t=>effectiveAwakeningTier(t).level).join('/')+'); estágio inicial I')
 }
 async function getMetrics(c,jid){
   const [st,log]=await Promise.all([
@@ -139,12 +141,12 @@ async function normalizeAwakeningStage(c,jid,row,current){
   return row
 }
 function progress(row,u,counters){
-  const stage=Number(row.stage??1),tier=AWAKENING_TIERS.find(t=>t.stage===stage+1)||null
+  const stage=Number(row.stage??1),tier=effectiveAwakeningTier(AWAKENING_TIERS.find(t=>t.stage===stage+1)||null)
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
   const quests=tier?path.quests.map(([type,amount,level,label])=>{
-    const raidMin=type==='raid'?Math.max(level,tier.stage===2?40:60):0
+    const raidMin=type==='raid'?Math.max(level,tier.raidMin??(tier.stage===2?40:60)):0
     // Ajuste individual da missão de proteção do Despertar III; não altera a regra geral.
-    const personalProtection=String(row.jid||'')==='5511948523167@s.whatsapp.net'
+    const personalProtection=!classesOnlyRebootEnabled()&&String(row.jid||'')==='5511948523167@s.whatsapp.net'
       &&classId==='paladin'&&tier.stage===3&&type==='raid'
     const target=personalProtection?60:amount*tier.mult
     const earned=since(row.baseline,counters,type,raidMin)
@@ -153,7 +155,7 @@ function progress(row,u,counters){
     // temporary DB. Carry ONLY audited progress for this stage, separate from
     // live metrics. A real stage advance/class switch clears it via checkpoint().
     const recoveredStage=Number(row.baseline?.__recovery_stage||0)
-    const recoveredQuests=recoveredStage===stage?row.baseline?.__recovered_quests||{}:{}
+    const recoveredQuests=!classesOnlyRebootEnabled()&&recoveredStage===stage?row.baseline?.__recovered_quests||{}:{}
     const recovered=Math.max(0,Math.min(target,Math.floor(Number(recoveredQuests[type]||0))))
     const done=Math.min(target,earned+recovered+(personalProtection?34:0))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}

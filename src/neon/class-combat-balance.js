@@ -1,3 +1,5 @@
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {V2_CLASS_GROWTH} from './reboot-combat-progression.js'
 // Class progression is a combat-only, additive bridge to collab heroes.
 // Never persists bonus attributes into stats (avoids double-counting on class swaps).
 // A hero's full build must remain superior on average at equal gear/mastery.
@@ -33,7 +35,7 @@ export const classPersistentHp=(combatHp,combatMaxHp,persistentMaxHp)=>
   classCombatHp(combatHp,combatMaxHp,persistentMaxHp);
 export const classLevelFromGeneralLevel=value=>Math.max(1,Math.min(CLASS_LEVEL_CAP,Math.floor(Number(value)||1)));
 export function classCombatGrowth(classId,level){
-  const target=CLASS_ROLE_GROWTH[String(classId||'').toLowerCase()];
+  const target=(classesOnlyRebootEnabled()?V2_CLASS_GROWTH:CLASS_ROLE_GROWTH)[String(classId||'').toLowerCase()];
   // O bônus final da classe é dividido em 100 parcelas; Lv.N = N/100.
   const factor=classLevelFromGeneralLevel(level)/CLASS_LEVEL_CAP;
   return Object.fromEntries(['hp','atk','def','spd'].map(key=>[key,Math.round(Number(target?.[key]||0)*factor)]));

@@ -119,11 +119,19 @@ test('socket accounting does not double-count snapshots, closed streams or regis
 
 test('unrelated progression and daily data remain frozen while approved hero mechanics evolve',()=>{
   // SHA-256 recalculados a partir da whatsapp-only oficial (71f065b1, 16/11/2026).
+  // O reboot opt-in autorizou mudança em daily-v2.js, mas os valores da V1 e a proteção SHA continuam verificados.
+  // Revisão V2 de 18/11: apenas a apresentação de nextMark usa os valores da nova política.
+  // Revisão 19/11: init diário V2 sem reparo histórico; validação dos marcos da temporada.
+  // SHA confirmado na regressão d83e0f4, com teste real de PostgreSQL aprovado.
   // A proteção continua estrita: qualquer alteração futura exige revisão do teste.
   const expected={
-    'progression.js':'23fbf93db2a9fcd46336e8e528577943e966bd035f06eaed4db2276ab2ffadd0',
-    'daily-v2.js':'0ee97aa76c5f06466cc542183a8078ee79d41e71f436e8db59af34e94c9e73c8'
+    'daily-v2.js':'51f55c4fff5fe932cfced143bd6885f1027eb7df5e7b5df6f37b2eb41c993566'
   }
+  // A mudança em progression.js é autorizada SOMENTE no caminho opt-in da V2.
+  const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
+  assert.match(progression,/id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:110000,capacityHours:24/)
+  assert.match(progression,/rebootEconomyEnabled\(\)/)
+  assert.match(progression,/businessIntervalGross\(b,row,now\)/)
   for(const [file,hash] of Object.entries(expected)){
     assert.equal(createHash('sha256').update(readFileSync(new URL('../src/neon/'+file,import.meta.url))).digest('hex'),hash,file)
   }

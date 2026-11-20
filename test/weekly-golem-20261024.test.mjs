@@ -36,7 +36,7 @@ test('powers are comparable to legacy badges and do not affect PvP',()=>{
 })
 test('weekly rewards, HP, ATK and no duplicate recurring badges',()=>{
  assert.match(games,/8000000\+Math\.floor\(Math\.random\(\)\*1500001\)/)
- assert.match(games,/maxHp,atk:200,participants/)
+ assert.match(games,/maxHp,atk:rebootEconomyEnabled\(\)\?V2_WEEKLY_BOSS.atk:200,participants/)
  assert.match(games,/cash:1000000,xp:12000,epicBoxes:15/)
  assert.match(games,/cash:750000,xp:9000,epicBoxes:12/)
  assert.match(games,/cash:525000,xp:6500,epicBoxes:9/)

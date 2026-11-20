@@ -18,8 +18,9 @@ export function formatRaidLotePrivateReceipt(job,reports=[]){
   const {totalXp,bonusXp}=summarizeRaidLoteXp(earned)
   const heading=job.status==='won'?'PACOTE CONCLUÍDO':job.status==='lost'?'PACOTE ENCERRADO POR DERROTA':'PACOTE CANCELADO'
   return (job.auction_pass_manual_rewards===true?'🎟️ *PASSE SUPREMO — RECOMPENSAS DE RAID MANUAL*\n':'')+
-    '⚔️ *RAIDLOTE V1 — '+heading+'*'
+    '⚔️ *RAIDLOTE '+(job.duration_hours?'2.0':'V1')+' — '+heading+'*'
     +'\n🎯 Raid Lv.'+safeInt(job.level)+' • '+earned.length+'/'+safeInt(job.requested)+' vitórias'
+    +(job.duration_hours?'\n⏱️ Pacote contratado: '+safeInt(job.duration_hours)+'h':'')
     +'\n🔑 Tentativas iniciadas: '+safeInt(job.started)
     +'\n💰 Dinheiro ganho: R$ '+money(cash)
     +'\n✨ XP do jogador: +'+money(totalXp)
@@ -87,7 +88,7 @@ export async function flushRaidLoteNotices({db,sendMessage,isConnected},{max=3}=
       if(!privateJid(item.jid))throw new Error('Destino sem numero verificado')
       if(!isConnected())throw new Error('Conexao WhatsApp fechada antes da entrega')
       const {rows:jobs}=await db.query(`
-        SELECT id,jid,status,level,requested,started,won_count,total_paid,auction_pass_manual_rewards
+        SELECT id,jid,status,level,requested,started,won_count,total_paid,auction_pass_manual_rewards,duration_hours
         FROM raid_lote_jobs WHERE id=$1 AND jid=$2
       `,[item.job_id,item.jid])
       const job=jobs[0]

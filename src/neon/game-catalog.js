@@ -1,4 +1,7 @@
+import {v2PetSacrifice} from './reboot-pet-economy.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {dungeonAwakeningEnabled} from './reboot-pve-policy.js'
 import {VITAL_PETS} from './vital-pets.js'
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
@@ -25,7 +28,7 @@ export function getPlayerClass(id){
 }
 
 export const PET_STATUS_SPECIALTIES = {
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
+  ...Object.fromEntries((classesOnlyRebootEnabled()?[]:PECADOS_HEROES).map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
   ...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{label:p.name+' — Vínculo Vital',stats:p.stats,healPct:p.healPct||0,healCooldown:p.healCooldown||0,raid:true}])),
   morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   corcel_espectral_halloween:{label:'🐎 Corcel Espectral Ascendido — Halloween',stats:{bossDamage:11,crit:5,defense:4,dodge:4},raid:true},
@@ -174,7 +177,7 @@ export function petSacrificeReward(species,level=1,xp=0,pricePaid=null) {
   const shopPrice=getAdoptablePetRule(species)?.price||0
   const tracked=pricePaid===null||pricePaid===undefined?shopPrice:Math.max(0,Number(pricePaid)||0)
   const cash=tracked>0?Math.floor(tracked*.5):previousCash
-  return {level:lvl,exp,cash,originalPrice:tracked,shopRefund:tracked>0}
+  return v2PetSacrifice({level:lvl,exp,cash,originalPrice:tracked,shopRefund:tracked>0})
 }
 
 
@@ -317,7 +320,7 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
 
 // Habilidades I–V em Boss/Raid, com atributos dos cinco estágios. Não altera PvP nem passivas dos não despertos.
 function awakenedStage(applied,stage,context){
-  return applied && (context==='boss'||context==='raid')
+  return applied && dungeonAwakeningEnabled(context)
     ? Math.max(0,Math.min(5,Math.floor(Number(stage)||0))) : 0
 }
 export function getAwakeningSkillDescriptions(classId){

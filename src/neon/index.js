@@ -1,5 +1,8 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
+import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
+import {v2CareerRoleFactor} from './reboot-career-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
@@ -109,6 +112,8 @@ import {handlePocoLiveCommand,startPocoLiveScheduler} from './poco-abismo-live.j
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startBingoNov15Scheduler,handleBingoNov15Command} from './bingo-20261115.js'
 import {startBingoNov16Scheduler,handleBingoNov16Command} from './bingo-20261116.js'
+import {handleRebootEventsCommand} from './reboot-events-whatsapp.js'
+import {startRebootEventsScheduler} from './reboot-events-scheduler.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
@@ -125,8 +130,12 @@ import {handleAuction15RewardCommand,isNextRaidLotePassPackage} from './auction-
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
+// No modo V2, o consumidor real só inicia após aprovação explícita do cutover.
+assertRebootWhatsappPermission()
 
-import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText} from './raid-lote-policy.js'
+import {shopForge5ServiceFee} from './shop-forge5-plan.js'
+import {effectiveExpeditionPlans} from './reboot-pet-economy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
@@ -447,7 +456,7 @@ if(r.dead){
 const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017'||r.eventId===COLLAB_FARM_ID) && Boolean(r.nextPhase)
 completed=!nextPecado;
 for(const player of r.rewards||[]){
-if(Number(player.share||0)>=0.02){
+if(Number(player.share||0)>=0.02&&(!classesOnlyRebootEnabled()||r.mode!=='common'||Number(player.exp||0)>0)){
 await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
 await recordAscensionVeteranActivity(db,player.jid,'boss')
   .catch(err=>console.error('[ASCENSAO] prova Boss',err?.message||err))
@@ -592,6 +601,7 @@ let bossAutoWatchdogBusy=false
 let bossAutoReply=null
 let legacyWeeklyBossRecoveredId=null
 async function recoverPecadosParticipantsStoppedByOldPhase(){
+if(classesOnlyRebootEnabled())return;
 const now=Date.now()
 if(now<Date.parse('2026-10-11T18:40:00-03:00')||
 now>=Date.parse('2026-10-11T20:40:00-03:00')) return
@@ -940,6 +950,8 @@ const boostName=Number(x.xpBoostPercent||0)===100?'⏳ *BÔNUS AMPULHETA XP 2×*
 text+=`\n${boostName}: +${fmt(x.xpBoostBonus)} XP (já incluído no total)`
 }
 text+=formatRaidPlayerHealing(x,fmt)
+if(classesOnlyRebootEnabled()&&Number(x.alliedProtection||0)>0)text+='\n🛡️ Proteção de aliados: '+fmt(x.alliedProtection)+' HP'
+if(classesOnlyRebootEnabled()&&Number(x.curseTeamDamage||0)>0)text+='\n💀 Maldição: +'+fmt(x.curseTeamDamage)+' dano de aliados (já incluído no dano total)'
 text+=formatRaidSkillLine(x,fmt)
 const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
 if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
@@ -1265,7 +1277,7 @@ for(const c of board.contracts){
 const eligible=board.level>=c.level
 const selected=board.active?.contract_id===c.id
 const status=selected?(board.active.claimed?'✅ RESGATADO':`📌 ACEITO • ${board.active.progress}/${board.active.target}`):(eligible?'🟢 Disponível':'🔒 Bloqueado')
-text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 Caixa Épica':''}\n${status}\n\n`
+text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 '+(c.item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n${status}\n\n`
 }
 text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
 return text.trim()
@@ -1275,7 +1287,7 @@ setQuickFlow(chat,sender,'nav_main',{},90000)
 await reply(
 `🤖 *ALPHA BOT — CENTRAL DO GRUPO*
 Um bot completo para o grupo — não só RPG.
-🚀 *NOVIDADES 3.0*
+🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
 📜 *!contratos* — missões rotativas de 4 em 4 horas
 💰 *Economia & patrimônio*
@@ -1314,7 +1326,7 @@ await reply(
 `📚 *ALPHA BOT — CENTRAL DE COMANDOS*
 O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
 Escolha a área e eu mostro só os comandos que interessam.
-🚀 *NOVIDADES 3.0*
+🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — acesso ao novo RPG visual no navegador
 📜 *!contratos* — missões de 4 em 4 horas
 1️⃣ 👤 Perfil, conta & social
@@ -1352,6 +1364,18 @@ function canonicalPlayerJid(jid){
 if(!jid) return jid
 if(jid.endsWith('@s.whatsapp.net')) return jid.replace(/:\\d+(?=@)/,'')
 return jid
+}
+// V2: compare full identities, never just digits across phone and LID namespaces.
+function verifiedRebootOwner({sender,rawSender,ownerJid,ownerNumber,ownerLid,pairingNumber}){
+  const normalize=value=>String(value||'').replace(/:\d+(?=@)/,'')
+  const configured=normalize(ownerJid|| (ownerNumber?ownerNumber+'@s.whatsapp.net':''))
+  const expected=configured || (!ownerLid&&pairingNumber?pairingNumber+'@s.whatsapp.net':'')
+  const phone=/^\d{10,15}@s\.whatsapp\.net$/
+  const lid=/^\d+@lid$/
+  const resolved=normalize(sender),raw=normalize(rawSender)
+  if(phone.test(expected)) return resolved===expected && (phone.test(raw)?raw===expected:lid.test(raw))
+  if(lid.test(expected)) return raw===expected && (resolved===expected||phone.test(resolved))
+  return false
 }
 function normalizedAddressJid(jid){
 return String(jid||'').replace(/:\d+(?=@)/,'')
@@ -1419,7 +1443,7 @@ if(!phoneJid && canonicalLid(jid) && !identityConflict){
 try{phoneJid=await verifiedLidDirectory.lookup(jid) || await verifiedLidDirectory.recoverFromActiveGroups(jid,sock);if(phoneJid)aliases.add(phoneJid)}catch(err){console.warn('[Identity] verified lookup unavailable',String(err?.message||err).slice(0,100))}
 }
 if(identityConflict){for(const alias of [...aliases])if(canonicalLid(alias))aliases.delete(alias);if(canonicalLid(jid))phoneJid=null}
-if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
+if(ownerLid && ownerNumber && (!classesOnlyRebootEnabled()||(!identityConflict&&normalizedAddressJid(jid)===ownerLid&&(!phoneJid||phoneJid===ownerNumber+'@s.whatsapp.net'))) && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
 const canonicalOwner=ownerNumber+'@s.whatsapp.net'
 aliases.add(ownerLid)
 aliases.add(canonicalOwner)
@@ -1715,7 +1739,7 @@ ${title}${isFirst500Champion?' • '+FIRST_500_TITLE:''}${mimicTitle?' • '+mim
 ${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true,pvpHp:hpForPvpProfile}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}
 ✨ EXP: *${xp.current}/${xp.needed}* • faltam *${xp.remaining} XP* (${xp.percentage}%)
-[${xp.bar}]
+[${xp.bar}]${p.daily_xp?'\n📊 XP diário: *'+fmt(p.daily_xp.used)+'/'+fmt(p.daily_xp.cap)+'* • '+(p.daily_xp.rate===0?'limite atingido':p.daily_xp.rate===1?fmt(p.daily_xp.fullRemaining)+' XP a 100% restantes':'ganho a 25%')+' • reinicia à meia-noite (Brasília)':''}
 ${heroSheet?'':`${profileHpLines({normalHp:Number(p.effective_hp||0),normalMaxHp:Number(p.effective_max_hp||0),pvpHp:hpForPvpProfile.hp,pvpMaxHp:hpForPvpProfile.maxHp})}\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
@@ -2085,7 +2109,7 @@ await initEnchantments()
 await initHalloweenAlpha()
 await initMadrugada()
 await initRacingAlpha()
-{
+if(!classesOnlyRebootEnabled()){
 const key='raid_fragment_double_20261012_30min_v1'
 const startAt=Date.now()
 const event={
@@ -2104,7 +2128,7 @@ const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
 const adminXpEventMinutes=Number(process.env.ADMIN_XP_EVENT_MINUTES||0)
 const adminXpEventMultiplier=Number(process.env.ADMIN_XP_EVENT_MULTIPLIER||0)
 const adminXpEventLabel=String(process.env.ADMIN_XP_EVENT_LABEL||'EVENTO 2X XP').trim()||'EVENTO 2X XP'
-if(adminXpEventToken&&Number.isInteger(adminXpEventMinutes)&&adminXpEventMinutes>=1&&adminXpEventMinutes<=180&&Number.isFinite(adminXpEventMultiplier)&&adminXpEventMultiplier>=1&&adminXpEventMultiplier<=10){
+if(!classesOnlyRebootEnabled()&&adminXpEventToken&&Number.isInteger(adminXpEventMinutes)&&adminXpEventMinutes>=1&&adminXpEventMinutes<=180&&Number.isFinite(adminXpEventMultiplier)&&adminXpEventMultiplier>=1&&adminXpEventMultiplier<=10){
 const markerKey='admin_xp_event:'+adminXpEventToken
 const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!already){
@@ -3495,7 +3519,7 @@ return q
 async function quizAnswerRequested(chat,sender,answer,reply,isGroup){
 const r=await answerQuiz(chat,sender,answer)
 if(r.correct&&isGroup)await progressGroupMission(chat,sender,'quiz')
-await reply((r.correct?'✅ *Acertou!* +R$ '+fmt(r.reward)+'\nResposta: *'+r.correctText+'*':
+await reply((r.correct?'✅ *Acertou!* '+(r.rewardCooldown?'Prêmio em recarga (30 min entre Quiz e Número).':'+R$ '+fmt(r.reward))+'\nResposta: *'+r.correctText+'*':
 '❌ Errou. A resposta correta era *'+r.correctAnswer+'. '+r.correctText+'*.')+'\n\n'+quizFinishPrompt)
 quizAwaitChoice(chat)
 return r
@@ -3600,6 +3624,7 @@ setePecadosBroadcaster=sendEventToGroups
 let setePecadosCorrectionBusy=false
 let setePecadosCorrectionDone=false
 async function resendCorrectedSetePecados25(){
+if(classesOnlyRebootEnabled())return;
 if(setePecadosCorrectionBusy||setePecadosCorrectionDone||trevoHealth.whatsapp!=='open')return
 setePecadosCorrectionBusy=true
 try{
@@ -3634,10 +3659,11 @@ try{
 }catch(err){console.error('[SETE PECADOS CORRECAO 25/10]',err?.stack||err)}
 finally{setePecadosCorrectionBusy=false}
 }
-const setePecadosCorrectionTimer=setInterval(()=>{void resendCorrectedSetePecados25()},30000)
-setePecadosCorrectionTimer.unref?.()
-setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
+const setePecadosCorrectionTimer=classesOnlyRebootEnabled()?null:setInterval(()=>{void resendCorrectedSetePecados25()},30000)
+setePecadosCorrectionTimer?.unref?.()
+if(!classesOnlyRebootEnabled())setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
 async function announceNextPecado(){
+if(classesOnlyRebootEnabled())return;
 if(trevoHealth.whatsapp!=='open') return
 const current=(await db.query(
 "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
@@ -3838,7 +3864,7 @@ for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,key,mess
 goldTimer.unref?.()
 }
 let setePecadosBusy=false
-if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
+if(!classesOnlyRebootEnabled()&&Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
 setePecadosScheduler=setInterval(async()=>{
 if(eventSchedulerClosed||setePecadosBusy)return
 const now=Date.now()
@@ -5251,7 +5277,7 @@ const commandPages={
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)\n*!autoforja* — evolui cópias existentes, funde até onde alcançar e cobra taxa extra após confirmar
-*!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ 500 mil)
+*!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ ${fmt(shopForge5ServiceFee())})
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -5273,12 +5299,12 @@ const commandPages={
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos com equipamentos
 *!personagem status* — base sem equipamentos e Despertar da classe atual
-*!heroi status* — mesma consulta da base do combatente ativo
+${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do combatente ativo'}
 *!nível* — progresso e resgata recompensas a cada 5 níveis
 *!despertar* — missões permanentes de Despertar
 *!reliquias* — equipar 1 insígnia de evento por vez
 *!despertar evoluir* — paga e recebe bônus base ao cumprir os desafios
-*!batalhar @pessoa* — desafia outro jogador
+*!batalhar @pessoa* — desafia outro jogador${classesOnlyRebootEnabled()?' (ambos Lv.21+)':''}
 *!dungeon* — entra em uma dungeon e ganha dinheiro/XP
 *!curar* — recupera HP usando cura disponível
 *!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
@@ -5289,7 +5315,7 @@ const commandPages={
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
-*!go NÚMERO/NÍVEL* — host inicia sua sala; *todas as Raids podem ser feitas solo*
+*!go NÚMERO/NÍVEL* — host inicia sua sala; ${classesOnlyRebootEnabled()?'*Raid 70 exige 3 jogadores Lv.90+ e contribuição efetiva.*':'*todas as Raids podem ser feitas solo*'}
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
@@ -5337,14 +5363,13 @@ const commandPages={
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o Boss disponível; Boss de Evento tem prioridade
+*!boss* — inicia/mostra o Boss disponível${classesOnlyRebootEnabled()?'':'; Boss de Evento tem prioridade'}
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 👹 *Boss comum:* 9–12 mil HP
-🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • 8–9,5 milhões HP • ATK 200 • 1 Boss global por fim de semana
+🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • ${classesOnlyRebootEnabled()?'150 mil HP • ATK 45 • fundo R$ 40 mil':'8–9,5 milhões HP • ATK 200'} • 1 Boss global por fim de semana
 💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
 ⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
-🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
-🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único
+${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e chance de Caixa da Sorte com 2% de participação. Prêmio por jogador a cada 1h, compartilhado entre grupos.':'🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã\n🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único'}
 🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
 9️⃣ Voltar • 0️⃣ Fechar`,
 '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
@@ -5436,7 +5461,7 @@ setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
 await reply(
 `📚 *COMANDOS DO ALPHA*
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
-🚀 *ALPHA BOT 3.0*
+🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
 1️⃣ 👤 Perfil, conta, casamento & social
@@ -5637,7 +5662,9 @@ await reply('📦 Você não possui outros itens no momento.')
 return
 }
 setQuickFlow(chat,sender,'inventory_materials_select',{itemIds:others.map(i=>i.item_id)},90000)
-let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
+let text=classesOnlyRebootEnabled()
+ ?'🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Itens exclusivos de evento não são vendidos.\n\n'
+ :'🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
 others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
 const collabEssences=others.filter(i=>String(i.item_id||'').startsWith('essencia_pecado_'))
 .reduce((sum,i)=>sum+Number(i.quantity||0),0)
@@ -7141,7 +7168,7 @@ return true
 }
 const r=await guessNumber(chat,sender,n)
 if(r.won){
-await afterGame('number',{},`🎉 *ACERTOU!* O número era *${r.number}*.\n💰 +R$ ${fmt(r.reward)}\nTentativas: ${r.attempts}`)
+await afterGame('number',{},`🎉 *ACERTOU!* O número era *${r.number}*.\n${r.rewardCooldown?'⏳ Prêmio em recarga (30 min entre Quiz e Número).':'💰 +R$ '+fmt(r.reward)}\nTentativas: ${r.attempts}`)
 }else if(r.lost){
 await afterGame('number',{},`💀 Acabaram as tentativas. O número era *${r.number}*.`)
 }else{
@@ -7844,7 +7871,7 @@ if(!/^([1-9])$/.test(input)){
 await reply('🏪 Escolha um negócio de *1 a 9* ou digite *0* para cancelar.')
 return true
 }
-const b=BUSINESSES[Number(input)-1]
+const b=candidateBusinessCatalog(BUSINESSES[Number(input)-1])
 if(!b){ await reply('❌ Negócio inválido.'); return true }
 const owned=await getBusinesses(sender)
 if(owned.some(x=>x.id===b.id)){
@@ -9911,19 +9938,25 @@ void (async()=>{
       '🔧 *!7pecados fragmentos* para consultar evolução da collab.')
   }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
 })()
+if(!classesOnlyRebootEnabled()){
 startAuctionAlphaScheduler(sock)
 startAuctionAlphaScheduler1500(sock)
 startAuctionNotificationPilot(sock)
+}
+if(!classesOnlyRebootEnabled()){
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
 scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
+}
 startGtAlphaScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startPocoPreviewScheduler(sock)
 startPocoLiveScheduler(sock)
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
+pokemonQuizEngine=null
+if(!classesOnlyRebootEnabled()){
 pokemonQuizEngine=createPokemonQuizEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open',
@@ -9932,8 +9965,11 @@ pokemonQuizEngine=createPokemonQuizEngine({db,
 })
 void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
   .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
+}
 // Disputa unica nos dois grupos oficiais: estado e saldos compartilhados.
 apostaEngine?.stop()
+apostaEngine=null
+if(!classesOnlyRebootEnabled()){
 apostaEngine=createApostaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open'
@@ -9948,8 +9984,11 @@ void apostaEngine.open().then(async()=>{
   // WhatsApp ainda estiver abrindo. Avisos sao persistidos por grupo.
   apostaEngine.start()
 }).catch(err=>console.error('[APOSTO] cancelamento automatico falhou',err?.message||err))
+}
 // Rouba-Rouba: somente o grupo AlphaBot correto; edição anterior no outro grupo não é reativada.
 roubaEngine?.stop()
+roubaEngine=null
+if(!classesOnlyRebootEnabled()){
 roubaEngine=createRoubaRoubaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open'
@@ -9958,14 +9997,20 @@ void roubaEngine.open().then(()=>roubaEngine.start())
   .catch(err=>console.error('[ROUBA] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] inicializacao',err?.message||err))
+}
 // A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
 // mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
+if(!classesOnlyRebootEnabled()){
 startBingoRebootScheduler(sock)
 // Edição independente do Bingo de 15/11, às 19h30 de Brasília.
 startBingoNov15Scheduler(sock)
 // Edição de Bingo de 16/11 às 16h, independente e com prêmio de R$ 1 milhão.
 startBingoNov16Scheduler(sock)
-if(!temporaryRecoveryMode){
+}
+// C4i: agendador ÚNICO somente no cutover aprovado e no banco isolado.
+// Sem as flags de aprovação, não cria timer, SQL, socket ou serviço.
+startRebootEventsScheduler(db)
+if(!classesOnlyRebootEnabled()&&!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
 }else{
@@ -9973,6 +10018,7 @@ console.log('[TEMPORARY] Labirinto/Baú históricos bloqueados; Bingo Halloween 
 }
 ;(async()=>{
 try{
+if(classesOnlyRebootEnabled())return
 const event=(await db.query(
 "SELECT value FROM trevo_settings WHERE key='raid_fragment_double_20261012_30min_v1'"
 )).rows[0]?.value
@@ -10001,7 +10047,7 @@ console.log('[RAID FRAG 2X] anúncios processados em',targeted,'grupos licenciad
 })()
 ;(async()=>{
 try{
-if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
+if(classesOnlyRebootEnabled()||temporaryRecoveryMode)return // evento antigo não é reexecutado na V2 nem em recuperação temporária
 const markerKey='admin_group_games_event:test-bot:2026-10-08-15x-v4'
 const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!done){
@@ -10069,7 +10115,7 @@ console.error('[Eventos] falha no evento games 1.5x do grupo teste',err?.message
 ;(async()=>{
 try{
 const targetChat='120363429534634131@g.us'
-if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
+if(classesOnlyRebootEnabled()||temporaryRecoveryMode)return // evento antigo não é reexecutado na V2 nem em recuperação temporária
 const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v2'
 const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
 if(!done){
@@ -10349,7 +10395,7 @@ setPlayerGroupContext(sender,isGroup?chat:null)
 // Respostas erradas nao geram spam no WhatsApp; resultado vai aos dois grupos.
 const pokemonAnswerTokens=body.startsWith(prefix)
   ?body.slice(prefix.length).trim().toLowerCase().split(/\s+/):[]
-if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(chat)
+if(!classesOnlyRebootEnabled()&&isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(chat)
    && pokemonAnswerTokens[0]==='pk' && pokemonAnswerTokens.length===2
    && /^[1-4]$/.test(pokemonAnswerTokens[1])){
   const now=Date.now()
@@ -10377,7 +10423,7 @@ const roubaCmd=String(roubaWords[0]||'').toLowerCase()
 const roubaNumbered=roubaCmd==='tomar' && /^#?\d+$/.test(String(roubaWords[1]||''))
 const roubaNamed=['participar','abrirpresente','tomar','tomarpremio'].includes(roubaCmd)
 const roubaOpen=isGroup&&chat===ROUBA_GROUP_JID&&roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
-if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
+if(!classesOnlyRebootEnabled()&&isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
   if(!roubaEngine){await reply('⏳ Evento inicializando.');continue}
   if(roubaCmd==='participar'){
     await ensureUser(sender,msg.pushName||'Jogador')
@@ -10403,7 +10449,7 @@ if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
 const apostaTokens=body.startsWith(prefix)
   ?body.slice(prefix.length).trim().split(/\s+/):[]
 const apostaCommand=String(apostaTokens[0]||'').toLowerCase()
-if(isGroup && APOSTA_GROUPS.includes(chat) &&
+if(!classesOnlyRebootEnabled() && isGroup && APOSTA_GROUPS.includes(chat) &&
    ['participar','confio','duvido','resposta'].includes(apostaCommand)){
   if(!apostaEngine){await reply('⏳ Evento inicializando. Tente novamente.');continue}
   if(apostaCommand==='participar'){
@@ -10458,7 +10504,9 @@ const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt,...(senderIdentit
 .filter(Boolean)
 .map(v=>String(canonicalPlayerJid(v)).split('@')[0].replace(/\D/g,''))
 const configuredOwnerDigits=ownerDigits || pairingNumber
-const isOwner=Boolean(configuredOwnerDigits) && (
+const isOwner=classesOnlyRebootEnabled()
+?verifiedRebootOwner({sender,rawSender,ownerJid,ownerNumber,ownerLid,pairingNumber})
+:Boolean(configuredOwnerDigits) && (
 sender===ownerJid ||
 senderCanonical===ownerCanonical ||
 senderDigits===configuredOwnerDigits ||
@@ -10586,7 +10634,7 @@ if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
 let ownerTarget=sender
 // A menção crua do WhatsApp pode ser @lid; nunca passar isso ao financeiro.
-if(isOwner && ['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)){
+if(isOwner && (['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='daritem'))){
   const ownerMention=mentionsOf(msg)[0]
   if(ownerMention){
     ownerTarget=await resolveVerifiedAdminTarget(sock,chat,ownerMention,msg)
@@ -10614,29 +10662,39 @@ if(process.env.POCO_BETA_GROUP_PREVIEW==='true'&&['poco','pocorank'].includes(cm
 }
 if(await handlePocoLiveCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
 if(await handlePocoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply,chat,messageId:String(msg?.key?.id||'')})) continue
-if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+if(await handleRebootEventsCommand({cmd,args,sender,chat,reply})) continue
+if(!classesOnlyRebootEnabled()){
 if(await handleBingoNov16Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoNov15Command({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
+}
+if(!classesOnlyRebootEnabled()&&await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
+if(classesOnlyRebootEnabled()&&['7pecados','setepecados','pecados7'].includes(cmd)){
+ await reply(REBOOT_HERO_MESSAGE)
+ continue
+}
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
+if(!classesOnlyRebootEnabled()){
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuction15RewardCommand({cmd,args,sender,reply})) continue
 if(await handleAuctionAlphaCommand1500({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-if(await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
-if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+}
+if(!classesOnlyRebootEnabled()&&await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(!classesOnlyRebootEnabled()&&await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGtAlphaCommand({cmd,args,sender,reply,
  openSponsorFlow:()=>setQuickFlow(chat,sender,'gt_sponsor_choose',{},5*60*1000),
  closeSponsorFlow:()=>{if(getQuickFlow(chat,sender)?.stage==='gt_sponsor_choose')clearQuickFlow(chat,sender)}
 })) continue
 if(await handleRacingAlphaCommand({cmd,args,sender,name:msg.pushName||'Piloto',chat,mentions:cmd==='desafiocorrida'&&mentionsOf(msg)[0]?[await resolvePlayerJid(sock,chat,mentionsOf(msg)[0],msg)]:[],reply})) continue
-if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(!classesOnlyRebootEnabled()&&await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
+  if(classesOnlyRebootEnabled()){await reply('Esta edição histórica está encerrada.');continue}
   const option=String(args[0]||'').toLowerCase()
   if(['cancelar','off','parar'].includes(option)){
     if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar esta edicao.');continue}
@@ -10647,6 +10705,7 @@ if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
   continue
 }
 if(['aposto','apostoq','apostoquenao'].includes(cmd)){
+  if(classesOnlyRebootEnabled()){await reply('Esta edição histórica está encerrada.');continue}
   const option=String(args[0]||'').toLowerCase()
   if(['cancelar','parar','off'].includes(option)){
     if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar este evento.');continue}
@@ -10656,6 +10715,10 @@ if(['aposto','apostoq','apostoquenao'].includes(cmd)){
     continue
   }
   await reply(await apostaEngine.status())
+  continue
+}
+if(classesOnlyRebootEnabled()&&['quizpokemon','pokemonquiz','pk','respostapokemon'].includes(cmd)){
+  await reply('🧠 O evento histórico Quiz Pokémon não faz parte da nova temporada. Os minijogos originais continuam disponíveis.')
   continue
 }
 if(['quizpokemon','pokemonquiz'].includes(cmd)){
@@ -11101,7 +11164,7 @@ let license=await getGroupLicense(chat)
 if(!license) license=await ensureGroupTrial(chat)
 if(!groupLicenseIsActive(license)){
 // Temporary, zero-cost pilot only; no normal gameplay is unlocked.
-if(['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
+if(!classesOnlyRebootEnabled()&&['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
   await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 return await reply(
 `🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
@@ -11377,7 +11440,7 @@ for(const x of activeExpeditions){
 text+=`• ID *${x.pet_id}* — *${x.pet_name}* — volta em *${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))}*\n`
 }
 }
-text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n• *2h* — +70 XP • R$ 500\n• *4h* — +150 XP • R$ 1.100\n• *8h* — +330 XP • R$ 2.500\n\n⭐ Bônus da espécie e chances de item são extras. Dinheiro reduzido em 50% para o 4º–6º pet e em 75% do 7º em diante; XP integral.\n\n👉 Individual: *!expedicaopet 4 8*\n🚀 Todos: *!expedicaopet todos 8*\n📌 Até *'+PET_EXPEDITION_MAX_CONCURRENT+' pets* simultâneos. Pets do time e ativo não podem ir.'
+text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n'+Object.entries(effectiveExpeditionPlans()).map(([h,p])=>'• *'+h+'h* — +'+p.xp+' XP • R$ '+fmt(p.cash)).join('\n')+'\n\n⭐ Bônus da espécie e chances de item são extras.'+(classesOnlyRebootEnabled()?'':' Dinheiro reduzido em 50% para o 4º–6º pet e em 75% do 7º em diante; XP integral.')+'\n\n👉 Individual: *!expedicaopet 4 8*\n🚀 Todos: *!expedicaopet todos 8*\n📌 Até *'+PET_EXPEDITION_MAX_CONCURRENT+' pets* simultâneos. Pets do time e ativo não podem ir.'
 return await reply(text)
 }
 const r=await startPetExpedition(sender,petId,hours)
@@ -11933,7 +11996,7 @@ ${status}
 )
 } else if(['all','tudo'].includes(cmd)){
 const results=[]
-let grossTotal=0,taxTotal=0,netTotal=0
+let grossTotal=0,taxTotal=0,operatingTotal=0,netTotal=0
 const add=async(label,icon,fn)=>{
 try{
 const r=await fn()
@@ -11941,8 +12004,8 @@ if(!r?.ok){
 results.push(`${icon} *${label}:* ⏳ cooldown — ${duration(r?.remaining||0)}`)
 return
 }
-grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); netTotal+=Number(r.amount??r.total??0)
-results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?` 🔥 *×${eventMultLabel(r.eventMultiplier)} (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}`)
+grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); operatingTotal+=Number(r.operating||0); netTotal+=Number(r.amount??r.total??0)
+results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)}${Number(r.operating||0)>0?` • operação: -R$ ${fmt(r.operating)}`:''} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?` 🔥 *×${eventMultLabel(r.eventMultiplier)} (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}`)
 await creditDailyActivity(sender,'work',1,null,reply)
 if(isGroup) await progressGroupMission(chat,sender,'work')
 }catch(err){
@@ -11956,8 +12019,8 @@ await reply(
 `⚡ *ALL — ATIVIDADES EM LOTE*
 ${results.join('\n')}
 💵 Bruto executado: *R$ ${fmt(grossTotal)}*
-🧾 TAXADE te pegou 3×: *-R$ ${fmt(taxTotal)}*
-💰 Líquido recebido: *R$ ${fmt(netTotal)}*
+🧾 ${rebootEconomyEnabled()?'TAXADE das atividades':'TAXADE te pegou 3×'}: *-R$ ${fmt(taxTotal)}*
+${operatingTotal>0?`🔧 Custo operacional: *-R$ ${fmt(operatingTotal)}*\n`:''}💰 Líquido recebido: *R$ ${fmt(netTotal)}*
 🏪 *!coletar* não faz parte do !all.`
 )
 } else if(['trabalhar','work','trampo'].includes(cmd)){
@@ -11970,7 +12033,7 @@ await reply(workResultText(r))
 }
 } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
 const r=await getCareer(sender)
-let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${r.rank.mult.toFixed(2)}*`
+let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${(rebootEconomyEnabled()?v2CareerRoleFactor(r.rank.mult):r.rank.mult).toFixed(2)}*`
 if(r.next) text+=`\n🎯 Próximo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-Number(r.career_xp))} XP.`
 else text+='\n🏆 Cargo máximo alcançado!'
 await reply(text)
@@ -12010,11 +12073,11 @@ await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚲🏍️ ${selected.name}\n💰 Voc�
 const owned=await getBusinesses(sender)
 setQuickFlow(chat,sender,'business_buy_select',{},90000)
 let text='🏪 *NEGÓCIOS — RENDA PASSIVA*\n\n'
-BUSINESSES.forEach((b,i)=>{
+BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach((b,i)=>{
 const has=owned.some(x=>x.id===b.id)
 text+=`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
 })
-text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
+text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
 await reply(text)
 } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
 if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
@@ -12026,8 +12089,8 @@ if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Vej
 setQuickFlow(chat,sender,'business_manage_select',{ids:rows.map(b=>b.id)},90000)
 let text='🏢 *MEUS NEGÓCIOS*\n\n'
 rows.forEach((b,i)=>{
-const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*0.25
-text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+level-1}h\n`
+const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25)
+text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+(rebootEconomyEnabled()?0:level-1)}h\n`
 })
 text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
 await reply(text.trim())
@@ -12052,10 +12115,10 @@ await reply(out)
 await reply(await alphaContractBoardMessage(sender))
 } else if(['aceitarcontrato','contratoaceitar'].includes(cmd)){
 const r=await acceptAlphaContract(sender,args[0])
-await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + Caixa Épica':''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
+await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + '+(r.reward_item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
 } else if(['resgatarcontrato','contratoresgatar'].includes(cmd)){
 const r=await claimAlphaContract(sender)
-await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 Caixa Épica':''}\n✅ Prêmios creditados na sua conta!`)
+await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 '+(r.reward_item==='caixa_rara'?'Caixa Rara':'Caixa Épica'):''}\n✅ Prêmios creditados na sua conta!`)
 } else if(['pegar'].includes(cmd)){
 if(!isGroup) return
 const r=await claimGroupEvent(chat,sender)
@@ -12069,7 +12132,7 @@ let text='💰 *LUCROS COLETADOS!*\n\n'
 const collectionTime=formatBusinessCollectionElapsed(r.collectionElapsedSeconds)
 if(collectionTime) text+=`⏱️ ${r.firstBusinessCollection?'Tempo desde a compra do primeiro negócio':'Tempo sem coletar'}: *${collectionTime}*\n\n`
 r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${r.operating?'\n🏭 Custos operacionais V2: *-R$ '+fmt(r.operating)+'*':''}\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
 await reply(text)
 } else if(['motos','motocicletas'].includes(cmd)){
 const owned=await getMotorcycleGarage(sender)
@@ -12103,7 +12166,7 @@ let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
 r.details.forEach(x=>{
 text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
 })
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${Number(r.operating||0)>0?`\n🔧 *Operação/desgaste:* -R$ ${fmt(r.operating)}`:''}\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
 await reply(text)
 }
 } else if(['cltifood'].includes(cmd)){
@@ -12228,7 +12291,7 @@ let text='💰 *CENTRAL UBER — COLETA CONCLUÍDA!*\n\n'
 for(const d of (r.details||[])){
 text+=`${d.slot}. *${d.driver?.name||'Motorista'}* — ${d.car?.name||'carro'}\n   💵 Disponível desde a última coleta: *R$ ${fmt(d.amount)}*\n`
 }
-text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
+text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE${rebootEconomyEnabled()?' e custo operacional':''}.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
 await reply(text)
 }
 } else if(['uber'].includes(cmd)){
@@ -12243,7 +12306,7 @@ let text='🚗 *UBER — FROTA NA RUA*\n\n'
 r.details.forEach(x=>{
 text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
 })
-text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*${Number(r.operating||0)>0?`\n🔧 *Operação/desgaste:* -R$ ${fmt(r.operating)}`:''}\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
 await reply(text)
 }
 } else if(['depositar','deposit','dep'].includes(cmd)){
@@ -12535,13 +12598,15 @@ await reply(text)
   text+='*'+(n+1)+'.* '+(i.category==='shield'?'🛡️':i.category==='armor'?'🛡️':'⚔️')
    +' '+i.name+' • R$ '+fmt(i.price)+'/copia\n'
  })
- text+='\n💰 O bot calcula as copias e upgrades que faltam, compra o necessario e cobra *R$ 500.000* pela automacao.\n'
+ text+='\n💰 O bot calcula as copias e upgrades que faltam, compra o necessario e cobra *R$ '+fmt(shopForge5ServiceFee())+'* pela automacao.\n'
  text+='🛑 Raids, eventos, collab e botas nao fazem parte desta forja.\n'
  text+='📋 Escolha um numero para ver a proposta. *Nenhuma cobranca sem confirmar.*\n0️⃣ Cancelar'
  return await reply(text)
 } else if(['forjar','forja','forjaestelar'].includes(cmd)){
 const list=await listStarForgeEquipment(sender)
-if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
+if(!list.length)return await reply(classesOnlyRebootEnabled()
+ ?'⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Equipamentos de Raid mantêm suas regras de forja.'
+ :'⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
 setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
 let result='⚒️ *FORJA ESTELAR*\n\nEscolha o equipamento:\n\n'
 for(const [i,r] of list.entries()){
@@ -12747,7 +12812,7 @@ const bossCritPct=Math.max(0,10+gearCritPct+Number(statusPetBonus.critPct||0))
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
-✨ EXP: ${p.exp}/${p.level*100}
+✨ EXP: ${p.exp}/${p.level*100}${p.daily_xp?'\n📊 XP diário: '+fmt(p.daily_xp.used)+'/'+fmt(p.daily_xp.cap)+' • '+Math.round(p.daily_xp.rate*100)+'% de ganho atual':''}
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):`🧙 Classe: ${p.class_info?.name||'Sem classe'}
 ⚜️ Passiva: ${p.class_passive?.name||'Ainda não selecionada'}${p.class_passive?' — '+p.class_passive.description:''}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
@@ -13178,7 +13243,7 @@ await reply(`🔢 *ADIVINHE O NÚMERO*\n\nEscolhi um número de *1 a 100*.\nVoc�
 } else if(['chute'].includes(cmd)){
 const guess=parseInt(args[0]||'0',10)
 const r=await guessNumber(chat,sender,guess)
-if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
+if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n${r.rewardCooldown?'⏳ Prêmio em recarga (30 min entre Quiz e Número).':'💰 Prêmio: R$ '+fmt(r.reward)}`)
 if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
 await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
 } else if(['invocarpet','altarpets','altarpets','lojalendaria'].includes(cmd)){
@@ -13199,7 +13264,7 @@ text+=`   Você possui: *${materialQty(a.materialId)}/${cost}*\n`
 a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
 text+='\n'
 }
-text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*.\n🚀 Para invocar em lote: *!invocarpet 10 todos* (Raid 70) ou *!invocarpet 10 5* (cinco invocações).'
+text+=(classesOnlyRebootEnabled()?'💠 Cada altar indica seu custo. Pets nascem no Lv.1. Exige nível e vitória manual na Raid.':'💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.')+'\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*.\n🚀 Para invocar em lote: *!invocarpet 10 todos* (Raid 70) ou *!invocarpet 10 5* (cinco invocações).'
 pages.push(text)
 setQuickFlow(chat,sender,'legendary_pet_altar_select',{},5*60*1000)
 for(const page of pages) await reply(page)
@@ -13272,7 +13337,7 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
-} else if(['raidlote'].includes(cmd)){
+} else if(['raidlote'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='loteraid')){
 if(!raidLoteV1Enabled)return await reply('⚔️ *RAIDLOTE V1 EM HOMOLOGAÇÃO*\nA compra está indisponível até a certificação do sistema.')
 const action=String(args[0]||'').toLowerCase()
 if(['painel','ativos','todos'].includes(action)){
@@ -13301,6 +13366,7 @@ if(action==='status'){
   return await reply('⚔️ *RAIDLOTE — STATUS*'+displayName+'\n🎯 Lv.'+job.level
     +' • '+job.status.toUpperCase()+'\n🏆 Vitórias: '+job.won_count+'/'+job.requested
     +'\n⚔️ Tentativas iniciadas: '+job.started
+    +(raidLoteScheduleText(job)?'\n'+raidLoteScheduleText(job):'')
     +(progress?'\n'+formatRaidLoteProgress(progress):'')
     +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
     +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
@@ -13344,17 +13410,29 @@ if(action==='cancelar'){
 }
 const confirmation=action==='confirmar'
 const level=collabRaidNumber(confirmation?args[1]:args[0])
-const count=Number(confirmation?args[2]:args[1])
+const durationArg=confirmation?args[2]:args[1]
+const timedRaidLote=classesOnlyRebootEnabled()
+let durationPlan=null
+if(timedRaidLote){
+  try{durationPlan=raidLoteDurationPlan(durationArg)}catch{
+    return await reply('⚔️ *RAIDLOTE 2.0*\n!raidlote 50 4h — 3 tentativas\n!raidlote 50 8h — 6 tentativas\n!raidlote 50 12h — 9 tentativas\nA cada 80 minutos, com a primeira após 80 min.\n!raidlote confirmar 50 8h • !raidlote status • !raidlote painel • !raidlote cancelar')
+  }
+}
+const count=durationPlan?durationPlan.attempts:Number(durationArg)
 const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
+if(classesOnlyRebootEnabled()&&level===70)
+  return await reply('⚔️ A Raid 70 é cooperativa no Alpha Bot 2.0: 3 jogadores em Raid manual. RaidLote Lv.70 indisponível.')
 if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
-  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.')
+  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.'
+    .replaceAll('75',classesOnlyRebootEnabled()?'65':'75'))
 if(confirmation){
   const messageId=String(msg?.key?.id||'')
   if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
   const requestKey='wa:'+createHash('sha256').update(sender+':'+chat+':'+messageId).digest('hex')
-  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
+  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,durationHours:durationPlan?.hours??null,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
   return await reply((bought.alreadyPurchased?'✅ *COMPRA JÁ PROCESSADA*':'✅ *PACOTE RAIDLOTE COMPRADO*')
     +'\n⚔️ Raid Lv.'+level+' • '+count+' tentativas'
+    +(durationPlan?'\n⏱️ '+durationPlan.hours+'h previstas • uma tentativa a cada 80 minutos. A primeira após 80 min.':'')
     +'\n🔑 Chaves próprias consumidas: '+bought.quote.ownedKeysUsed
     +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
     +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
@@ -13365,9 +13443,10 @@ if(confirmation){
 }
 const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
 const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
-const nextPassPackage=await isNextRaidLotePassPackage(sender)
-return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
+const nextPassPackage=!timedRaidLote&&await isNextRaidLotePassPackage(sender)
+return await reply('⚔️ *RAIDLOTE '+(timedRaidLote?'2.0':'V1')+' — RESUMO DA COMPRA*'
   +'\n👹 '+cfg.name+' • '+count+' tentativas'
+  +(durationPlan?'\n⏱️ '+durationPlan.hours+'h previstas • uma tentativa a cada 80 minutos. A primeira após 80 min; atrasos podem estender o período.':'')
   +'\n🔑 Chaves próprias: '+quote.ownedKeysUsed+' (serão consumidas na compra)'
   +'\n🛒 Chaves a comprar: '+quote.keysToBuy
   +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
@@ -13375,7 +13454,7 @@ return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
   +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
   +'\n\n'+(nextPassPackage?'🎟️ *PASSE SUPREMO:* 100% das recompensas-base da Raid manual: dinheiro, EXP, maestria, pets, fragmentos e chances normais de equipamentos e caixas.':'💰 Em cada vitória: custo da chave + taxa de automação + 50% do lucro líquido da Raid manual.\n✨ 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos')
   +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
-  +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+count+'*')
+  +'\n\n✅ Confirme aqui ou no privado: *!raidlote confirmar '+level+' '+(durationPlan?durationPlan.hours+'h':count)+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
@@ -13387,7 +13466,9 @@ if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
 return 0
 }
 const requested=resolveRaidLevel(args[0])
-if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
+if(args[0]&&!requested) return await reply(classesOnlyRebootEnabled()
+ ?'⚔️ Raid inválida. Consulte *!raid* para ver os níveis disponíveis.'
+ :'⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
 const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
@@ -13438,7 +13519,9 @@ if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
 const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
-if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
+if(raw&&!level) return await reply(classesOnlyRebootEnabled()
+ ?'⚔️ Escolha uma Raid válida no menu *!raid*.'
+ :'⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
 const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
@@ -13523,7 +13606,7 @@ const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus
 const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
 const bossCritLine='\n🛡️ Resistência CRIT: *'+critResistancePercent(BOSS_CRIT_RESISTANCE)+' p.p.*'
 const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
-const golemRewards=r.mode==='weekly'&&r.weekendKey==='2026-11-13'?'\n🏆 *PRÊMIOS EXCLUSIVOS* — 🥇 e 🥈 escolhem 1 equipamento FORJADO ★★★★★ Lv.10.\n💰 Dinheiro extra: 12M / 10M / 8M / 6M / 5M; demais 3M (mínimo 10 mil dano).\n🎁 Resgate após encerramento: *!golempremio*.\n✅ Novos prêmios pagos mesmo se o Golem resistir ao prazo.':''
+const golemRewards=!classesOnlyRebootEnabled()&&r.mode==='weekly'&&r.weekendKey==='2026-11-13'?'\n🏆 *PRÊMIOS EXCLUSIVOS* — 🥇 e 🥈 escolhem 1 equipamento FORJADO ★★★★★ Lv.10.\n💰 Dinheiro extra: 12M / 10M / 8M / 6M / 5M; demais 3M (mínimo 10 mil dano).\n🎁 Resgate após encerramento: *!golempremio*.\n✅ Novos prêmios pagos mesmo se o Golem resistir ao prazo.':''
 const displayedSchedule=r.eventId==='sete_pecados'
 ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
 :r.eventId==='ruptura_estelar'
@@ -13533,7 +13616,7 @@ if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: 
 await progressDailyMission(sender,'game')
 const rewardInfo=r.mode==='event'
 ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
-:(r.mode==='weekly'?'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
+:(r.mode==='weekly'?(classesOnlyRebootEnabled()?'🏆 Superboss 2.0: fundo coletivo de R$ 40 mil por dano (também no encerramento por prazo). Na vitória: XP por dano até 4 mil brutos, 1 caixa por colocado elegível no Top 5 (mínimo 10 mil de dano e 5% do total); chance de equipamento do Golem no Top 3. Insígnias seguem as regras existentes.':'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.'):'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
 await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${golemRewards}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 } else if(['pararatacar','pararboss'].includes(cmd)){
 const existing=bossSessions.get(sender)

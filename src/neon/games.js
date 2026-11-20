@@ -6,17 +6,22 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
-import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
+import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
+import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
+import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
+import {activeCombatPetTeam} from './reboot-pet-team.js'
+import {raidNecromancerCurse,recordRaidAuraProtection,raidRoleReport} from './raid-cooperative-roles.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
-import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-golem-payouts.js'
+import {V2_WEEKLY_BOSS,commonBossRewardV2} from './reboot-pve-policy.js'
+import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount,rebootWeeklyBossReward} from './weekly-golem-payouts.js'
 import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares} from './weekly-boss-prize-pool.js'
 import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
@@ -24,7 +29,9 @@ import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {chooseEconomicPetPotion} from './pet-potion-economy.js'
+import {petCombatExperience} from './reboot-pet-economy.js'
 import {mitigateRaidPetDamage,estimatedRaidPetHit} from './raid-pet-mitigation.js'
+import {raidPlayerDefenseCoefficient} from './raid-pet-mitigation.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
@@ -32,7 +39,7 @@ import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
 
 // Passiva de EXP exclusiva de Boss/Raid. Não interfere em PvP, carreira ou comércio.
-async function halloweenPveXp(c,jid,xp){return halloweenTitleBonusXp(xp,await ownsHalloweenTitle(c,jid))}
+async function halloweenPveXp(c,jid,xp){return rebootEconomyEnabled()?xp:halloweenTitleBonusXp(xp,await ownsHalloweenTitle(c,jid))}
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible,COLLAB_RAID_FRAGMENTS_PER_WIN} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -195,6 +202,7 @@ const lucky3xMultiplier=()=>lucky3xActive()?3:1
 const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
 async function groupGamesEventMultiplier(queryable,chat){
+  if(rebootEconomyEnabled()) return 1
   if(!String(chat||'').endsWith('@g.us')) return 1
   const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_games_event:'+chat])).rows[0]
   const raw=row?.value||{}
@@ -218,6 +226,27 @@ async function credit(client,jid,amount,note){
   `,[jid,amount,note])
 }
 
+// V2: o estorno e a remoção da partida devem ser confirmados antes do aviso de erro.
+async function gameTxWithExpiry(fn){
+  const result=await tx(fn)
+  if(result?.v2ExpiredRefund) throw new Error('A partida expirou. Os valores reservados foram devolvidos.')
+  return result
+}
+async function refundExpiredGameV2(c,chat,type,state){
+  if(!rebootEconomyEnabled()||!state||Number(state.expiresAt||0)>Date.now()) return false
+  let reservations
+  if(type==='roulette_group') reservations=Object.entries(state.players||{}).map(([jid,bet])=>[jid,Number(bet.amount)])
+  else if(type==='tournament') reservations=[...new Set(state.players||[])].map(jid=>[jid,Number(state.amount)])
+  else if(type.startsWith('coin_duel:')||type.startsWith('rps_duel:')) reservations=[[state.challenger,Number(state.amount)]]
+  else throw new Error('Tipo de partida inválido para estorno.')
+  for(const [jid,amount] of reservations.sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+    if(!jid||!Number.isSafeInteger(amount)||amount<0) throw new Error('Reserva inválida para estorno.')
+    if(amount>0) await credit(c,jid,amount,'v2-game-expiry-refund:'+type)
+  }
+  await clearGame(c,chat,type)
+  return true
+}
+
 export async function roulette(jid,amount,choice,chat=null){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
@@ -231,12 +260,12 @@ export async function roulette(jid,amount,choice,chat=null){
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
-    if(choice===color && lucky3xPlayerWins()){
+    if(choice===color && (rebootEconomyEnabled()||lucky3xPlayerWins())){
       const basePayout=choice==='verde'?amount*36:amount*2
       const baseProfit=basePayout-amount
       const groupMultiplier=await groupGamesEventMultiplier(c,chat)
       // Eventos multiplicam só o lucro; a aposta devolvida continua 1x.
-      payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)
+      payout=amount+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)
     }
     if(payout) await credit(c,jid,payout,'roleta')
     return {number:n,color,choice,amount,payout,profit:payout-amount}
@@ -251,6 +280,7 @@ export async function createGroupRoulette(chat,host,amount,choice){
   return tx(async c=>{
     const old=await loadGame(c,chat,'roulette_group')
     if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma roleta coletiva aberta neste grupo.')
+    await refundExpiredGameV2(c,chat,'roulette_group',old)
     await debit(c,host,amount)
     const state={host,players:{[host]:{amount,choice}},expiresAt:Date.now()+120000}
     await saveGame(c,chat,'roulette_group',state)
@@ -263,8 +293,9 @@ export async function joinGroupRoulette(chat,jid,amount,choice){
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
   if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
   await ensureUser(jid)
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const state=await loadGame(c,chat,'roulette_group')
+    if(await refundExpiredGameV2(c,chat,'roulette_group',state)) return {v2ExpiredRefund:true}
     if(!state || Number(state.expiresAt||0)<Date.now()) throw new Error('Não existe roleta coletiva aberta.')
     if(state.players?.[jid]) throw new Error('Você já entrou nesta rodada.')
     await debit(c,jid,amount)
@@ -275,8 +306,9 @@ export async function joinGroupRoulette(chat,jid,amount,choice){
 }
 
 export async function spinGroupRoulette(chat,jid){
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const state=await loadGame(c,chat,'roulette_group')
+    if(await refundExpiredGameV2(c,chat,'roulette_group',state)) return {v2ExpiredRefund:true}
     if(!state) throw new Error('Não existe roleta coletiva aberta.')
     if(state.host!==jid) throw new Error('Só quem abriu a roleta pode girar.')
     const n=Math.floor(Math.random()*37)
@@ -285,12 +317,12 @@ export async function spinGroupRoulette(chat,jid){
     const results=[]
     for(const [player,bet] of Object.entries(state.players||{})){
       let payout=0
-      if(bet.choice===color && lucky3xPlayerWins()){
+      if(bet.choice===color && (rebootEconomyEnabled()||lucky3xPlayerWins())){
         const stake=Number(bet.amount)
         const basePayout=bet.choice==='verde'?stake*36:stake*2
         const baseProfit=basePayout-stake
         const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-        payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)
+        payout=stake+(baseProfit*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier)
       }
       if(payout) await credit(c,player,payout,'roleta-coletiva')
       results.push({jid:player,amount:Number(bet.amount),choice:bet.choice,payout})
@@ -310,10 +342,10 @@ export async function coinFlip(jid,amount,choice,chat=null){
   return tx(async c=>{
     await debit(c,jid,amount)
     const normalResult=Math.random()<0.5?'cara':'coroa'
-    const won=lucky3xActive()?Math.random()<0.20:normalResult===choice
+    const won=!rebootEconomyEnabled()&&lucky3xActive()?Math.random()<0.20:normalResult===choice
     const result=won?choice:(choice==='cara'?'coroa':'cara')
     const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-    const payout=won?amount+(amount*lucky3xMultiplier()*groupMultiplier):0
+    const payout=won?amount+(amount*(rebootEconomyEnabled()?1:lucky3xMultiplier())*groupMultiplier):0
     if(payout) await credit(c,jid,payout,'cara-ou-coroa')
     return {result,choice,amount,payout,profit:payout-amount,eventMultiplier:groupMultiplier}
   })
@@ -326,10 +358,14 @@ export async function createCoinDuel(chat,challenger,target,amount,choice){
   if(!target || target===challenger) throw new Error('Marque outra pessoa para desafiar.')
   await ensureUser(challenger); await ensureUser(target)
   return tx(async c=>{
-    await debit(c,challenger,amount)
+    if(!rebootEconomyEnabled()) await debit(c,challenger,amount)
     const type='coin_duel:'+target
     const old=await loadGame(c,chat,type)
     if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio pendente neste grupo.')
+    if(rebootEconomyEnabled()){
+      await refundExpiredGameV2(c,chat,type,old)
+      await debit(c,challenger,amount)
+    }
     const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
     await saveGame(c,chat,type,state)
     return state
@@ -337,9 +373,10 @@ export async function createCoinDuel(chat,challenger,target,amount,choice){
 }
 
 export async function acceptCoinDuel(chat,target){
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const type='coin_duel:'+target
     const state=await loadGame(c,chat,type)
+    if(await refundExpiredGameV2(c,chat,type,state)) return {v2ExpiredRefund:true}
     if(!state) throw new Error('Você não tem desafio de cara ou coroa pendente.')
     if(Number(state.expiresAt||0)<Date.now()){
       await credit(c,state.challenger,Number(state.amount),'cara-ou-coroa-pvp-estorno')
@@ -364,6 +401,7 @@ export async function createRpsDuel(chat,challenger,target,amount,choice){
   return tx(async c=>{
     const old=await loadGame(c,chat,'rps_duel:'+target)
     if(old&&Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio de PPT pendente.')
+    await refundExpiredGameV2(c,chat,'rps_duel:'+target,old)
     await debit(c,challenger,amount)
     const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
     await saveGame(c,chat,'rps_duel:'+target,state); return state
@@ -371,8 +409,9 @@ export async function createRpsDuel(chat,challenger,target,amount,choice){
 }
 export async function acceptRpsDuel(chat,target,choice){
   choice=String(choice||'').toLowerCase(); if(!['pedra','papel','tesoura'].includes(choice)) throw new Error('Use !aceitarppt pedra, papel ou tesoura.')
-  return tx(async c=>{
+  return gameTxWithExpiry(async c=>{
     const type='rps_duel:'+target,s=await loadGame(c,chat,type); if(!s) throw new Error('Você não tem desafio de PPT pendente.')
+    if(await refundExpiredGameV2(c,chat,type,s)) return {v2ExpiredRefund:true}
     if(Number(s.expiresAt||0)<Date.now()){await credit(c,s.challenger,Number(s.amount),'ppt-pvp-estorno');await clearGame(c,chat,type);throw new Error('O desafio expirou. A aposta foi devolvida.')}
     await debit(c,target,Number(s.amount)); const a=s.choice,b=choice
     let winner=null; if(a!==b) winner=((a==='pedra'&&b==='tesoura')||(a==='papel'&&b==='pedra')||(a==='tesoura'&&b==='papel'))?s.challenger:target
@@ -384,13 +423,13 @@ export async function acceptRpsDuel(chat,target,choice){
 export async function createTournament(chat,host,amount){
   amount=Number(amount); if(!Number.isInteger(amount)||amount<0) throw new Error('Valor inválido.')
   await ensureUser(host)
-  return tx(async c=>{const old=await loadGame(c,chat,'tournament');if(old&&Number(old.expiresAt||0)>Date.now())throw new Error('Já existe um torneio aberto neste grupo.');if(amount)await debit(c,host,amount);const st={host,amount,players:[host],started:false,expiresAt:Date.now()+5*60*1000};await saveGame(c,chat,'tournament',st);return st})
+  return tx(async c=>{const old=await loadGame(c,chat,'tournament');if(old&&Number(old.expiresAt||0)>Date.now())throw new Error('Já existe um torneio aberto neste grupo.');await refundExpiredGameV2(c,chat,'tournament',old);if(amount)await debit(c,host,amount);const st={host,amount,players:[host],started:false,expiresAt:Date.now()+5*60*1000};await saveGame(c,chat,'tournament',st);return st})
 }
 export async function joinTournament(chat,jid){
-  await ensureUser(jid); return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s||s.started||Number(s.expiresAt||0)<Date.now())throw new Error('Não existe torneio aberto.');if(s.players.includes(jid))return s;if(s.amount)await debit(c,jid,Number(s.amount));s.players.push(jid);await saveGame(c,chat,'tournament',s);return s})
+  await ensureUser(jid); return gameTxWithExpiry(async c=>{const s=await loadGame(c,chat,'tournament');if(await refundExpiredGameV2(c,chat,'tournament',s))return {v2ExpiredRefund:true};if(!s||s.started||Number(s.expiresAt||0)<Date.now())throw new Error('Não existe torneio aberto.');if(s.players.includes(jid))return s;if(s.amount)await debit(c,jid,Number(s.amount));s.players.push(jid);await saveGame(c,chat,'tournament',s);return s})
 }
 export async function startTournament(chat,jid){
-  return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s)throw new Error('Não existe torneio aberto.');if(s.host!==jid)throw new Error('Só quem criou pode iniciar.');if(s.players.length<2)throw new Error('É preciso pelo menos 2 jogadores.');const shuffled=[...s.players].sort(()=>Math.random()-.5);const winner=shuffled[Math.floor(Math.random()*shuffled.length)],pot=Number(s.amount)*s.players.length;if(pot)await credit(c,winner,pot,'torneio');await clearGame(c,chat,'tournament');return {winner,pot,players:s.players}})
+  return gameTxWithExpiry(async c=>{const s=await loadGame(c,chat,'tournament');if(await refundExpiredGameV2(c,chat,'tournament',s))return {v2ExpiredRefund:true};if(!s)throw new Error('Não existe torneio aberto.');if(s.host!==jid)throw new Error('Só quem criou pode iniciar.');if(s.players.length<2)throw new Error('É preciso pelo menos 2 jogadores.');const shuffled=[...s.players].sort(()=>Math.random()-.5);const winner=shuffled[Math.floor(Math.random()*shuffled.length)],pot=Number(s.amount)*s.players.length;if(pot)await credit(c,winner,pot,'torneio');await clearGame(c,chat,'tournament');return {winner,pot,players:s.players}})
 }
 
 export function rps(choice){
@@ -601,11 +640,16 @@ export async function answerQuiz(chat,jid,answer){
     }
     await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
-    const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-    const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-    const reward=correct?1000*moneyMultiplier*groupMultiplier:0
+    const reboot=rebootEconomyEnabled()
+    const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(c,'money')
+    const groupMultiplier=reboot?1:await groupGamesEventMultiplier(c,chat)
+    let reward=correct?(reboot?100:1000)*moneyMultiplier*groupMultiplier:0
+    if(reboot&&reward>0){
+      const cd=await claimCooldown(c,`v2:casual-game-reward:${jid}`,1800)
+      if(!cd.ok) reward=0
+    }
     if(reward) await credit(c,jid,reward,'quiz')
-    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier*groupMultiplier}
+    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier*groupMultiplier,...(reboot?{rewardCooldown:correct&&reward===0}:{})}
   })
 }
 
@@ -629,11 +673,17 @@ export async function guessNumber(chat,jid,guess){
     s.attempts++
     if(guess===Number(s.number)){
       await clearGame(c,chat,'numero')
-      const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-      const groupMultiplier=await groupGamesEventMultiplier(c,chat)
-      const reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier*groupMultiplier
-      await credit(c,jid,reward,'adivinhar-numero')
-      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier*groupMultiplier}
+      const reboot=rebootEconomyEnabled()
+      const moneyMultiplier=reboot?1:await getDoubleEventMultiplier(c,'money')
+      const groupMultiplier=reboot?1:await groupGamesEventMultiplier(c,chat)
+      let reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier*groupMultiplier
+      if(reboot){
+        reward=Math.floor(reward/10)
+        const cd=await claimCooldown(c,`v2:casual-game-reward:${jid}`,1800)
+        if(!cd.ok) reward=0
+      }
+      if(!reboot||reward>0) await credit(c,jid,reward,'adivinhar-numero')
+      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier*groupMultiplier,...(reboot?{rewardCooldown:reward===0}:{})}
     }
     if(s.attempts>=s.max){
       await clearGame(c,chat,'numero')
@@ -644,7 +694,7 @@ export async function guessNumber(chat,jid,guess){
   })
 }
 
-function bossWeekendInfo(now=new Date()){
+export function bossWeekendInfo(now=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
     timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   }).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
@@ -775,9 +825,10 @@ const RAID_CONFIGS=[
   {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse','egide_celestial'],gearChance:.003},
   {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
 ]
-const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
+const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level)&&raidEnabledInReboot(r))||null
+const raidEffectiveConfig=level=>candidateRaidConfig(raidConfig(level))
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
-export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
+export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...candidateRaidConfig(r),durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
@@ -830,20 +881,22 @@ async function resolveGlobalPlayerRaid(c,jid){
 
 
 export async function getRaidStatuses(chat){
-  return tx(async c=>(await raidRows(c,chat,false)).filter(raidIsOpen))
+  return tx(async c=>(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r)))
 }
 
 export async function getRaidStatus(chat,level=null){
   return tx(async c=>{
-    const rooms=(await raidRows(c,chat,false)).filter(raidIsOpen)
+    const rooms=(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r))
     if(level) return rooms.find(r=>Number(r.level)===Number(level))||null
     return rooms[0]||null
   })
 }
 
 export async function createRaid(chat,host,name='Jogador',level=10){
-  const cfg=raidConfig(level)
-  if(!cfg) throw new Error('Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
+  const cfg=raidEffectiveConfig(level)
+  if(!cfg) throw new Error(classesOnlyRebootEnabled()
+    ?'Raid indisponível na nova temporada. Consulte !raid para os níveis válidos.'
+    :'Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
   const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
@@ -881,6 +934,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
 }
 
 export async function joinRaid(chat,jid,name='Jogador',level=null){
+  if(classesOnlyRebootEnabled()&&Number(level)===75)throw new Error('Essa Raid não existe na nova temporada.');
   await ensureUser(jid,name)
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${jid}`])
@@ -894,18 +948,18 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     if(globalRaid){
       throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${globalRaid.level}* em outro grupo.\n⚔️ Um personagem só pode participar de *1 Raid por vez* em todo o Alpha Bot, incluindo o RPG Web.\nConclua a Raid atual antes de entrar nesta.`)
     }
-    const rooms=await resolveRaidRoom(c,chat,level||null)
+    const rooms=(await resolveRaidRoom(c,chat,level||null)).filter(r=>raidEnabledInReboot(r))
     if(!rooms.length) throw new Error(raidJoinUnavailableMessage({rooms:await raidRows(c,chat,true),level,now:Date.now()}))
     if(!level&&rooms.length>1) throw new Error('Há mais de uma Raid aberta. Escolha uma: '+rooms.map(r=>`!entrar ${r.level}`).join(' • '))
     const s=rooms[0]
     const gameType=s.gameType
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const requiredRaidLevel=Number(raidConfig(s.level)?.minLevel||s.level)
+    const requiredRaidLevel=Number(raidEffectiveConfig(s.level)?.minLevel||s.level)
     if(Number(u?.level||1)<requiredRaidLevel) throw new Error(`Essa Raid exige nível ${requiredRaidLevel}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=$1 FOR UPDATE OF s',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     let autoKeyPurchased=false
     const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,cfg.keyId])).rows[0]
@@ -935,10 +989,10 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
-    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id,st.helmet_id],c)
+    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id,st.helmet_id,...(rebootEconomyEnabled()?[st.boot_id]:[])],c)
     const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id),forgeStars[st.weapon_id]||1):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id),forgeStars[st.armor_id]||1):{atk:0,def:0,hp:0,crit:0}
-    const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
+    const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id),rebootEconomyEnabled()?forgeStars[st.boot_id]||1:1):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id),forgeStars[st.helmet_id]||1):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -966,7 +1020,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       jid,name:name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
-      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
+      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(activeCombatPetTeam(teamPassives,[combatPet,reservePet])),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1047,7 +1101,7 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=lote?1:await getPetXpEventMultiplier(c)
-  baseGain=lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
+  baseGain=rebootEconomyEnabled()?petCombatExperience(baseGain):lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
     :await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
@@ -1163,12 +1217,14 @@ export async function startRaid(chat,host,level=null,options={}){
     }
     if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala expirou. Abra outra Raid.')
     const ids=Object.keys(s.players||{})
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     // Todas as Raids podem ser iniciadas solo. O tempo, HP e ATK da Raid
     // continuam sendo o desafio; entrar com mais jogadores segue opcional.
     const minPlayers=1
     if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos 1 jogador.`)
+    // V2: a Raid 70 exige cooperação. Validar antes de debitar chaves, buffs ou poções.
+    assertRaid70V2Start({level:cfg.level,partySize:ids.length,mode:loteAttemptId?'lote':'manual'})
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=ANY($1::text[]) FOR UPDATE OF s',[ids])).rows
@@ -1216,7 +1272,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const armorStars=activeStars(st.armor_id)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id),weaponStars):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
-      const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
+      const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id),rebootEconomyEnabled()?activeStars(st.boot_id):1):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id),activeStars(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -1234,7 +1290,7 @@ export async function startRaid(chat,host,level=null,options={}){
         'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
         [jid]
       )).rows,heroId)
-      const teamSynergy=petTeamSynergy(teamPets)
+      const teamSynergy=petTeamSynergy(activeCombatPetTeam(teamPets,[combatPet,reservePet]))
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
@@ -1264,8 +1320,8 @@ async function finishRaidRewards(c,s,cfg,chat){
   const lote=s.mode==='lote'
   // Somente lotes adquiridos com o Passe Supremo mantêm a tabela base manual.
   // O identificador é persistido na sala após a validação do job no PostgreSQL.
-  const loteReduced=lote&&s.auctionPassManualRewards!==true
-  const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
+  const loteReduced=lote&&(rebootEconomyEnabled()||s.auctionPassManualRewards!==true)
+  const ranked=raidV2EligibleRewards(Object.values(s.players||{})).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
   // A compensação por desconexões usa uma janela dinâmica persistida no Neon.
@@ -1285,26 +1341,27 @@ async function finishRaidRewards(c,s,cfg,chat){
     now<Number(fragmentEvent.endsAt||0) &&
     Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
-  const cacadaActive=cacadaAlphaActive()
-  const ownerRaid=await getOwnerEventMultiplier(c,'raid')
-  const ownerDrop=await getOwnerEventMultiplier(c,'drop')
-  const ownerFragments=await getOwnerEventMultiplier(c,'fragmentos')
-  const ownerGeneralXp=await getOwnerEventMultiplier(c,'xp')
+  const cacadaActive=!rebootEconomyEnabled()&&cacadaAlphaActive()
+  const ownerRaid=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'raid')
+  const ownerDrop=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'drop')
+  const ownerFragments=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'fragmentos')
+  const ownerGeneralXp=rebootEconomyEnabled()?1:await getOwnerEventMultiplier(c,'xp')
   const effectivePetXp=lote?1:await getPetXpEventMultiplier(c)
   // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=lote?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
+  const moneyMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro')))
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
-  const petXpMultiplier=lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
-  const gearEventBonus=!lote&&raidEventActive?0.015:0
+  const xpMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp))
+  const petXpMultiplier=rebootEconomyEnabled()?1:(lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp)
+  const gearEventBonus=!rebootEconomyEnabled()&&!lote&&raidEventActive?0.015:0
   // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=!lote&&raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
   const rewards=[]
+  const v2RaidCash=raidCashSharesV2(cfg,ranked)
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
     const masteryReport=p.heroId?{heroId:p.heroId,earned:0,reason:'participacao_insuficiente'}:null
@@ -1323,7 +1380,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
-    const normalCash=Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
+    const normalCash=v2RaidCash?v2RaidCash.payouts.get(p.jid):Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
     const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
@@ -1398,7 +1455,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote?baseQty:baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
+    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote||rebootEconomyEnabled()?baseQty:baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
@@ -1434,7 +1491,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
-      if(!lote&&cfg.level===60 && Number(p.damage||0)>0){
+      if(!lote&&cfg.level===60 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const playerDigits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const isPlayer=playerDigits.endsWith('11948523167') ||
           (await c.query(
@@ -1454,7 +1511,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão única e individual na Raid 50, somente após vitória com dano real.
       // Mantém a apresentação habitual do drop; não altera chances de outros jogadores.
-      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11939089695'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1475,7 +1532,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão individual, transacional e única para a próxima vitória na Raid 50.
       // Usa o mesmo resultado habitual da Raid, sem anúncio administrativo.
-      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===50 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11987308687'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1496,7 +1553,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Pendência individual da Raid 70: conceder uma única vez na próxima vitória,
       // com participação real, pelo fluxo habitual de drop (sem aviso separado).
-      if(!lote&&!singleUseGear && cfg.level===70 && Number(p.damage||0)>0){
+      if(!lote&&!singleUseGear && cfg.level===70 && Number(p.damage||0)>0&&!rebootEconomyEnabled()){
         const phone='11948523167'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const playerMatch=digits.endsWith(phone) ||
@@ -1525,7 +1582,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       // Recompensa de uso unico para Augusto: proxima vitoria da Raid Lv.65.
       // Sem anuncio administrativo: permanece no relatorio normal de drop da Raid.
       // Chave transacional impede duplicacao em novas raids, reinicios e outros grupos.
-      if(!lote&&!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 &&
+      if(!lote&&!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 && !rebootEconomyEnabled() &&
         p.jid==='5511982964423@s.whatsapp.net'){
         const oneOff=await c.query(
           `INSERT INTO trevo_settings(key,value,updated_at)
@@ -1547,6 +1604,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
     }
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
+      ...(rebootEconomyEnabled()?raidRoleReport(p):{}),
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
       playerClassId:p.classId,playerClassApplied:Boolean(p.classApplied),activeHeroId:p.heroId||null,
@@ -1607,7 +1665,7 @@ export async function raidRound(chat,level){
     const s=rooms.find(r=>r.status==='active'&&(!level||Number(r.level)===Number(level)))
     if(!s) return {reason:'inactive'}
     const gameType=s.gameType
-    const cfg=raidConfig(s.level)
+    const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     const roundNow=Date.now()
     const lastRoundAt=Number(s.lastRoundAt||0)
@@ -1631,6 +1689,7 @@ export async function raidRound(chat,level){
     const events=[]
     // Mantém apenas um débito automático por pet por rodada (inclusive reanimação prévia).
     const preRoundPetHeals=new Map()
+    const classFinalRoundHealing=new Map()
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
@@ -1644,8 +1703,8 @@ export async function raidRound(chat,level){
       if(PECADOS_HERO_IDS.includes(String(p.pet?.species||'')))p.pet=null
       if(PECADOS_HERO_IDS.includes(String(p.reservePet?.species||'')))p.reservePet=null
       let pb={damage:0,crit:0}
-      const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
-      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
+      let baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
+      let teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
 
@@ -1710,7 +1769,13 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
-      if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,p.teamPassives||[])
+      const combatTeam=activeCombatPetTeam(p.teamPassives||[],[p.pet,p.reservePet],{lastEnergyActive:true})
+      if(rebootEconomyEnabled()){
+        baseTeamSynergy=petTeamSynergy(combatTeam)||{attack:0,defense:0,crit:0}
+        teamSynergy=baseTeamSynergy
+        p.teamSynergy=teamSynergy
+      }
+      if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,combatTeam)
       const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
@@ -1746,7 +1811,9 @@ export async function raidRound(chat,level){
       if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
-      const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const baseRaidDamage=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const curse=rebootEconomyEnabled()?raidNecromancerCurse(alive,p,baseRaidDamage,Number(s.hp)):{damage:baseRaidDamage,bonus:0,source:null}
+      const dmg=curse.damage
       const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
       if(p.classId==='paladin'&&p.classApplied&&Number(p.awakeningStage||0)>=1&&s.round%8===0){
         p.classHealingOpportunities=Number(p.classHealingOpportunities||0)+1
@@ -1756,6 +1823,11 @@ export async function raidRound(chat,level){
         p.hp=Math.min(Number(p.maxHp),hpBefore+Number(classHit.heal))
         const healed=Math.max(0,Number(p.hp)-hpBefore)
         p.classHealing=Number(p.classHealing||0)+healed
+        if(rebootEconomyEnabled()&&!p.heroId&&healed>0){
+          const max=Number(p.heroPersistentMaxHp||p.maxHp)
+          const delta=restoreVitalPersistentHp(p.hp,p.maxHp,max)-restoreVitalPersistentHp(hpBefore,p.maxHp,max)
+          if(delta>0)classFinalRoundHealing.set(p.jid,{delta,max})
+        }
         if(healed>0) p.classHealingActivations=Number(p.classHealingActivations||0)+1
       }
       if(p.heroId==='pecado_king'&&Number(classHit.allyHeal||0)>0){
@@ -1771,7 +1843,7 @@ export async function raidRound(chat,level){
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
-      p.damage=Number(p.damage||0)+dmg
+      p.damage=Number(p.damage||0)+(rebootEconomyEnabled()?actualDamage:dmg)
       s.hp=Math.max(0,Number(s.hp)-dmg)
       await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit,p.heroId)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
@@ -1782,7 +1854,15 @@ export async function raidRound(chat,level){
       // Finalização antes da fase defensiva: persistir cura do último ataque
       // e não perder a diferença fracionária quando o herói dá o golpe final.
       for(const player of Object.values(s.players||{})){
-        if(!player.heroId)continue;
+        if(!player.heroId){
+          // Em V2, somar somente a cura real da última fase ofensiva.
+          // Não substituir o HP persistido por um snapshot antigo nem ressuscitar.
+          const heal=classFinalRoundHealing.get(player.jid)
+          if(rebootEconomyEnabled()&&heal){
+            await c.query('UPDATE stats SET hp=LEAST($1,hp+$2) WHERE jid=$3 AND hp>0 AND hp<$1',[heal.max,heal.delta,player.jid])
+          }
+          continue;
+        }
         const settled=persistHeroHpDelta({
           previousPersistentHp:player.heroStoredHp,
           previousCombatHp:player.heroLastHp,currentCombatHp:player.hp,
@@ -1800,6 +1880,15 @@ export async function raidRound(chat,level){
         player.heroLastHp=player.hp;
         player.heroHpRemainder=settled.remainder;
         await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[rebased.storedHp,player.jid]);
+      }
+      // Impede que um único jogador carregue dois participantes inativos na Raid 70.
+      // Em V2, nenhum saque é feito se menos de três contribuírem com dano real ou cura.
+      const cooperation=raid70V2Contributors(s.players,{level:cfg.level})
+      if(!cooperation.valid){
+        s.status='failed';s.failReason='insufficient_cooperation'
+        await saveGame(c,chat,gameType,s)
+        return {failed:true,reason:'insufficient_cooperation',config:cfg,raidId:s.startedAt,
+          round:s.round,hp:0,maxHp:s.maxHp,events}
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
@@ -1838,12 +1927,12 @@ export async function raidRound(chat,level){
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
-      const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
-      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
+      const baseTeamSynergy=petTeamSynergy(activeCombatPetTeam(p.teamPassives||[],[p.pet,p.reservePet],{lastEnergyActive:true}))||{attack:0,defense:0,crit:0}
+      const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+(rebootEconomyEnabled()?0:halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length}))}
         // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
         p.teamSynergy=teamSynergy
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
-      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
+      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*raidPlayerDefenseCoefficient(cfg.level))*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
@@ -1865,6 +1954,10 @@ export async function raidRound(chat,level){
       if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
+      if(rebootEconomyEnabled()&&guardianAura){
+        const guardian=alive.find(ally=>ally.jid!==p.jid&&ally.alive&&Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&Number(ally.awakeningStage||0)>=4)
+        recordRaidAuraProtection(guardian,p,hitDamage,protectedDamage,passiveDefense)
+      }
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
       const heart=vitalPulseHeal(p.hp,p.maxHp,p.vitalPulseUsed,Number(p.teamSynergy?.vitalPulse||0))
       if(heart.used&&!p.vitalPulseUsed){
@@ -2170,6 +2263,7 @@ function collabFarmState(phaseIndex,ledger,startedAt){
     participants:{},ledger:ledger||{},startedAt,endsAt:COLLAB_FARM_END}
 }
 export async function tickCollabFragmentFarm(now=Date.now()){
+  if(classesOnlyRebootEnabled())return {due:false,disabled:true};
   if(now<COLLAB_FARM_START||now>COLLAB_FARM_END+120000)return {due:false}
   return tx(async c=>{
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
@@ -2263,6 +2357,7 @@ function pecadosPhaseState(index,ledger,startedAt,edition){
     ...(edition.key===PECADOS_0111_KEY?{balanceVersion:PECADOS_0111_BALANCE}:{})}
 }
 export async function tickSetePecados(now=Date.now()){
+  if(classesOnlyRebootEnabled())return {due:false,disabled:true};
   const edition=PECADOS_EDITIONS.find(e=>now>=e.start&&now<=e.end+120000)
   if(!edition)return {due:false}
   return tx(async c=>{
@@ -2916,9 +3011,10 @@ async function grantWeeklyGolemChoice(c,jid){
 export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
  return tx(async c=>{
   const s=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-  if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
-  const specialNov13=s.weekendKey===WEEKLY_GOLEM_V2_KEY
-  const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)
+  if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0)||(rebootEconomyEnabled()&&s.rebootV2!==true))return null
+  const specialNov13=!rebootEconomyEnabled()&&s.weekendKey===WEEKLY_GOLEM_V2_KEY
+  const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)||
+    (rebootEconomyEnabled()&&/^\d{4}-\d{2}-\d{2}$/.test(String(s.weekendKey||'')))
   if(!specialNov13&&!proportionalPool)return null
   // Nao retroagir nem prolongar o evento de 13/11; eventos futuros seguem o prazo no estado.
   if(specialNov13&&(nowMs<Date.parse('2026-11-15T00:00:00-03:00')||
@@ -2928,20 +3024,21 @@ export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
   const rewards=[]
   for(let i=0;i<entries.length;i++){
    const p=entries[i],position=i+1
-   const cash=weeklyCashShares===null
+   const cash=rebootEconomyEnabled()?(weeklyCashShares?.get(p.jid)||0):weeklyCashShares===null
      ?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
      :(weeklyCashShares.get(p.jid)||0)
-   const exp=golem20261113Xp(s.weekendKey,position,p.damage)??0
+   const exp=rebootEconomyEnabled()?0:(golem20261113Xp(s.weekendKey,position,p.damage)??0)
    if(cash>0)await credit(c,p.jid,cash,proportionalPool?'boss_weekend_pool_timeout':'boss_weekend_timeout_20261113')
    if(exp>0)await grantExpInTransaction(c,p.jid,exp)
    const drops=[]
-   if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
+   if(!rebootEconomyEnabled()&&weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
      drops.push(await grantWeeklyGolemChoice(c,p.jid))
    rewards.push({...p,position,cash,exp,petXp:0,petXpTeam:[],drops})
   }
   const marker={mode:'completed',name:s.name,hp:Number(s.hp),
     maxHp:Number(s.maxHp),participants:{},weekendKey:s.weekendKey,
     weeklyCompleted:true,endsAt:s.endsAt,completedAt:Date.now(),
+    ...(s.rebootV2===true?{rebootV2:true}:{}),
     result:{bossName:s.name,maxHp:Number(s.maxHp),remainingHp:Number(s.hp),
       defeated:false,rewards}}
   await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',marker)
@@ -2984,9 +3081,9 @@ export async function claimWeeklyGolemChoice(jid,selection){
 }
 async function loadWeeklyBoss(c,weekend,{create=false}={}){
   const current=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-  if(current?.weekendKey===weekend.weekendKey) return current
+  if(current?.weekendKey===weekend.weekendKey&&(!rebootEconomyEnabled()||current.rebootV2===true)) return current
   if(!create||!weekend.open) return null
-  const rows=(await c.query(`
+  const rows=rebootEconomyEnabled()?[]:(await c.query(`
     SELECT chat_jid,state FROM trevo_games
     WHERE game_type='boss' AND chat_jid<>$1
       AND state->>'weekendKey'=$2
@@ -2994,7 +3091,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
            OR (state->>'mode' IS NULL AND COALESCE((state->>'maxHp')::numeric,0)>=25000))
   `,[GLOBAL_WEEKLY_BOSS_CHAT,weekend.weekendKey])).rows
   const bosses=rows.map(r=>r.state).filter(x=>Number(x.maxHp)>0)
-  const maxHp=bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
+  const maxHp=rebootEconomyEnabled()?V2_WEEKLY_BOSS.hp:bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
   const participants={}
   let totalDamage=0
   for(const boss of bosses){
@@ -3012,7 +3109,8 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
   }
   const state={
     mode:'weekly',name:'Golem Ancestral do Alpha',
-    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:200,participants,
+    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:rebootEconomyEnabled()?V2_WEEKLY_BOSS.atk:200,participants,
+    ...(rebootEconomyEnabled()?{rebootV2:true}:{}),
     startedAt:bosses.length?Math.min(...bosses.map(x=>Number(x.startedAt||Date.now()))):Date.now(),
     weekendKey:weekend.weekendKey,weeklyCompleted:bosses.some(x=>x.weeklyCompleted),
     endsAt:weekend.endsAt,endsLabel:weekend.endsLabel
@@ -3262,7 +3360,7 @@ export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
+    if(!rebootEconomyEnabled()&&event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     if(weekend.open){
       const weekly=await loadWeeklyBoss(c,weekend,{create:true})
       if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel,finished:weekly.mode==='completed'&&weekly.weeklyCompleted===true&&Array.isArray(weekly.result?.rewards)}
@@ -3327,7 +3425,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`weekly-boss-player:${weekend.weekendKey}:${jid}`])
     }
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
+    const eventActive=!rebootEconomyEnabled()&&Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
     const weeklyActive=!eventActive&&weekend.open
     const gameType=eventActive?'boss_event':'boss'
     const bossChat=weeklyActive?GLOBAL_WEEKLY_BOSS_CHAT:chat
@@ -3369,8 +3467,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const existingParticipant=s.participants[jid]||{}
     // Identidade fixada pelo primeiro ataque do Boss; não alterna habilidades
     // ou reinicia cargas em ataques automáticos e reconexões.
-    const heroId=Object.hasOwn(existingParticipant,'heroId')
-      ?existingParticipant.heroId:await getActivePlayableHero(c,jid)
+    const heroId=eligiblePlayableHero(Object.hasOwn(existingParticipant,'heroId')
+      ?existingParticipant.heroId:await getActivePlayableHero(c,jid))
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
     const heroStats=heroCombatStats(st,heroId,heroLevel)
     const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
@@ -3480,8 +3578,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=excludeActiveHeroPet(combatSnapshot?.team_pets||[],heroId)
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
-    const baseTeamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
-    const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:baseTeamSynergy.style,teamCount:teamPets.length})}
+    const baseTeamSynergy=petTeamSynergy(activeCombatPetTeam(teamPets,pet?[{...pet,teamSlot:activePetSlot,roundActive:true}]:[],{lastEnergyActive:true}))||{attack:0,defense:0,crit:0}
+    const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+(rebootEconomyEnabled()?0:halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:baseTeamSynergy.style,teamCount:teamPets.length}))}
     const upgradeRows=combatSnapshot?.upgrade_rows||[]
     const enchanted=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
@@ -3537,7 +3635,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       // O cap vale para ataques manuais e automáticos, incluindo críticos e pets.
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)),
         collabRemainingPersonalDamage(s.maxHp,existingParticipant.damage||0))
-    }else if(s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
+    }else if(rebootEconomyEnabled()||s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)))
     }
 
@@ -3763,6 +3861,13 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
+        let commonV2=rebootEconomyEnabled()&&!weekly&&!eventMode?commonBossRewardV2(p.damage,total):null
+        // Recompensa global por jogador: trocar de grupo não reinicia a janela.
+        // Cooldown e pagamento são atômicos na mesma transação de liquidação.
+        if(commonV2&&commonV2.xp>0){
+          const cd=await claimCooldown(c,`v2:common-boss-reward:${p.jid}`,3600)
+          if(!cd.ok) commonV2={cash:0,xp:0,boxChance:0}
+        }
         const tier=weekly?((upgradedWeeklyEdition(s.weekendKey)?BOSS_PLACEMENT:OLD_BOSS_PLACEMENT)[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
@@ -3831,35 +3936,50 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           // Boss comum permanece inalterado. No Superboss, usa apenas o dano
           // real já registrado para liberar o bônus extra de dinheiro e XP.
           // Nada é debitado do jogador, e os prêmios só são pagos na vitória.
+          const v2Reward=weekly&&rebootEconomyEnabled()?rebootWeeklyBossReward({
+            position,damage:p.damage,totalDamage:total,weekendKey:s.weekendKey
+          }):null
           const golemBonus=weekly?weeklyGolemPayoutIncrease({
             weekendKey:s.weekendKey,position,damage:p.damage
           }):{cash:0,xp:0}
           // A partir de 20/11, o dinheiro do Superboss soma exatamente R$ 50 mi.
           // Sem multiplicador nem cash fixo por posicao ou por evento.
-          cash=weeklyCashShares===null
+          cash=v2Reward?(weeklyCashShares?.get(p.jid)||0):weeklyCashShares===null
             ?(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
               +(weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
             :(weeklyCashShares.get(p.jid)||0)
-          const weeklyNov13Xp=weekly?golem20261113Xp(s.weekendKey,position,p.damage):null
+          const weeklyNov13Xp=weekly&&!rebootEconomyEnabled()?golem20261113Xp(s.weekendKey,position,p.damage):null
           const baseXp=weeklyNov13Xp===null
             ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
             :weeklyNov13Xp
-          exp=Math.floor(baseXp*(1+pb.xp))*xpMultiplier
-          await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-          await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
-          if(pp){
+          exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
+          if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
+          if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
+          if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
+          if(pp&&(!commonV2||commonV2.xp>0)){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))
               : Math.max(5,Math.round(12+35*share))
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
-           if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
+          if(commonV2){
+            if(commonV2.boxChance>0&&Math.random()<commonV2.boxChance)drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+          }else if(v2Reward){
+            const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
+            if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
+            if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance){
+              const item=Math.random()<.5
+                ?{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
+                :{id:'martelo_golem',name:'Martelo do Golem Ancestral',rarity:'Lendário'}
+              drops.push(await grantBossItem(c,p.jid,item,'weekly-boss:'+String(s.weekendKey)))
+            }
+          }else drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+           if(!rebootEconomyEnabled()&&weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
              drops.push(await grantWeeklyGolemChoice(c,p.jid))
           // Top 3 do Superboss: lendárias garantidas por vitória e dano real.
           // Apenas um UPSERT de inventário por vencedor, sem timers ou consultas extra.
           // A liquidação inteira permanece na transação existente do Boss.
-          const legendaryBoxes=weekly?weeklyGolemLegendaryBoxCount({
+          const legendaryBoxes=weekly&&!rebootEconomyEnabled()?weeklyGolemLegendaryBoxCount({
             weekendKey:s.weekendKey,position,damage:p.damage
           }):0
           if(legendaryBoxes>0){
@@ -3900,7 +4020,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
-        const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
+        const reclassDrop=s.eventId===NIGHT_EVENT_ID||(commonV2&&commonV2.xp===0)?null:await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
         if(reclassDrop) drops.push(reclassDrop)
         rewards.push({...p,position,cash,exp,petXp,petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
@@ -3922,7 +4042,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
       }else{
-        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
+        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,...(s.rebootV2===true?{rebootV2:true}:{}),weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
         await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}

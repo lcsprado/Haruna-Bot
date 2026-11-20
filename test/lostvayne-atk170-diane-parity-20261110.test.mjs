@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {PECADOS_WEAPONS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from '../src/neon/sete-pecados-catalog.js'
 import {heroPvpAttack,heroPvpDefense} from '../src/neon/playable-heroes-core.js'
+import {classesOnlyRebootEnabled,isRebootCollabItemId} from '../src/neon/reboot-classes-policy.js'
 
 // Exercita a funcao usada no menu e no calculo de PvP, Boss e Raid,
 // isolando o catalogo para nao abrir conexoes ou mudar inventarios.
@@ -13,9 +14,9 @@ assert.ok(dbSource.includes('PECADOS_GEAR_IDS.map(')||dbSource.includes('PECADOS
 const equipment=Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear]))
 const forging=Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,{collab:true}]))
 const equipmentStatsAtLevel=new Function(
-  'EQUIPMENT','RAID_GEAR_FORGE_ORIGINS','SHOP_FORGE5_STATS_IDS','ANTI_CRIT_SHIELDS','antiCritShieldStats','PECADOS_GEAR_IDS',
+  'EQUIPMENT','RAID_GEAR_FORGE_ORIGINS','SHOP_FORGE5_STATS_IDS','ANTI_CRIT_SHIELDS','antiCritShieldStats','PECADOS_GEAR_IDS','classesOnlyRebootEnabled','isRebootCollabItemId',
   "const EQUIPMENT_MAX_LEVEL=10;\nfunction equipmentStatsAtLevel("+functionBody+"\nreturn equipmentStatsAtLevel"
-)(equipment,forging,new Set(),[],()=>({}),PECADOS_GEAR_IDS)
+)(equipment,forging,new Set(),[],()=>({}),PECADOS_GEAR_IDS,classesOnlyRebootEnabled,isRebootCollabItemId)
 
 test('Lostvayne ★★★★★ Lv.10: 464 → 493 ATK, CRIT permanece 14,5%',()=>{
   const weapon=PECADOS_WEAPONS.find(w=>w.id==='pecados_lostvayne')

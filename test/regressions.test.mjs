@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import {renderProfileCard} from '../src/neon/profile-card.js'
+import {v2TravelSettlement} from '../src/neon/reboot-transport-policy.js'
 
 test('card de perfil renderiza os sistemas atuais',async()=>{
   const png=await renderProfileCard({
@@ -92,11 +93,12 @@ test('rendas de trabalho, frotas e negócios descontam imposto de 10%',async()=>
   const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
   const progression=await readFile(new URL('../src/neon/progression.js',import.meta.url),'utf8')
   const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
-  assert.match(dbSource,/const taxRate=Math\.min\(100,10\*Math\.max\(1,Number\(taxMultiplier\)\|\|1\)\)/)
+  assert.match(dbSource,/const taxRate=classesOnlyRebootEnabled\(\)\?10:Math\.min\(100,10\*Math\.max\(1,Number\(taxMultiplier\)\|\|1\)\)/)
   assert.match(dbSource,/const tax=Math\.floor\(gross\*\(taxRate\/100\)\)/)
   assert.match(dbSource,/income_tax[\s\S]{0,180}TAXADE te pegou \$\{taxRate\}% \| trabalho/)
-  assert.equal((progression.match(/const taxRate=Math\.min\(100,10\*Math\.max\(1,Number\(taxMultiplier\)\|\|1\)\)/g)||[]).length,2)
-  assert.equal((progression.match(/Math\.floor\(gross\*\(taxRate\/100\)\)/g)||[]).length,2)
+  assert.equal((progression.match(/v2TravelSettlement\(gross,\{legacyTaxMultiplier:taxMultiplier\}\)/g)||[]).length,2)
+  assert.deepEqual(v2TravelSettlement(1000,{enabled:false}),{gross:1000,tax:100,taxRate:10,operating:0,total:900})
+  assert.deepEqual(v2TravelSettlement(1000,{enabled:true}),{gross:1000,tax:100,taxRate:10,operating:150,total:750})
   assert.match(progression,/TAXADE te pegou \$\{taxRate\}% \| iFood/)
   assert.match(progression,/TAXADE te pegou \$\{taxRate\}% \| Uber/)
   assert.match(progression,/TAXADE te pegou 10% \| negócios/)

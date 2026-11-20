@@ -23,7 +23,7 @@ test('web usa autenticação, identidade do servidor e a mesma rotina do whatsap
   assert.match(api,/getAuctionWebStatus\(\{chat:requireGroup\(session\),sender:session\.jid\}\)/)
   assert.match(api,/if\(name==='auction\.bid'\)return placeAuctionWebBid/)
   assert.match(api,/name:await playerDisplayName\(jid\)/)
-  assert.match(api,/if\(actionName!=='auction\.bid'\)await sendWebGroupActivity/)
+  assert.match(api,/if\(!\['auction\.bid','auctionV2\.bid','bingoV2\.buy'\]\.includes\(actionName\)\)await sendWebGroupActivity/)
   assert.match(auction,/await handleAuctionAlphaCommand\(\{cmd:'lance',args:\[raw\],chat,sender,name,web:true/)
   assert.match(auction,/pg_advisory_xact_lock/)
   assert.match(auction,/if\(!Number\.isSafeInteger\(offered\)\|\|offered>2000000000\|\|offered<minimum\)/)

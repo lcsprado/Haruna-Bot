@@ -1,4 +1,7 @@
 import {PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,PECADOS_MIN_BOSS_DAMAGE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {V2_WEEKLY_BOSS,V2_COMMON_BOSS} from './reboot-pve-policy.js'
+import {V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 
 // Vitrine de eventos do Web. Somente leitura: a lógica de caça e os prêmios
 // continuam exclusivamente no serviço WhatsApp (mimic-hunt.js).
@@ -68,7 +71,8 @@ export function normalizeMimicSnapshot(row,now=Date.now()){
     prizesFinalized:Boolean(row?.finalized)
   }
 }
-export function buildSevenSinsSchedule(now=Date.now()){
+export function buildSevenSinsSchedule(now=Date.now(),{reboot=classesOnlyRebootEnabled()}={}){
+  if(reboot)return [];
   const phases=PECADOS_BOSS_PHASES.map(({id,name,hp,atk})=>({id,name,hp,atk}))
   return PECADOS_EDITIONS.map((edition,index)=>({
     id:edition.key,
@@ -87,8 +91,10 @@ export function buildSevenSinsSchedule(now=Date.now()){
   }))
 }
 
-export async function getWebEventCenter(db,jid,now=Date.now()){
-  const event={sevenSins:buildSevenSinsSchedule(now),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
+export async function getWebEventCenter(db,jid,now=Date.now(),{reboot=classesOnlyRebootEnabled()}={}){
+  // A temporada V2 não consulta tabelas de eventos históricos desativados.
+  if(reboot)return {rebootV2:true,sevenSins:[],mimic:null,saturdayRaid:null,weeklyBoss:{...V2_WEEKLY_BOSS,cashPool:V2_EVENT_BUDGET.weeklyBossPool,schedule:'Sexta 00:01 a sábado 23:59 (Brasília)'},commonBoss:{...V2_COMMON_BOSS},generatedAt:now,readOnly:true}
+  const event={sevenSins:buildSevenSinsSchedule(now,{reboot}),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
     id:SATURDAY_WEB_EVENT.id,name:SATURDAY_WEB_EVENT.name,
     startsAt:SATURDAY_WEB_EVENT.startsAt,endsAt:SATURDAY_WEB_EVENT.endsAt,
     phase:eventPhase(SATURDAY_WEB_EVENT,now),
@@ -97,7 +103,7 @@ export async function getWebEventCenter(db,jid,now=Date.now()){
   },generatedAt:now,readOnly:true}
   // Uma consulta indexada somente se alguma edição já iniciou. Nunca carrega
   // ledger, jogadores ou inventários; os agendamentos aparecem mesmo sem login no Boss.
-  if(now>=PECADOS_EDITIONS[0].start&&now<PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end){
+  if(!reboot&&now>=PECADOS_EDITIONS[0].start&&now<PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end){
     try{
       const {rows}=await db.query(
         "SELECT state->>'scheduleKey' AS edition_key,state->>'name' AS boss_name,state->>'active' AS active,state->>'phaseIndex' AS phase_index,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'outcome' AS outcome FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
