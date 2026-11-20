@@ -1,8 +1,8 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
-import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
+import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js?v=20261116-fortress-v2';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-web-canonical-20261116-no-npcs-v1';
+const WEB_ASSET_ID='alpha-web-canonical-20261116-fortress-v2';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';

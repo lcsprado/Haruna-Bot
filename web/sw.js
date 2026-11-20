@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261116-no-npcs-v1';
+const CACHE='alpha-rpg-pwa-20261116-fortress-v2';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/version.json','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
