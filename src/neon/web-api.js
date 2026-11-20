@@ -406,6 +406,7 @@ function sanitizeGameState(gameType,state){
     delete safe.c
     delete safe.correctAnswer
     delete safe.correctText
+    delete safe.quotaStarter
   }
 
   if(type==='numero'){
@@ -1351,7 +1352,7 @@ async function runAction(session,name,body={}){
     case 'game.coinflip': return coinFlip(jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
     case 'game.roulette': return roulette(jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
     case 'game.rps': return rps(String(body.choice||''))
-    case 'game.quiz.start': return startQuiz(requireGroup(session))
+    case 'game.quiz.start': return startQuiz(requireGroup(session),jid)
     case 'game.quiz.answer': return answerQuiz(requireGroup(session),jid,String(body.answer||''))
     case 'game.number.start': return startNumberGame(requireGroup(session))
     case 'game.number.guess': return guessNumber(requireGroup(session),jid,positiveInt(body.guess,'Número',999999))
