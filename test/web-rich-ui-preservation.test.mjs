@@ -71,7 +71,7 @@ test('Cerco routes to dedicated V5/V6 engine while other RPG APIs use primary ba
   assert.equal(paths[1].source,'/api/v1/me/clan-siege/:path*')
   assert.equal(paths[1].destination,'https://alpha-web-api-beta.onrender.com/api/v1/me/clan-siege/:path*')
   assert.equal(paths[2].source,'/api/v1/:path*')
-  assert.equal(paths[2].destination,'https://alpha-bot-whatsapp-m3lc.onrender.com/api/v1/:path*')
+  assert.equal(paths[2].destination,'https://alpha-bot-whatsapp.onrender.com/api/v1/:path*')
   const siegeUi=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8')
   for(const needle of ['myTurn','nextTurns','rulesVersion','fortress-upgrade','data-siege-preview','data-siege-target'])
     assert.ok(siegeUi.includes(needle),'Cerco V5/V6 interaction missing: '+needle)

@@ -595,7 +595,21 @@ const HARD_QUIZZES=[
   {q:"Qual número irracional é a base dos logaritmos naturais?",a:["π","e","φ","√2"],c:2,d:'hard'}
 ]
 
-export async function startQuiz(chat){
+// V2: quota rolling de 60 minutos, persistente e compartilhada entre chats/Web.
+async function consumeQuizAttempt(c,jid,now){
+  if(!jid) throw new Error('Não foi possível identificar o jogador do quiz.')
+  const type='quiz-hourly-v2'
+  const quota=await loadGame(c,jid,type)
+  const times=(Array.isArray(quota?.times)?quota.times:[])
+    .map(Number).filter(t=>Number.isFinite(t)&&t>now-3600000&&t<=now).sort((a,b)=>a-b)
+  if(times.length>=10){
+    const wait=Math.max(1,Math.ceil((times[0]+3600000-now)/60000))
+    throw new Error('🧠 Limite de 10 perguntas por hora atingido. Tente novamente em '+wait+' min.')
+  }
+  times.push(now)
+  await saveGame(c,jid,type,{times})
+}
+export async function startQuiz(chat,jid){
   return tx(async c=>{
     const current=await loadGame(c,chat,'quiz')
     const now=Date.now()
@@ -603,6 +617,8 @@ export async function startQuiz(chat){
     if(current && !current.finished && now-Number(current.started||0)<ttl){
       return {already:true,...current,remaining:Math.ceil((ttl-(now-Number(current.started||0)))/1000)}
     }
+    const limited=rebootEconomyEnabled()
+    if(limited) await consumeQuizAttempt(c,jid,now)
     const recent=Array.isArray(current?.recentQuestions)?current.recentQuestions:[]
     const hardPool=HARD_QUIZZES.filter(x=>!recent.includes(x.q))
     const normalPool=QUIZZES.filter(x=>!recent.includes(x.q))
@@ -610,7 +626,7 @@ export async function startQuiz(chat){
     const wantHard=Math.random()<.45
     const chosenPool=(wantHard&&hardPool.length)?hardPool:(normalPool.length?normalPool:(hardPool.length?hardPool:[...QUIZZES,...HARD_QUIZZES]))
     const item=chosenPool[Math.floor(Math.random()*chosenPool.length)]
-    const state={...item,difficulty:item.d==='hard'?'difícil':'normal',started:now,recentQuestions:[...recent,item.q].slice(-20)}
+    const state={...item,difficulty:item.d==='hard'?'difícil':'normal',started:now,recentQuestions:[...recent,item.q].slice(-20),...(limited?{quotaStarter:jid}:{})}
     await saveGame(c,chat,'quiz',state)
     return state
   })
@@ -638,6 +654,9 @@ export async function answerQuiz(chat,jid,answer){
       await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
       throw new Error('Esse quiz expirou. Use !quiz para iniciar outro.')
     }
+    // A pergunta aberta pelo próprio jogador já consumiu uma tentativa.
+    // Em grupos, outro jogador que responder também consome sua própria tentativa.
+    if(rebootEconomyEnabled()&&s.quotaStarter!==jid) await consumeQuizAttempt(c,jid,Date.now())
     await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
     const reboot=rebootEconomyEnabled()
