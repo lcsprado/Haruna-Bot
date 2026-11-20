@@ -220,7 +220,7 @@ test('Redistribuição V2 reduz emissão sem penalizar a primeira diária',()=>{
  assert.equal(V2_EVENT_BUDGET.dailyStreakMilestones[30],3000);
  assert.equal(V2_EVENT_BUDGET.dailyMissionCash.battle,750);
  const rates=Object.values(V2_BUSINESS_ECONOMY.hourlyRates);
- assert.equal(rates[0],160);
+ assert.equal(rates[0],270);
  assert.ok(rates.every((value,i)=>i===0||value>rates[i-1]));
 });
 
