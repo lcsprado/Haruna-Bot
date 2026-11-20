@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  V2_EVENT_BUDGET,V2_RAID_LEVELS,V2_BUSINESS_ECONOMY,V2_GOALS,
- budgetReport,candidateRaidConfig,candidateShopCatalogItem,candidateBusinessCatalog,businessIntervalGrossV2,raid70V2Policy,assertRaid70V2Start,
+ budgetReport,candidateRaidConfig,candidateShopCatalogItem,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,raid70V2Policy,assertRaid70V2Start,
  raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,raidV2MeaningfulContribution,rebootEconomyEnabled
 } from '../src/neon/reboot-economy-policy.js';
 import {gtRaceReward,gtEffectiveWeeklyPrizes} from '../src/neon/gt-alpha-rules.js';
@@ -149,6 +149,37 @@ test('Negócios V2 respeitam tarifa, capacidade fixa e nível, sem histórico da
  assert.ok(progression.includes("const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')"));
  const wa=getSource('src/neon/index.js');
  assert.ok(wa.includes('BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach'));
+});
+
+test('V2 reforça somente quatro negócios iniciais, com 24 horas e líquido de 80%',()=>{
+ const now=1_900_000_000;
+ const starter=[
+  {id:'carrinho_lanche',price:15_000,profitHour:300,capacityHours:8,expectedHour:90,expectedNet:1_728},
+  {id:'barbearia',price:45_000,profitHour:800,capacityHours:8,expectedHour:150,expectedNet:2_880},
+  {id:'loja_roupas',price:120_000,profitHour:2_000,capacityHours:10,expectedHour:250,expectedNet:4_800},
+  {id:'restaurante',price:300_000,profitHour:4_500,capacityHours:10,expectedHour:400,expectedNet:7_680}
+ ];
+ for(const base of starter){
+  const v1=candidateBusinessCatalog(base,{enabled:false});
+  const v2=candidateBusinessCatalog(base,{enabled:true});
+  assert.equal(v1,base);
+  assert.equal(v2.profitHour,base.expectedHour);
+  assert.equal(v2.capacityHours,24);
+  const gross=businessIntervalGrossV2(base,{level:1,last_collected_at:now-24*3600},now);
+  const settlement=businessSettlementV2(gross);
+  assert.equal(settlement.net,base.expectedNet);
+  assert.equal(settlement.tax+settlement.operating,gross-settlement.net);
+  assert.equal(businessIntervalGrossV2(base,{level:1,last_collected_at:now-48*3600},now),gross);
+  assert.equal(businessIntervalGrossV2(base,{level:2,last_collected_at:now-24*3600},now),
+    Math.floor(gross*1.1));
+ }
+ const larger=[
+  ['posto',7000,12,500],['mercado',12000,12,750],['hotel',24000,16,1666],
+  ['shopping',50000,18,3187],['tech',110000,24,7000]
+ ];
+ for(const [id,profitHour,capacityHours,expected] of larger){
+  assert.equal(candidateBusinessCatalog({id,profitHour,capacityHours},{enabled:true}).profitHour,expected);
+ }
 });
 
 test('C4e limita lucro líquido de Raid por vitória sem depender de número de jogadores',()=>{
