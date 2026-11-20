@@ -37,8 +37,10 @@ export const V2_RAID_LEVELS=Object.freeze({
 });
 export const V2_BUSINESS_ECONOMY=Object.freeze({
   taxRate:.10,operatingCostRate:.10,levelBonus:.10,capacityExtraHoursPerLevel:0,
+  // Orçamentos para 24 horas: a tarifa efetiva exibida é floor(rate * cap_legado / 24).
+  // Alterar somente quatro negócios iniciais; cinco superiores permanecem intactos.
   hourlyRates:Object.freeze({
-    carrinho_lanche:160,barbearia:300,loja_roupas:450,restaurante:650,
+    carrinho_lanche:270,barbearia:450,loja_roupas:600,restaurante:960,
     posto:1_000,mercado:1_500,hotel:2_500,shopping:4_250,tech:7_000
   })
 });
