@@ -3498,9 +3498,9 @@ p.timer=setTimeout(()=>{if(quizPending.get(chat)===p)quizPending.delete(chat)},1
 p.timer.unref?.()
 quizPending.set(chat,p)
 }
-async function quizStartRequested(chat,reply){
+async function quizStartRequested(chat,sender,reply){
 quizClear(chat)
-const q=await startQuiz(chat)
+const q=await startQuiz(chat,sender)
 await reply((q.already?'🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n':'')+quizFormat(q))
 const started=Number(q.started)
 const delay=Math.max(100,started+120000-Date.now()+100)
@@ -3524,14 +3524,14 @@ await reply((r.correct?'✅ *Acertou!* '+(r.rewardCooldown?'Prêmio em recarga (
 quizAwaitChoice(chat)
 return r
 }
-async function quizHandleChoice(chat,choice,reply){
+async function quizHandleChoice(chat,sender,choice,reply){
 const p=quizPending.get(chat)
 if(!p)return false
 if(Date.now()>p.expiresAt){quizClear(chat);return false}
 if(choice!=='1'&&choice!=='2')return false
 quizClear(chat)
 if(choice==='2')await reply('❌ *Sessão de quiz encerrada.*')
-else await quizStartRequested(chat,reply)
+else await quizStartRequested(chat,sender,reply)
 return true
 }
 let pollThirtyRunning=false
@@ -6919,7 +6919,7 @@ Digite uma *letra* ou tente a *palavra inteira*.
 return true
 }
 if(game==='quiz'){
-const q=await quizStartRequested(chat,reply)
+const q=await quizStartRequested(chat,sender,reply)
 if(!q.already)await progressDailyMission(sender,'game')
 return true
 }
@@ -6997,7 +6997,7 @@ Digite *0* para sair do modo rápido.`
 return true
 }
 if(input==='5'){
-const q=await quizStartRequested(chat,reply)
+const q=await quizStartRequested(chat,sender,reply)
 if(!q.already)await progressDailyMission(sender,'game')
 return true
 }
@@ -10594,7 +10594,7 @@ if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
 const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
   ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
-  if(await quizHandleChoice(chat,body,reply))continue
+  if(await quizHandleChoice(chat,sender,body,reply))continue
 }
 if(!body.startsWith(prefix)){
 let flow=activeNumericMenu||getQuickFlow(chat,sender)
@@ -13229,7 +13229,7 @@ if(r.won) return await reply(`🎉 *ACERTOU!* A palavra era *${r.word}*.`)
 if(r.lost) return await reply(`💀 Acabaram as vidas. A palavra era *${r.word}*.`)
 await reply(`❌ Não é essa.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
 } else if(['quiz'].includes(cmd)){
-const q=await quizStartRequested(chat,reply)
+const q=await quizStartRequested(chat,sender,reply)
 if(!q.already)await progressDailyMission(sender,'game')
 } else if(['resposta'].includes(cmd)){
 const n=Number(args[0]||0)
