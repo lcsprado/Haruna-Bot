@@ -455,6 +455,44 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         await new Promise(ok=>server.close(ok))
       }
     }
+    {
+      const {claimLevelRewards}=await import('../src/neon/db.js')
+      const {startQuiz,answerQuiz}=await import('../src/neon/games.js')
+      await db.query("CREATE TABLE IF NOT EXISTS alpha_temp_recovery_manifest(id text PRIMARY KEY, canonical_project_id text NOT NULL, canonical_branch_id text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(), state text NOT NULL, notes text NOT NULL)")
+      await db.query("INSERT INTO alpha_temp_recovery_manifest(id,canonical_project_id,canonical_branch_id,state,notes) VALUES('alpha-whatsapp-temporary-2026-10-19','ci','ci','TEMPORARY_ACTIVE','synthetic') ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state")
+      const fresh='5511000000020@s.whatsapp.net'
+      await ensureUser(fresh,'CI New Season')
+      await db.query('UPDATE users SET level=5,exp=0 WHERE jid=$1',[fresh])
+      const claims=await Promise.all([claimLevelRewards(fresh),claimLevelRewards(fresh)])
+      assert.equal(claims.flatMap(x=>x.claimed).length,1)
+      assert.equal(claims.flatMap(x=>x.claimed)[0].cash,1000)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[fresh])).rows[0].cash),1000)
+      assert.equal(Number((await db.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='pocao_m'",[fresh])).rows[0].quantity),2)
+      assert.equal(Number((await db.query('SELECT count(*) FROM level_reward_audit WHERE jid=$1',[fresh])).rows[0].count),1)
+      await db.query('DELETE FROM level_reward_claims WHERE jid=$1 AND milestone=5',[fresh])
+      await assert.rejects(claimLevelRewards(fresh),/resgate anterior desapareceu/)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[fresh])).rows[0].cash),1000)
+      const quizUser='5511000000021@s.whatsapp.net',otherQuizUser='5511000000022@s.whatsapp.net'
+      await ensureUser(quizUser,'CI Quiz')
+      await ensureUser(otherQuizUser,'CI Other Quiz')
+      const quizRooms=Array.from({length:11},(_,n)=>'v2-ci-quiz-'+n+'@g.us')
+      const quizStarts=await Promise.allSettled(quizRooms.map(room=>startQuiz(room,quizUser)))
+      assert.equal(quizStarts.filter(x=>x.status==='fulfilled').length,10)
+      assert.equal(quizStarts.filter(x=>x.status==='rejected'&&/Limite de 10 perguntas/.test(String(x.reason))).length,1)
+      const quizIndex=quizStarts.findIndex(x=>x.status==='fulfilled')
+      const quiz=quizStarts[quizIndex].value
+      assert.equal((await startQuiz(quizRooms[quizIndex],quizUser)).already,true)
+      assert.equal((await answerQuiz(quizRooms[quizIndex],quizUser,quiz.c)).correct,true)
+      await assert.rejects(startQuiz('v2-ci-quiz-blocked@g.us',quizUser),/Limite de 10 perguntas/)
+      const otherQuiz=await startQuiz('v2-ci-quiz-other@g.us',otherQuizUser)
+      await assert.rejects(answerQuiz('v2-ci-quiz-other@g.us',quizUser,otherQuiz.c),/Limite de 10 perguntas/)
+      assert.equal((await answerQuiz('v2-ci-quiz-other@g.us',otherQuizUser,otherQuiz.c)).correct,true)
+      const beforeQuizClock=clock
+      clock+=3600001
+      assert.ok((await startQuiz('v2-ci-quiz-next-hour@g.us',quizUser)).q)
+      clock=beforeQuizClock
+      console.log('ALPHA_V2_LEVEL_QUIZ_OK',JSON.stringify({legacyMarkerIgnored:true,rewardPaidOnce:true,auditStillBlocks:true,quizConcurrentCap:10,rollingHour:true,crossChat:true}))
+    }
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom

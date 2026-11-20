@@ -4058,7 +4058,9 @@ const claimedMilestones=claimedRows.map(r=>Number(r.milestone))
 const unlocked=unlockedLevelMilestones(level,claimedMilestones)
 if(unlocked.length){
 const auditedMilestones=(await client.query('SELECT milestone FROM level_reward_audit WHERE jid=$1',[jid])).rows.map(r=>Number(r.milestone))
-const manifestExists=(await client.query("SELECT to_regclass('public.alpha_temp_recovery_manifest') AS relation")).rows[0]?.relation
+// A temporada V2 possui seus próprios registros de resgate e auditoria.
+// Não consultar o manifesto de recuperação da V1 na nova temporada.
+const manifestExists=classesOnlyRebootEnabled()?null:(await client.query("SELECT to_regclass('public.alpha_temp_recovery_manifest') AS relation")).rows[0]?.relation
 const recovery=manifestExists
 ?(await client.query("SELECT state FROM alpha_temp_recovery_manifest WHERE id='alpha-whatsapp-temporary-2026-10-19'")).rows[0]
 :null
