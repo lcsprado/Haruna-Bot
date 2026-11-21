@@ -11,7 +11,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
 import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
-import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled} from './reboot-economy-policy.js'
+import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled,V2_ROULETTE,assertV2RouletteBet} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {activeCombatPetTeam} from './reboot-pet-team.js'
@@ -247,15 +247,40 @@ async function refundExpiredGameV2(c,chat,type,state){
   return true
 }
 
+// Cota por jogador, compartilhada entre grupos, privado e Web, sem tabela nova.
+// O bloqueio transacional do próprio jogo impede duas apostas simultâneas de furar o teto.
+async function consumeRouletteAttemptV2(client,jid,now=Date.now()){
+  if(!rebootEconomyEnabled())return;
+  const key='roulette-hourly-v2';
+  const state=await loadGame(client,jid,key);
+  const attempts=(Array.isArray(state?.attempts)?state.attempts:[])
+    .map(Number).filter(ts=>Number.isFinite(ts)&&ts<=now&&ts>now-V2_ROULETTE.rollingWindowMs);
+  if(attempts.length>=V2_ROULETTE.maxRoundsPerHour){
+    const minutes=Math.max(1,Math.ceil((attempts[0]+V2_ROULETTE.rollingWindowMs-now)/60000));
+    throw new Error('Roleta V2: limite de 20 apostas em 60 minutos. Tente novamente em '+minutes+' min.');
+  }
+  attempts.push(now);
+  await saveGame(client,jid,key,{attempts});
+}
+async function debitRouletteV2(client,jid,amount,kind){
+  await debit(client,jid,amount);
+  if(rebootEconomyEnabled())await client.query(
+    "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'minigame_stake',$3)",
+    [jid,amount,kind]
+  );
+}
+
 export async function roulette(jid,amount,choice,chat=null){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
   if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
+  assertV2RouletteBet(amount,choice)
   await ensureUser(jid)
 
   return tx(async c=>{
-    await debit(c,jid,amount)
+    await consumeRouletteAttemptV2(c,jid)
+    await debitRouletteV2(c,jid,amount,'roleta')
     const n=Math.floor(Math.random()*37)
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
@@ -276,12 +301,14 @@ export async function createGroupRoulette(chat,host,amount,choice){
   amount=Number(amount); choice=String(choice||'').toLowerCase()
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
   if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
+  assertV2RouletteBet(amount,choice)
   await ensureUser(host)
   return tx(async c=>{
     const old=await loadGame(c,chat,'roulette_group')
     if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma roleta coletiva aberta neste grupo.')
     await refundExpiredGameV2(c,chat,'roulette_group',old)
-    await debit(c,host,amount)
+    await consumeRouletteAttemptV2(c,host)
+    await debitRouletteV2(c,host,amount,'roleta-coletiva')
     const state={host,players:{[host]:{amount,choice}},expiresAt:Date.now()+120000}
     await saveGame(c,chat,'roulette_group',state)
     return state
@@ -292,13 +319,15 @@ export async function joinGroupRoulette(chat,jid,amount,choice){
   amount=Number(amount); choice=String(choice||'').toLowerCase()
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
   if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
+  assertV2RouletteBet(amount,choice)
   await ensureUser(jid)
   return gameTxWithExpiry(async c=>{
     const state=await loadGame(c,chat,'roulette_group')
     if(await refundExpiredGameV2(c,chat,'roulette_group',state)) return {v2ExpiredRefund:true}
     if(!state || Number(state.expiresAt||0)<Date.now()) throw new Error('Não existe roleta coletiva aberta.')
     if(state.players?.[jid]) throw new Error('Você já entrou nesta rodada.')
-    await debit(c,jid,amount)
+    await consumeRouletteAttemptV2(c,jid)
+    await debitRouletteV2(c,jid,amount,'roleta-coletiva')
     state.players={...(state.players||{}),[jid]:{amount,choice}}
     await saveGame(c,chat,'roulette_group',state)
     return state
