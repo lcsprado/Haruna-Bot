@@ -2,6 +2,7 @@ import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
+import {claimBolsaFamiliaAlpha} from './bolsa-familia-alpha.js'
 import {v2CareerRoleFactor} from './reboot-career-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
@@ -1312,6 +1313,7 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 9️⃣ 🧰 Futebol, utilidades & suporte
 💡 *ATALHOS*
 *!perfil* • *!saldo* • *!trabalhar* • *!uber* • *!ifood*
+🏛️ *!bolsafamilia* — kit emergencial para quem tem até R$ 500
 *!rpg* • *!pet* • *!raid* • *!minigames*
 📜 *!contratos*
 📚 Todos os recursos: *!comandos*
@@ -11924,6 +11926,31 @@ await reply('🍀 Pong! Alpha Bot online e conectado ao Neon.')
 } else if(['saldo','balance','bal'].includes(cmd)){
 const p=await getProfile(sender)
 await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+} else if(['bolsafamilia','bolsaalpha'].includes(cmd)){
+const r=await claimBolsaFamiliaAlpha(sender)
+if(r.ok){
+  await reply(`🏛️ *BOLSA FAMÍLIA ALPHA — APROVADO!*
+💰 R$ ${fmt(r.cash)} creditados na carteira
+🧪 ${r.potions} Poções Médias (auxílio) entregues no inventário
+🔒 Poções vinculadas: podem ser usadas para curar, mas não vendidas nem trocadas.
+⏳ Próximo pedido em 72 horas (máximo 2 vezes em 7 dias).
+❤️ Use *!curar* quando precisar.`)
+}else if(r.status==='balance'){
+  await reply(`🏛️ *BOLSA FAMÍLIA ALPHA*
+💰 Seu saldo disponível (carteira + banco): R$ ${fmt(r.balance)}.
+🔒 O auxílio é reservado para jogadores com até R$ 500.`)
+}else if(r.status==='cooldown'||r.status==='weekly'){
+  const horas=Math.max(1,Math.ceil(Number(r.remainingMs||0)/3600000))
+  await reply(`⏳ *BOLSA FAMÍLIA ALPHA* — você já recebeu o auxílio.
+🕒 Nova tentativa em aproximadamente *${horas} hora(s)*.
+📌 Intervalo de 72h e até dois resgates por período de 7 dias.`)
+}else if(r.status==='pix'){
+  await reply(`🏛️ *BOLSA FAMÍLIA ALPHA*
+🔒 Não é possível receber após enviar R$ 500 ou mais em PIX nos últimos 3 dias.
+Isso evita esvaziar a carteira artificialmente para solicitar o kit.`)
+}else{
+  await reply('🏛️ Bolsa Família Alpha disponível apenas para jogadores com conta válida na temporada 2.0.')
+}
 } else if(cmd==='dano'){
   const mentioned=mentionsOf(msg)[0];
   const identity=mentioned?await resolvePlayerIdentity(sock,chat,mentioned,msg):{jid:sender};
@@ -13982,7 +14009,7 @@ const r=await ownerSetLevel(ownerTarget,level)
 await reply(`👑 Nível alterado: ${r.oldLevel} → ${r.level}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 } else if(['curar'].includes(cmd)){
 const items=await getInventory(sender)
-const potions=items.filter(i=>i.category==='consumable' && ['pocao_p','pocao_m','pocao_g','elixir_supremo'].includes(i.item_id))
+const potions=items.filter(i=>i.category==='consumable' && ['pocao_p','pocao_m','pocao_m_bolsa_alpha','pocao_g','elixir_supremo'].includes(i.item_id))
 if(!potions.length){
 return await reply(`🧪 Você não possui nenhuma poção no inventário.\nCompre uma em *${prefix}loja* para recuperar HP.`)
 }
