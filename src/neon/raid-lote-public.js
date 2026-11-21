@@ -4,7 +4,7 @@ import {raidLoteScheduleText} from './raid-lote-policy.js'
 const safeName=value=>String(value||'Jogador').replace(/[\r\n*_`~]/g,' ').trim().slice(0,42)||'Jogador'
 const integer=value=>Math.max(0,Math.floor(Number(value)||0))
 const percent=(value,max)=>max>0?Math.max(0,Math.min(100,Math.round(100*value/max))):null
-const publicStatus={queued:'AGUARDANDO',running:'EM ANDAMENTO',won:'CONCLUÍDO',lost:'DERROTA',cancelled:'CANCELADO',failed:'FALHA'} 
+const publicStatus={queued:'AGUARDANDO',running:'EM ANDAMENTO',won:'CONCLUÍDO',lost:'MORTE/DERROTA',cancelled:'CANCELADO',failed:'FALHA',completed:'TEMPO ENCERRADO',funds_exhausted:'SALDO INSUFICIENTE'} 
 
 export async function getRaidLotePublicBoard(db,limit=12){
   const n=Math.max(1,Math.min(15,integer(limit)||12))
@@ -12,7 +12,7 @@ export async function getRaidLotePublicBoard(db,limit=12){
     WITH latest AS (
       SELECT DISTINCT ON (j.jid)
         j.id,j.jid,j.level,j.requested,j.started,j.won_count,
-        j.status,j.current_attempt_id,j.created_at,j.finished_at,j.duration_hours,j.next_attempt_at
+        j.status,j.current_attempt_id,j.created_at,j.finished_at,j.duration_hours,j.next_attempt_at,j.billing_mode,j.session_ends_at
       FROM raid_lote_jobs j
       WHERE j.status IN ('queued','running')
         OR (j.finished_at>=NOW()-INTERVAL '24 hours')
@@ -92,7 +92,7 @@ export function formatRaidLotePublicBoard(rows,nowMs=Date.now()){
   const out=rows.map((row,i)=>{
     const status=publicStatus[row.status]||'INDEFINIDO'
     const lines=[(i+1)+'. *'+safeName(row.player_name)+'* • Lv.'+integer(row.level)+' • '+status,
-      '🏆 '+integer(row.won_count)+'/'+integer(row.requested)+' vitórias • '+integer(row.started)+' iniciada(s)']
+      '🏆 '+integer(row.won_count)+(row.billing_mode==='per_attempt'?' vitórias':'/'+integer(row.requested)+' vitórias')+' • '+integer(row.started)+' iniciada(s)']
     const schedule=raidLoteScheduleText(row,nowMs)
     if(schedule)lines.push(schedule)
     if(integer(row.won_count)>0){
