@@ -65,15 +65,18 @@ export function raidLoteShouldStop({cancelRequested=false,dead=false,won=false,a
   return Boolean(cancelRequested||dead||!won||attemptsCompleted>=attemptsRequested)
 }
 
- // V2: pacotes com duração nominal, sem rajadas ou catch-up em massa.
-export const RAID_LOTE_V2_INTERVAL_MINUTES=80
+// V2: uma sessão define o TEMPO máximo de automação, nunca o número de Raids.
+// Cada tentativa é debitada de forma atômica imediatamente antes de iniciar.
+export const RAID_LOTE_V2_MAX_ATTEMPTS=1000000 // salvaguarda técnica, não limite por período
+export const RAID_LOTE_V2_INTERVAL_MINUTES=0
 export function raidLoteDurationPlan(input){
   const raw=typeof input==='number'?String(input):String(input||'').trim().toLowerCase()
   if(!/^(4|8|12)h?$/.test(raw))throw new RangeError('Escolha 4h, 8h ou 12h')
   const hours=Number(raw.replace(/h$/,''))
-  return Object.freeze({hours,attempts:hours*3/4,intervalMinutes:RAID_LOTE_V2_INTERVAL_MINUTES})
+  return Object.freeze({hours,continuous:true,intervalMinutes:0})
 }
 export function raidLoteWaitsForSchedule(job,now=Date.now()){
+  if(job?.billing_mode==='per_attempt')return false
   if(!job?.duration_hours||!job.next_attempt_at||job.current_attempt_id||job.cancel_requested)return false
   const due=Date.parse(job.next_attempt_at)
   if(!Number.isFinite(due))throw new Error('Horário da próxima Raid inválido')
@@ -82,6 +85,14 @@ export function raidLoteWaitsForSchedule(job,now=Date.now()){
 export function raidLoteScheduleText(job,now=Date.now()){
   if(!job?.duration_hours)return ''
   const label='⏱️ Pacote de '+Number(job.duration_hours)+'h'
+  if(job.billing_mode==='per_attempt'){
+    const end=Date.parse(job.session_ends_at)
+    if(!Number.isFinite(end))return label+' • horário final indisponível'
+    if(!['queued','running'].includes(job.status))return label+' • sessão encerrada'
+    const mins=Math.max(0,Math.ceil((end-now)/60000))
+    if(end<=now)return label+' • prazo encerrado; aguardando conclusão'
+    return label+' • '+mins+' min restantes • '+(job.current_attempt_id?'Raid em andamento':'próxima Raid sem intervalo')
+  }
   if(!['queued','running'].includes(job.status)||job.current_attempt_id||job.cancel_requested)return label
   const due=Date.parse(job.next_attempt_at)
   if(!Number.isFinite(due))return label
