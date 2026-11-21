@@ -297,8 +297,9 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     const id=crypto.randomUUID()
     await c.query(`
       INSERT INTO raid_lote_jobs(id,jid,request_key,level,requested,key_price,
+        keys_total,fee_total,total_paid,cash_paid,bank_paid,
         duration_hours,billing_mode,session_ends_at,next_attempt_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7::smallint,'per_attempt',
+      VALUES($1,$2,$3,$4,$5,$6,0,0,0,0,0,$7::smallint,'per_attempt',
         NOW()+($7::smallint*INTERVAL '1 hour'),NOW())
     `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours])
     return {job:{id,jid,level:cfg.level,requested:RAID_LOTE_V2_MAX_ATTEMPTS,started:0,won_count:0,
