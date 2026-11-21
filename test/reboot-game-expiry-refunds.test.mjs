@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {V2_ROULETTE,assertV2RouletteBet} from '../src/neon/reboot-economy-policy.js'
 const src=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 function load(name,deps){
  const start=src.indexOf('async function '+name+'('),end=src.indexOf('\n}\n',start)
@@ -23,6 +24,10 @@ function fixture(reboot=true){
  d.credit=async(c,jid,amount,note)=>{balances[jid]+=amount;history.push({jid,amount,note})}
  d.debit=async(c,jid,amount)=>{if(balances[jid]<amount)throw Error('Saldo insuficiente');balances[jid]-=amount}
  d.lucky3xActive=()=>true;d.lucky3xMultiplier=()=>3;d.lucky3xPlayerWins=()=>true
+ d.V2_ROULETTE=V2_ROULETTE
+ d.assertV2RouletteBet=(amount,choice)=>assertV2RouletteBet(amount,choice,{enabled:reboot})
+ d.consumeRouletteAttemptV2=load('consumeRouletteAttemptV2',d)
+ d.debitRouletteV2=load('debitRouletteV2',d)
  for(const name of ['groupGamesEventMultiplier','gameTxWithExpiry','refundExpiredGameV2','roulette','coinFlip','createCoinDuel','acceptCoinDuel','createRpsDuel','acceptRpsDuel','createGroupRoulette','spinGroupRoulette','joinGroupRoulette','createTournament','joinTournament','startTournament'])d[name]=load(name,d)
  return {d,state,put:(type,s)=>games['g@g.us|'+type]=s}
 }
