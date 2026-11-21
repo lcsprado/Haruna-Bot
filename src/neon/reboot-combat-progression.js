@@ -30,8 +30,10 @@ export function v2XpCredit(used,base,bonus=0,{now=new Date(),skipNightRate=false
  for(const v of [used,base,bonus])
   if(!Number.isSafeInteger(v)||v<0)throw Error('Saldo de XP diario invalido')
  const rate=skipNightRate?1:v2HourlyXpRate(now)
- const creditedBase=Math.floor(base*rate)
- const creditedBonus=Math.floor(bonus*rate)
+ // Inteiros exatos: evita Math.floor(360 * 0.7) retornar 251 por erro de float.
+ const basisPoints=rate===V2_XP_NIGHT_RATE?7000n:10000n
+ const creditedBase=Number((BigInt(base)*basisPoints)/10000n)
+ const creditedBonus=Number((BigInt(bonus)*basisPoints)/10000n)
  const awarded=creditedBase+creditedBonus
  const total=used+awarded
  if(!Number.isSafeInteger(total))throw Error('Saldo de XP diario invalido')
