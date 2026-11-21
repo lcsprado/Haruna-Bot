@@ -2,7 +2,8 @@ import {potionHpReceipt} from './potion-hp-receipt.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
-import {claimBolsaFamiliaAlpha} from './bolsa-familia-alpha.js'
+import {claimBolsaFamiliaAlpha,activeBolsaFamiliaAlphaCandidates} from './bolsa-familia-alpha.js'
+import {createBolsaFamiliaAlphaAutoRunner} from './bolsa-familia-alpha-auto.js'
 import {v2CareerRoleFactor} from './reboot-career-policy.js'
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
@@ -9900,6 +9901,15 @@ console.log('====================================\n')
 }catch(err){console.error('[WhatsApp] falha ao gerar pairing code',err)}
 },3000)
 }
+// Entrega o kit automaticamente e comunica somente ao beneficiário por privado.
+const bolsaFamiliaAlphaAuto=createBolsaFamiliaAlphaAutoRunner({
+  claim:claimBolsaFamiliaAlpha,
+  candidates:activeBolsaFamiliaAlphaCandidates,
+  sendDirect:(jid,text)=>sock.sendMessage(jid,{text}),
+  isConnected:()=>trevoHealth.whatsapp==='open'&&classesOnlyRebootEnabled(),
+  logError:(stage,error)=>console.warn('[Bolsa Família Auto]',stage,String(error?.message||error).slice(0,160))
+})
+let bolsaFamiliaAlphaAutoTimer=null
 sock.ev.on('connection.update',({connection,lastDisconnect})=>{
 if(connection==='connecting') setWhatsAppHealth('connecting')
 if(connection==='open'){
@@ -9910,6 +9920,12 @@ reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
+if(classesOnlyRebootEnabled()){
+  clearInterval(bolsaFamiliaAlphaAutoTimer)
+  bolsaFamiliaAlphaAutoTimer=setInterval(()=>{void bolsaFamiliaAlphaAuto.scan()},5*60*1000)
+  bolsaFamiliaAlphaAutoTimer.unref?.()
+  setTimeout(()=>{void bolsaFamiliaAlphaAuto.scan()},15*1000).unref?.()
+}
 // Vincula automaticamente o grupo de nome EXATO "Alpha Bot" ao JID real.
 // Nao supoe qual grupo e o certo a partir de IDs antigos ou nomes digitados.
 void (async()=>{
@@ -10216,6 +10232,8 @@ console.error('[RaidResume]',err?.message||err)
 })()
 }
 if(connection==='close'){
+clearInterval(bolsaFamiliaAlphaAutoTimer)
+bolsaFamiliaAlphaAutoTimer=null
 privateQrState.value=null
 privateQrState.updatedAt=0
 clearTimeout(forceFlushTimer)
@@ -10580,6 +10598,13 @@ await reply('⚠️ Limite de avisos atingido. Um administrador pode usar *!limp
 continue
 }
 }catch(err){ console.error('[moderacao]',err?.message||err) }
+}
+// Sem comando especial: ao usar o bot, jogador elegível recebe o kit no privado.
+// Só dispara em comandos; uma varredura leve cobre quem não usa comandos.
+if(classesOnlyRebootEnabled()&&body.startsWith(prefix)&&
+  !/^!(?:bolsafamilia|bolsaalpha)(?:\s|$)/i.test(body) &&
+  sender.endsWith('@s.whatsapp.net')){
+  void bolsaFamiliaAlphaAuto.check(sender)
 }
 timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
