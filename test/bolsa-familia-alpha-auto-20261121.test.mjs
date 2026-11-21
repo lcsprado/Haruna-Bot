@@ -88,7 +88,7 @@ test('offline não concede nem notifica',async()=>{
 })
 
 test('integração usa anúncio no grupo apenas após benefício elegível; 5min scan',()=>{
- const source=path=>readFileSync(new URL('../'+path,import.meta.url'),'utf8')
+ const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
  const wa=source('src/neon/index.js')
  const backend=source('src/neon/bolsa-familia-alpha.js')
  const runner=source('src/neon/bolsa-familia-alpha-auto.js')
