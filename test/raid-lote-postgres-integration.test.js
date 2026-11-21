@@ -226,6 +226,14 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       assert.equal(Number(final.won_count),1)
       assert.equal(Number(final.total_paid),4400)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),13995)
+      // Sessões de 4h precisam comportar MAIS DE DEZ tentativas sem estourar
+      // os CHECKs legados em started/owned_keys_spent/keys_bought/won_count.
+      await db.query('UPDATE raid_lote_jobs SET started=11,won_count=11,keys_bought=11,owned_keys_spent=11 WHERE id=$1',[plan.job.id])
+      const overTen=(await db.query('SELECT started,won_count,keys_bought,owned_keys_spent FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
+      assert.equal(Number(overTen.started),11)
+      assert.equal(Number(overTen.keys_bought),11)
+      assert.equal(Number(overTen.owned_keys_spent),11)
+
     }finally{
       if(originalReboot===undefined)delete process.env.ALPHA_REBOOT_MODE
       else process.env.ALPHA_REBOOT_MODE=originalReboot
