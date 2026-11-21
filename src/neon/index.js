@@ -721,7 +721,7 @@ if(started) console.log('[Boss Auto] runner recuperado',jid,'no grupo',chat)
 }catch(err){
 const message=String(err?.message||err)
 console.error('[Boss Auto] falha ao recuperar runner',jid,message)
-if(/outro grupo|sem HP|não há Boss ativo|encerrou/i.test(message)){
+if(/outro grupo|sem HP|não há Boss ativo|encerrou|não está disponível/i.test(message)){
 await db.query("UPDATE boss_auto_sessions SET status='stopped' WHERE jid=$1 AND chat_jid=$2",[jid,chat])
 }
 }
@@ -3231,7 +3231,7 @@ OR (chat_jid='__alpha_global_boss_event__' AND game_type='boss_event')
 `)
 const weekly=rows.find(x=>x.chat_jid==='__alpha_global_weekly_boss__')?.state
 const event=rows.find(x=>x.chat_jid==='__alpha_global_boss_event__')?.state
-const eventActive=Boolean(event?.mode==='event'&&event.active!==false&&Number(event.hp)>0
+const eventActive=Boolean(!classesOnlyRebootEnabled()&&event?.mode==='event'&&event.active!==false&&Number(event.hp)>0
 && (!event.endsAt||Number(event.endsAt)>now))
 const weeklyActive=Boolean(weekly?.mode==='weekly'&&Number(weekly.hp)>0
 && Number(weekly.endsAt||0)>now)
@@ -13593,6 +13593,7 @@ await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level
 runRaidCombat(chat,Number(r.level),reply)
 } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+if(classesOnlyRebootEnabled())return await reply('🌘 O Imperador do Eclipse foi desativado na temporada V2. O dano legado é migrado uma única vez para o Golem semanal; não é possível reativá-lo.')
 // O Boss é global; o Owner também pode controlá-lo pelo contato privado.
 const action=normalizeItemText(args[0]||'status')
 if(['ativar','on','iniciar','start'].includes(action)){
