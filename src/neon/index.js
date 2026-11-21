@@ -7183,6 +7183,15 @@ await reply('👹 Mande *1* para iniciar o combate automático ou *0* para sair.
 return true
 }
 clearQuickFlow(chat,sender)
+if(classesOnlyRebootEnabled()){
+  const targets=await getAttackableBossTargets(chat)
+  const choice=parseBossAttackSelection([],targets)
+  if(choice.choose)return await reply(formatBossTargetMenu(targets,prefix))
+  if(choice.error)return await reply('⚠️ '+choice.error)
+  const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,choice.usePet,choice.target)
+  if(!started)return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
+  return await reply('⚔️ Combate automático iniciado no '+String(targets[0]?.name||'Boss')+'. Use !boss para acompanhar.')
+}
 const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
 if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
 await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
