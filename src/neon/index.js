@@ -11971,8 +11971,8 @@ if(r.ok){
 📌 Intervalo de 72h e até dois resgates por período de 7 dias.`)
 }else if(r.status==='pix'){
   await reply(`🏛️ *BOLSA FAMÍLIA ALPHA*
-🔒 Não é possível receber após enviar R$ 500 ou mais em PIX nos últimos 3 dias.
-Isso evita esvaziar a carteira artificialmente para solicitar o kit.`)
+🔒 Após um PIX de R$ 500 ou mais, aguarde apenas 30 minutos para que o benefício automático possa ser concedido.
+Esta proteção curta evita transferências feitas imediatamente antes do auxílio.`)
 }else{
   await reply('🏛️ Bolsa Família Alpha disponível apenas para jogadores com conta válida na temporada 2.0.')
 }
