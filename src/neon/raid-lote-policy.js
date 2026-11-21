@@ -68,7 +68,7 @@ export function raidLoteShouldStop({cancelRequested=false,dead=false,won=false,a
 // V2: uma sessão define o TEMPO máximo de automação, nunca o número de Raids.
 // Cada tentativa é debitada de forma atômica imediatamente antes de iniciar.
 export const RAID_LOTE_V2_MAX_ATTEMPTS=1000000 // salvaguarda técnica, não limite por período
-export const RAID_LOTE_V2_INTERVAL_MINUTES=0
+export const RAID_LOTE_V2_INTERVAL_MINUTES=80 // apenas para pacotes antigos pré-pagos
 export function raidLoteDurationPlan(input){
   const raw=typeof input==='number'?String(input):String(input||'').trim().toLowerCase()
   if(!/^(4|8|12)h?$/.test(raw))throw new RangeError('Escolha 4h, 8h ou 12h')
