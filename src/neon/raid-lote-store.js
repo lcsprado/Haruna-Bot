@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES} from './raid-lote-policy.js'
+import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES,RAID_LOTE_V2_MAX_ATTEMPTS} from './raid-lote-policy.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {assertRaid70V2Start} from './reboot-economy-policy.js'
 import {initRaidLoteNoticeOutbox,enqueueRaidLoteNotice} from './raid-lote-notice-outbox.js'
@@ -39,11 +39,11 @@ export async function initRaidLoteStore(db){
       jid TEXT NOT NULL,
       request_key TEXT NOT NULL,
       level INTEGER NOT NULL,
-      requested INTEGER NOT NULL CHECK (requested BETWEEN 1 AND 10),
-      started INTEGER NOT NULL DEFAULT 0 CHECK(started BETWEEN 0 AND 10),
-      won_count INTEGER NOT NULL DEFAULT 0 CHECK(won_count BETWEEN 0 AND 10),
+      requested INTEGER NOT NULL CHECK (requested BETWEEN 1 AND 1000000),
+      started INTEGER NOT NULL DEFAULT 0 CHECK(started BETWEEN 0 AND 1000000),
+      won_count INTEGER NOT NULL DEFAULT 0 CHECK(won_count BETWEEN 0 AND 1000000),
       status TEXT NOT NULL DEFAULT 'queued'
-        CHECK(status IN ('queued','running','won','lost','cancelled','failed')),
+        CHECK(status IN ('queued','running','won','lost','cancelled','failed','completed','funds_exhausted')),
       cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
       current_attempt_id UUID,
       key_price BIGINT NOT NULL CHECK(key_price>=0),
@@ -68,6 +68,26 @@ export async function initRaidLoteStore(db){
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS duration_hours SMALLINT CHECK (duration_hours IN (4,8,12))")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS billing_mode TEXT NOT NULL DEFAULT 'prepaid'")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS session_ends_at TIMESTAMPTZ")
+  // Regras de V1 continuam limitadas a 10 pela aplicação. V2 requer mais
+  // tentativas durante sessões longas sem descartar pacotes antigos.
+  for(const [table,column,range] of [
+    ['raid_lote_jobs','requested','BETWEEN 1 AND 1000000'],
+    ['raid_lote_jobs','started','BETWEEN 0 AND 1000000'],
+    ['raid_lote_jobs','won_count','BETWEEN 0 AND 1000000'],
+    ['raid_lote_attempts','seq','BETWEEN 1 AND 1000000']
+  ]){
+    // A constraint da tabela de tentativas é tratada após CREATE TABLE.
+    if(table==='raid_lote_attempts')continue
+    const name=table+'_'+column+'_check'
+    await db.query('ALTER TABLE '+table+' DROP CONSTRAINT IF EXISTS '+name)
+    await db.query('ALTER TABLE '+table+' ADD CONSTRAINT '+name+' CHECK ('+column+' '+range+')')
+  }
+  await db.query("ALTER TABLE raid_lote_jobs DROP CONSTRAINT IF EXISTS raid_lote_jobs_status_check")
+  await db.query("ALTER TABLE raid_lote_jobs ADD CONSTRAINT raid_lote_jobs_status_check CHECK(status IN ('queued','running','won','lost','cancelled','failed','completed','funds_exhausted'))")
+  await db.query("ALTER TABLE raid_lote_jobs DROP CONSTRAINT IF EXISTS raid_lote_jobs_billing_mode_check")
+  await db.query("ALTER TABLE raid_lote_jobs ADD CONSTRAINT raid_lote_jobs_billing_mode_check CHECK(billing_mode IN ('prepaid','per_attempt'))")
   await db.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS raid_lote_one_open_job_per_player
     ON raid_lote_jobs(jid) WHERE status IN ('queued','running')
@@ -80,7 +100,7 @@ export async function initRaidLoteStore(db){
     CREATE TABLE IF NOT EXISTS raid_lote_attempts(
       id UUID PRIMARY KEY,
       job_id UUID NOT NULL REFERENCES raid_lote_jobs(id),
-      seq INTEGER NOT NULL CHECK(seq BETWEEN 1 AND 10),
+      seq INTEGER NOT NULL CHECK(seq BETWEEN 1 AND 1000000),
       raid_chat TEXT NOT NULL UNIQUE,
       level INTEGER NOT NULL,
       raid_started_at_ms BIGINT,
@@ -93,6 +113,8 @@ export async function initRaidLoteStore(db){
     )
   `)
   await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_summary JSONB NOT NULL DEFAULT '{}'::jsonb")
+  await db.query("ALTER TABLE raid_lote_attempts DROP CONSTRAINT IF EXISTS raid_lote_attempts_seq_check")
+  await db.query("ALTER TABLE raid_lote_attempts ADD CONSTRAINT raid_lote_attempts_seq_check CHECK(seq BETWEEN 1 AND 1000000)")
   await db.query(`
     CREATE TABLE IF NOT EXISTS raid_lote_municipality(
       id SMALLINT PRIMARY KEY CHECK(id=1),
@@ -167,6 +189,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
       FROM raid_lote_jobs
       WHERE jid=$1
         AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
+        AND billing_mode='prepaid'
     `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
     if(!auctionPassManualRewards&&Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
       throw new Error('Limite de 10 tentativas por dia. Renova as 00:00 (horario de Brasilia).')
@@ -234,10 +257,60 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
     return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued',auction_pass_manual_rewards:auctionPassManualRewards,duration_hours:plan?.hours??null},quote,alreadyPurchased:false}
   })
 }
+
+// V2: sessões de tempo, sem compra antecipada ou quantidade fixa.
+// A primeira cobrança é feita pelo worker na reserva da primeira tentativa.
+export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requestKey,confirmed},{getCatalog}={}){
+  if(!jid||typeof jid!=='string')throw new Error('Jogador inválido')
+  validateRequestKey(requestKey)
+  if(confirmed!==true)throw new Error('Ativação requer confirmação explícita')
+  if(!classesOnlyRebootEnabled())throw new Error('Sessões contínuas exigem Alpha Bot 2.0')
+  if(typeof getCatalog!=='function')throw new Error('Catálogo de Raids obrigatório')
+  const plan=raidLoteDurationPlan(durationHours)
+  const cfg=(await getCatalog()).find(r=>Number(r.level)===Number(level))
+  if(!cfg)throw new Error('Raid indisponível')
+  assertRaid70V2Start({level:cfg.level,partySize:1,mode:'lote'})
+  return inTransaction(db,async c=>{
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+    const old=(await c.query('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2 FOR UPDATE',[jid,requestKey])).rows[0]
+    if(old){
+      if(old.billing_mode!=='per_attempt'||Number(old.level)!==Number(cfg.level)||Number(old.duration_hours)!==plan.hours)
+        throw new Error('Confirmação repetida com parâmetros divergentes')
+      return {job:old,alreadyPurchased:true,firstPrice:null}
+    }
+    const active=(await c.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') FOR UPDATE",[jid])).rows[0]
+    if(active)throw new Error('Já existe Raidlote em andamento')
+    const busy=(await c.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
+    if(busy)throw new Error('Finalize a Raid atual antes de ativar o automático')
+    const user=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!user||Number(user.level)<Number(cfg.minLevel||cfg.level))throw new Error('Nível insuficiente')
+    const hp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(Number(hp?.hp||0)<=0)throw new Error('Cure o personagem antes de ativar')
+    const wins=(await c.query("SELECT COUNT(*)::int AS n FROM transactions WHERE to_jid=$1 AND type='minigame' AND note=$2",[jid,'raid_'+cfg.level])).rows[0]
+    if(Number(wins?.n||0)<RAID_LOTE_V1.minimumManualWins)
+      throw new Error('Necessárias 3 vitórias manuais anteriores nesta Raid')
+    const inventory=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,cfg.keyId])).rows[0]
+    const quote=raidLoteQuote(cfg.keyPrice,1,Number(inventory?.quantity||0))
+    const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!wallet||Number(wallet.cash)+Number(wallet.bank)<quote.totalPrice)
+      throw new Error('Saldo insuficiente para a primeira Raid, incluindo taxa de automação')
+    const id=crypto.randomUUID()
+    await c.query(`
+      INSERT INTO raid_lote_jobs(id,jid,request_key,level,requested,key_price,
+        duration_hours,billing_mode,session_ends_at,next_attempt_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'per_attempt',
+        NOW()+($7::integer*INTERVAL '1 hour'),NOW())
+    `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours])
+    return {job:{id,jid,level:cfg.level,requested:RAID_LOTE_V2_MAX_ATTEMPTS,started:0,won_count:0,
+      status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours},
+      firstPrice:quote,alreadyPurchased:false}
+  })
+}
+
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -253,7 +326,7 @@ export async function getRaidLoteAttemptReports(db,jid,jobId){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
@@ -288,6 +361,12 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
       await c.query("UPDATE raid_lote_jobs SET status='cancelled',finished_at=NOW(),updated_at=NOW() WHERE id=$1",[jobId])
       return {status:'cancelled'}
     }
+    const continuous=job.billing_mode==='per_attempt'
+    if(continuous&&(!job.session_ends_at||new Date(job.session_ends_at).getTime()<=Date.now())){
+      await c.query("UPDATE raid_lote_jobs SET status='completed',finished_at=NOW(),updated_at=NOW() WHERE id=$1",[jobId])
+      await enqueueRaidLoteNotice(c,job.id,job.jid)
+      return {status:'expired'}
+    }
     if(job.started>=job.requested){
       return {status:'exhausted'}
     }
@@ -301,6 +380,45 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
     `,[job.jid])).rows[0]
     if(busy)return {status:'player_busy'}
     const id=crypto.randomUUID(),seq=Number(job.started)+1
+    if(continuous){
+      // Cobrança exatamente uma vez, na MESMA transação que reserva a tentativa.
+      // Chave já possuída é consumida; saldo paga a chave quando necessário,
+      // mais 10% de serviço em cada tentativa. Sem fundos, encerra sem nova luta.
+      const catalog=(await import('./game-catalog.js')).getRaidCatalog
+      // O preço da chave é persistido na ativação, mas o ID vem do catálogo.
+      const cfg=typeof catalog==='function'?catalog().find(r=>Number(r.level)===Number(job.level)):null
+      if(!cfg?.keyId)throw new Error('Catálogo de chave indisponível; sem débito')
+      const owned=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[job.jid,cfg.keyId])).rows[0]
+      const quote=raidLoteQuote(Number(job.key_price),1,Number(owned?.quantity||0))
+      const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[job.jid])).rows[0]
+      if(!wallet)throw new Error('Carteira não encontrada; pacote preservado')
+      const cash=Number(wallet.cash),bank=Number(wallet.bank)
+      if(!Number.isSafeInteger(cash)||!Number.isSafeInteger(bank)||cash<0||bank<0)
+        throw new Error('Carteira inconsistente; pacote preservado')
+      if(cash+bank<quote.totalPrice){
+        await c.query("UPDATE raid_lote_jobs SET status='funds_exhausted',finished_at=NOW(),updated_at=NOW() WHERE id=$1",[jobId])
+        await enqueueRaidLoteNotice(c,job.id,job.jid)
+        return {status:'funds_exhausted'}
+      }
+      if(quote.ownedKeysUsed>0){
+        const used=await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity',[job.jid,cfg.keyId])
+        if(used.rowCount!==1)throw new Error('Chave mudou durante a cobrança')
+      }
+      const paidCash=Math.min(cash,quote.totalPrice),paidBank=quote.totalPrice-paidCash
+      await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[paidCash,paidBank,job.jid])
+      await c.query('UPDATE raid_lote_municipality SET balance=balance+$1 WHERE id=1',[quote.serviceTotal])
+      await c.query(`
+        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES ($1,'raid_shop',$2,'raid_lote_keys',$4),
+               ($1,'alpha_prefeitura',$3,'raid_lote_service',$4)
+      `,[job.jid,quote.keysTotal,quote.serviceTotal,'RaidLote sessão #'+jobId+' tentativa '+seq])
+      await c.query(`
+        UPDATE raid_lote_jobs SET total_paid=total_paid+$2,cash_paid=cash_paid+$3,
+          bank_paid=bank_paid+$4,keys_total=keys_total+$5,fee_total=fee_total+$6,
+          owned_keys_spent=owned_keys_spent+$7,keys_bought=keys_bought+$8
+        WHERE id=$1
+      `,[jobId,quote.totalPrice,paidCash,paidBank,quote.keysTotal,quote.serviceTotal,quote.ownedKeysUsed,quote.keysToBuy])
+    }
     const raidChat=raidLoteRoomId(id)
     await c.query(`
       INSERT INTO raid_lote_attempts(id,job_id,seq,raid_chat,level)
@@ -308,7 +426,7 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
     `,[id,jobId,seq,raidChat,job.level])
     await c.query(`
       UPDATE raid_lote_jobs SET started=$2,status='running',current_attempt_id=$3,updated_at=NOW(),
-        next_attempt_at=CASE WHEN duration_hours IS NULL THEN NULL ELSE NOW()+($4::integer*INTERVAL '1 minute') END
+        next_attempt_at=CASE WHEN billing_mode='per_attempt' THEN NOW() WHEN duration_hours IS NULL THEN NULL ELSE NOW()+($4::integer*INTERVAL '1 minute') END
       WHERE id=$1
     `,[jobId,seq,id,RAID_LOTE_V2_INTERVAL_MINUTES])
     return {status:'reserved',attempt:{id,job_id:jobId,seq,raid_chat:raidChat,level:job.level},job}
@@ -358,7 +476,14 @@ export async function settleRaidLoteAttempt(db,attemptId){
     const finishedStatus=won?'won':'lost'
     await c.query('UPDATE raid_lote_attempts SET status=$2,finished_at=NOW() WHERE id=$1',[attemptId,finishedStatus])
     const newWins=Number(job.won_count)+(won?1:0)
-    const jobStatus=job.cancel_requested?'cancelled':(!won?'lost':newWins>=Number(job.requested)?'won':'running')
+    let jobStatus
+    if(job.billing_mode==='per_attempt'){
+      const dead=won?false:Number((await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[job.jid])).rows[0]?.hp||0)<=0
+      const expired=(await c.query('SELECT NOW()>=session_ends_at AS expired FROM raid_lote_jobs WHERE id=$1',[job.id])).rows[0]?.expired===true
+      jobStatus=job.cancel_requested?'cancelled':dead?'lost':expired?'completed':'running'
+    }else{
+      jobStatus=job.cancel_requested?'cancelled':(!won?'lost':newWins>=Number(job.requested)?'won':'running')
+    }
     await c.query(`
       UPDATE raid_lote_jobs SET won_count=$2,current_attempt_id=NULL,status=$3,
         updated_at=NOW(),finished_at=CASE WHEN $3 IN ('won','lost','cancelled') THEN NOW() ELSE finished_at END
@@ -366,7 +491,7 @@ export async function settleRaidLoteAttempt(db,attemptId){
     `,[job.id,newWins,jobStatus])
     // Persistir a pendencia na MESMA transacao do encerramento, antes do commit.
     // Falha de conexao WhatsApp nao reabre o job nem repete as recompensas.
-    if(['won','lost','cancelled'].includes(jobStatus)){
+    if(['won','lost','cancelled','completed','funds_exhausted'].includes(jobStatus)){
       await enqueueRaidLoteNotice(c,job.id,job.jid)
     }
     // Jamais realizar estorno: as tentativas nao iniciadas estavam quitadas no pacote.
