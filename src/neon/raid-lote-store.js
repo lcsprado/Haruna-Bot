@@ -384,7 +384,7 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
       // Cobrança exatamente uma vez, na MESMA transação que reserva a tentativa.
       // Chave já possuída é consumida; saldo paga a chave quando necessário,
       // mais 10% de serviço em cada tentativa. Sem fundos, encerra sem nova luta.
-      const catalog=(await import('./game-catalog.js')).getRaidCatalog
+      const catalog=(await import('./games.js')).getRaidCatalog
       // O preço da chave é persistido na ativação, mas o ID vem do catálogo.
       const cfg=typeof catalog==='function'?catalog().find(r=>Number(r.level)===Number(job.level)):null
       if(!cfg?.keyId)throw new Error('Catálogo de chave indisponível; sem débito')
