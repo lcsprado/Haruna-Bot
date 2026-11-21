@@ -59,7 +59,7 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.match(gamesSource,/mode:'weekly'/)
   assert.match(gamesSource,/mode:'common'/)
   assert.match(gamesSource,/weeklyCompleted:s\.mode==='weekly'/)
-  assert.match(gamesSource,/weekly\?'boss_weekend':'boss_common'/)
+  assert.match(gamesSource,/weekly\?'boss_weekend':\(eventMode\?'boss_event_eclipse_v2':'boss_common'\)/)
   assert.doesNotMatch(gamesSource,/await clearGame\(c,chat,'boss'\)[\s\S]{0,100}dead:true/)
 })
 
