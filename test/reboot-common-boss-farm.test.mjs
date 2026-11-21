@@ -29,7 +29,7 @@ test('common Boss: insufficient contribution, weekly, event and V1 do not consum
   assert.deepEqual(await attempt(f,'p',1),{cash:0,xp:0,boxChance:0})
   assert.equal(await attempt(f,'p',100,false),null)
   assert.equal(await attempt(f,'p',100,true,true),null)
-  assert.equal(await attempt(f,'p',100,true,false,true),null)
+  assert.deepEqual(await attempt(f,'p',100,true,false,true),{cash:2500,xp:120,boxChance:.03})
   assert.equal(f.keys.length,0)
   assert.equal((await attempt(f,'p')).cash,2500)
 })
