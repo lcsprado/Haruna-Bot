@@ -1,43 +1,57 @@
-// V2: progressão compartilhada entre WhatsApp e Web. Sem novos serviços/tabelas.
+// V2: progresso compartilhado entre WhatsApp e Web; sem limite diario de XP.
+// No horario de Brasilia (America/Sao_Paulo), XP manual/normal:
+// 00:00–05:59:59 = 70%; 06:00–23:59:59 = 100%.
+// RaidLote ja recebe 60% no motor de Raids: nunca reduzir novamente.
+// Apenas XP do jogador; XP dos pets, drops e economia permanecem intactos.
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
-export const V2_XP_FULL_DAILY=8000
-export const V2_XP_MAX_DAILY=12000
-export const V2_XP_EXTRA_RATE=.25
+export const V2_XP_NIGHT_RATE=.70
+export const V2_XP_DAY_RATE=1
 export function brazilProgressionDay(now=new Date()){
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now)
  const p=Object.fromEntries(parts.map(({type,value})=>[type,value]))
  return p.year+'-'+p.month+'-'+p.day
 }
-// Leitura pura para perfil: não cria registro nem reinicia a quota no banco.
-export function v2DailyXpStatus(state,{day=brazilProgressionDay()}={}){
+export function v2HourlyXpRate(now=new Date()){
+ const hour=Number(new Intl.DateTimeFormat('en-GB',{
+  timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'
+ }).format(now))
+ if(!Number.isInteger(hour)||hour<0||hour>23)throw new Error('Horario de XP invalido')
+ return hour<6?V2_XP_NIGHT_RATE:V2_XP_DAY_RATE
+}
+// Registro diario exclusivamente informativo: nao existe teto, bloqueio nem quota.
+// A leitura nao cria registro; a mesma chave e reutilizada ao mudar o dia.
+export function v2DailyXpStatus(state,{now=new Date(),day=brazilProgressionDay(now)}={}){
  const used=state?.day===day?Number(state.used):0
- if(!Number.isSafeInteger(used)||used<0)throw Error('Saldo de XP diário inválido')
- const fullRemaining=Math.max(0,V2_XP_FULL_DAILY-used)
- const remaining=Math.max(0,V2_XP_MAX_DAILY-used)
- return {day,used,fullRemaining,remaining,cap:V2_XP_MAX_DAILY,
-  rate:remaining===0?0:fullRemaining>0?1:V2_XP_EXTRA_RATE}
+ if(!Number.isSafeInteger(used)||used<0)throw Error('Saldo de XP diario invalido')
+ const rate=v2HourlyXpRate(now)
+ return {day,used,cap:null,fullRemaining:null,remaining:null,rate,unlimited:true}
 }
-export function v2XpCredit(used,base,bonus=0){
- for(const v of [used,base,bonus])if(!Number.isSafeInteger(v)||v<0)throw Error('Saldo de XP diário inválido')
- const full=Math.max(0,V2_XP_FULL_DAILY-used)
- const room=Math.max(0,V2_XP_MAX_DAILY-used)
- const fullBase=Math.min(base,full)
- const creditedBase=Math.min(room,fullBase+Math.floor((base-fullBase)*V2_XP_EXTRA_RATE))
- // O bônus de consumível usa a mesma faixa diária, e somente XP efetivamente
- // creditado é debitado de seu saldo. Sem exceção por modalidade de jogo.
- const remainingFull=Math.max(0,full-creditedBase)
- const fullBonus=Math.min(bonus,remainingFull)
- const creditedBonus=Math.min(Math.max(0,room-creditedBase),fullBonus+Math.floor((bonus-fullBonus)*V2_XP_EXTRA_RATE))
- return {base:creditedBase,bonus:creditedBonus,awarded:creditedBase+creditedBonus,used:used+creditedBase+creditedBonus,cap:V2_XP_MAX_DAILY}
+export function v2XpCredit(used,base,bonus=0,{now=new Date(),skipNightRate=false}={}){
+ for(const v of [used,base,bonus])
+  if(!Number.isSafeInteger(v)||v<0)throw Error('Saldo de XP diario invalido')
+ const rate=skipNightRate?1:v2HourlyXpRate(now)
+ // Inteiros exatos: evita Math.floor(360 * 0.7) retornar 251 por erro de float.
+ const basisPoints=rate===V2_XP_NIGHT_RATE?7000n:10000n
+ const creditedBase=Number((BigInt(base)*basisPoints)/10000n)
+ const creditedBonus=Number((BigInt(bonus)*basisPoints)/10000n)
+ const awarded=creditedBase+creditedBonus
+ const total=used+awarded
+ if(!Number.isSafeInteger(total))throw Error('Saldo de XP diario invalido')
+ return {base:creditedBase,bonus:creditedBonus,awarded,used:total,cap:null,rate}
 }
-export async function reserveV2DailyXp(client,jid,base,bonus,{day=brazilProgressionDay()}={}){
- // Chamador mantém SELECT users FOR UPDATE, dentro da transação de EXP.
- // Um registro por jogador, reaproveitado a cada dia (sem crescimento diário).
+export async function reserveV2DailyXp(client,jid,base,bonus,{
+ now=new Date(),day=brazilProgressionDay(now),skipNightRate=false
+}={}){
+ // O chamador segura SELECT users FOR UPDATE na mesma transacao.
+ // Um unico registro reutilizado por jogador, sem crescimento diario de tabelas.
  const key='reboot_xp_daily:'+jid
  const old=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[key])).rows[0]?.value
  const used=old?.day===day?Number(old.used):0
- const out=v2XpCredit(used,base,bonus)
- if(out.awarded>0)await client.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",[key,JSON.stringify({day,used:out.used})])
+ const out=v2XpCredit(used,base,bonus,{now,skipNightRate})
+ if(out.awarded>0)await client.query(
+  "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",
+  [key,JSON.stringify({day,used:out.used})]
+ )
  return {...out,day}
 }
 export const V2_CLASS_GROWTH=Object.freeze({

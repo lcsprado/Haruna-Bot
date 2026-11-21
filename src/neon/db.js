@@ -2285,7 +2285,7 @@ if(bonusXp>0) boostPercent=Number(boost.bonus_percent)
 }
 let dailyXp=null
 if(classesOnlyRebootEnabled()&&startingLevel<MAX_LEVEL&&eventGain+bonusXp>0){
- dailyXp=await reserveV2DailyXp(client,jid,eventGain,bonusXp)
+ dailyXp=await reserveV2DailyXp(client,jid,eventGain,bonusXp,{skipNightRate:Boolean(options.skipNightRate)})
  eventGain=dailyXp.base
  bonusXp=dailyXp.bonus
  if(!bonusXp)boostPercent=0
@@ -3979,7 +3979,7 @@ INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
 ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
 `,[jid,dayNumber])
 const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
-if(classesOnlyRebootEnabled()&&gain.awardedGain===0)throw new Error('Limite diário de XP atingido. Pergaminho preservado; volte amanhã.')
+// XP do reboot nao tem teto diario; a regra horaria e aplicada por applyExp.
 result={type:'scroll',name:effect.name,xp:classesOnlyRebootEnabled()?gain.awardedGain:effect.xp,level:gain.level,levelUps:gain.levels}
 }
 await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])

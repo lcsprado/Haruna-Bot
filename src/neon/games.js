@@ -1435,7 +1435,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
-      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems}
+      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems,skipNightRate:true}
       :{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const petXp=loteReduced?raidLoteReward(baseRaidPetXp,'petXp'):(baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0)

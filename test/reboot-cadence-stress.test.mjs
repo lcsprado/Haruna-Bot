@@ -17,10 +17,10 @@ test('V2 protege orçamento bruto em 1, 3, 24 e 288 coletas diárias, níveis 1 
 });
 test('curva de nível geral e de classe não excedem limites; Raid70 exige três jogadores elegíveis',()=>{
  const r=cadenceReport(read('src/neon/progression.js'),read('src/neon/db.js'));
- assert.deepEqual(r.progression.map(p=>p.rows.at(-1).level),[59,101,143,170]);
+ assert.deepEqual(r.progression.map(p=>p.rows.at(-1).level),[59,101,155,240]);
  assert.deepEqual(r.progression.map(p=>p.rows.at(-1).classLevel),[59,100,100,100]);
  assert.equal(r.progression[0].milestones[90],undefined);
- assert.equal(r.progression[3].milestones[90],34);
+ assert.equal(r.progression[3].milestones[90],17);
  assert.match(read('src/neon/reboot-economy-policy.js'),/minPlayers:3,minLevel:90/);
 });
 test('a cotação de melhoria usa a capacidade efetiva do mesmo catálogo',()=>{

@@ -126,7 +126,7 @@ test('simulação candidata usa os preços V2 atuais e reinveste prêmios hipot�
  }
  const totals=Object.values(candidateEventCash(30)).flatMap(x=>Object.values(x)).reduce((a,b)=>a+b,0);
  assert.equal(totals,4*40000+2*1440);
- assert.equal(report.xpSensitivity.intensivo.creditedPerActiveDay,12000);
+ assert.equal(report.xpSensitivity.intensivo.creditedPerActiveDay,24000);
  assert.equal(report.xpSensitivity.casual.creditedPerActiveDay,2000);
 });
 

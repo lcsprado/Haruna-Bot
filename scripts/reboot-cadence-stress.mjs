@@ -35,7 +35,7 @@ export function progressionStress(profile,rawDailyXp,dbSource){
  const milestones={},rows=[];
  for(let day=1;day<=120;day++){
   if((day-1)%7<profile.daysPerWeek){
-   const gain=v2XpCredit(0,rawDailyXp).awarded;credited+=gain;xp+=gain;
+   const gain=v2XpCredit(0,rawDailyXp,0,{now:new Date('2026-11-21T12:00:00Z')}).awarded;credited+=gain;xp+=gain;
    while(level<maxLevel&&xp>=Math.max(100,level*multiplier)){xp-=Math.max(100,level*multiplier);level++}
    if(level>=maxLevel)xp=0;
    cls=classLevelAdvance(cls.level,cls.xp,gain);
