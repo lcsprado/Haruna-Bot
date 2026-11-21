@@ -13619,7 +13619,10 @@ r.gear.map((g,i)=>{
 }).join('\n\n')+
 '\n\n✅ Escolha *!golempremio 1*, *2* ou *3*. O direito é consumido uma única vez.')
 } else if(['boss'].includes(cmd)){
-const r=await startBoss(chat)
+const targets=classesOnlyRebootEnabled()?await getAttackableBossTargets(chat):[]
+if(targets.length>1)return await reply(formatBossTargetMenu(targets,prefix))
+const r=targets.length===1&&targets[0].target==='event'
+  ?targets[0].state:await startBoss(chat)
 if(r.finished){
   for(const part of weeklyBossResultMessages(r)) await reply(part)
   return
@@ -13670,10 +13673,17 @@ const stopped=await db.query(
 if(existing) existing.active=false
 return await reply(stopped.rowCount?'🛑 Combate automático interrompido. Você pode usar !atacar para retomar neste mesmo grupo.':'ℹ️ Você não possui combate automático ativo neste grupo.')
 } else if(['atacar'].includes(cmd)){
-const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
-const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,usePet)
-if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
-await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: contínua até o Boss acabar, seu personagem cair ou você usar !pararatacar.\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
+const targets=classesOnlyRebootEnabled()?await getAttackableBossTargets(chat):[]
+const selection=classesOnlyRebootEnabled()
+  ?parseBossAttackSelection(args,targets)
+  :{target:'auto',usePet:!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))}
+if(selection.choose)return await reply(formatBossTargetMenu(targets,prefix))
+if(selection.error)return await reply('⚠️ '+selection.error
+  +(targets.length?'\n\n'+formatBossTargetMenu(targets,prefix):''))
+const selected=targets.find(t=>t.target===selection.target)
+const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,selection.usePet,selection.target)
+if(!started) return await reply('⚔️ Você já está atacando um Boss. Use !pararatacar para trocar de alvo.')
+await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*${selected?'\n🎯 Alvo: *'+String(selected.name).replace(/[\\r\\n*_~]/g,' ').slice(0,60)+'*':''}\n\n${selection.usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: até o Boss acabar, seu personagem cair ou você usar !pararatacar.\n🥊 Ataque automático: a cada *${selection.target==='event'?8:10} segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar os alvos.`)
 } else if(['dungeon','masmorra'].includes(cmd)){
 const r=await dungeon(sender)
 if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
