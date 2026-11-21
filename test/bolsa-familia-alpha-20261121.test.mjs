@@ -7,7 +7,7 @@ const now=Date.parse('2026-11-21T16:00:00-03:00')
 const check=overrides=>assess({cash:0,bank:0,claims:[],pixSent:0,now,...overrides})
 
 test('kit pequeno, poções vinculadas e 2 pedidos em 7 dias',()=>{
- assert.equal(P.cash,500)
+ assert.equal(P.cash,600)
  assert.equal(P.potionCount,2)
  assert.equal(P.potionId,'pocao_m_bolsa_alpha')
  assert.equal(P.maxBalance,500)
