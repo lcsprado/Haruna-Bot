@@ -2984,6 +2984,8 @@ export async function getBossEventStatus(chat){
 }
 
 export async function activateBossEvent(chat){
+  // Eclipse da V1 não integra a temporada V2: não permitir reaparecimento manual.
+  if(rebootEconomyEnabled())return {disabled:true,reason:'eclipse_v2_disabled'}
   return tx(async c=>{
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(current&&current.active!==false&&Number(current.hp)>0) return {already:true,...current}
@@ -2992,6 +2994,8 @@ export async function activateBossEvent(chat){
 }
 
 export async function autoStartBossEvent(chat,now=new Date()){
+  // O agendamento legado não pode reintroduzir o Eclipse na V2.
+  if(rebootEconomyEnabled())return {due:false,disabled:true,reason:'eclipse_v2_disabled'}
   if(now.getTime()<BOSS_EVENT_AUTO_NOT_BEFORE) return {due:false,notBefore:BOSS_EVENT_AUTO_NOT_BEFORE}
   const schedule=bossEventFridayInfo(now)
   if(!schedule.due) return {due:false}
@@ -3413,7 +3417,7 @@ export async function getAttackableBossTargets(chat){
     const now=Date.now()
     const eventAvailable=event&&event.mode==='event'&&event.active!==false
       &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>now)
-      &&(!rebootEconomyEnabled()||event.eventId==='eclipse')
+      &&!rebootEconomyEnabled()
     const weeklyAvailable=weekend.open&&weekly?.mode==='weekly'
       &&Number(weekly.hp)>0&&Number(weekly.endsAt||0)>now
     const commonAvailable=common?.mode==='common'&&Number(common.hp)>0&&!weeklyAvailable&&!eventAvailable
@@ -3499,7 +3503,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     const eventAvailable=Boolean(event&&event.mode==='event'&&event.active!==false
       &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())
-      &&(!rebootEconomyEnabled()||event.eventId==='eclipse'))
+      &&!rebootEconomyEnabled())
     const weeklyState=weekend.open&&(rebootEconomyEnabled()||!eventAvailable)?await loadWeeklyBoss(c,weekend,{create:true}):null
     const weeklyAvailable=Boolean(weekend.open&&weeklyState?.mode==='weekly'&&Number(weeklyState.hp)>0&&Number(weeklyState.endsAt||0)>Date.now())
     if(requestedTarget==='event'&&!eventAvailable)
