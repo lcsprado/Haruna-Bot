@@ -23,7 +23,7 @@ export async function claimBolsaFamiliaAlpha(jid){
     const pix=(await c.query(`SELECT COALESCE(SUM(amount),0)::bigint AS total
       FROM transactions
       WHERE from_jid=$1 AND type='transfer' AND created_at >= $2`,
-      [jid,Math.floor((now-BOLSA_FAMILIA_ALPHA.cooldownMs)/1000)])).rows[0]
+      [jid,Math.floor((now-BOLSA_FAMILIA_ALPHA.pixDrainWindowMs)/1000)])).rows[0]
     const result=assessBolsaFamiliaAlpha({
       cash:Number(wallet.cash),
       bank:Number(wallet.bank),
@@ -108,7 +108,7 @@ export async function activeBolsaFamiliaAlphaCandidates(limit=20){
     LIMIT $7`,
     [BOLSA_FAMILIA_ALPHA.maxBalance,now-BOLSA_FAMILIA_ALPHA.cooldownMs,
       now-BOLSA_FAMILIA_ALPHA.windowMs,BOLSA_FAMILIA_ALPHA.maxClaims,
-      Math.floor((now-BOLSA_FAMILIA_ALPHA.cooldownMs)/1000),
+      Math.floor((now-BOLSA_FAMILIA_ALPHA.pixDrainWindowMs)/1000),
       BOLSA_FAMILIA_ALPHA.recentPixLimit,size])).rows
   return rows.map(r=>({jid:String(r.jid),chat:String(r.chat_jid)}))
 }
