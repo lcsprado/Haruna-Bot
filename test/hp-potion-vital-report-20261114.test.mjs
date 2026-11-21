@@ -29,6 +29,29 @@ test('potion receipt uses consistent hero HP scale for both healing amount and m
   assert.match(receipt,/HP normal após a cura: \*7\.482\/7\.482\*/);
   assert.match(receipt,/Bônus temporários/);
 });
+test('Paladino V2: cura exibe a escala da Dungeon (!perfil), não o HP-base',()=>{
+  // Na classe, 172 HP persistentes equivalem a 204 HP efetivos.
+  // O ganho efetivo é proporcional aos 80 HP realmente aplicados.
+  const potion={name:'Poção Média',before:46,hp:126,maxHp:172,healed:80};
+  const view=potionDisplayHp(potion,{maxHp:204});
+  assert.deepEqual(view,{before:55,after:149,maxHp:204,healed:94,originalStoredHeal:80});
+  const message=potionHpReceipt(potion,{maxHp:204});
+  assert.match(message,/\+94 HP recuperados/);
+  assert.match(message,/HP normal após a cura: \*149\/204\*/);
+  assert.doesNotMatch(message,/126\/172/);
+});
+
+test('sem herói ativo, todos os recibos do WhatsApp usam HP efetivo da classe',()=>{
+  const source=fs.readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  const helper=source.slice(source.indexOf('async function potionReceiptForPlayer('),
+    source.indexOf('async function sendAlphaProfile('));
+  assert.match(helper,/getCombatProfile\(jid\)/);
+  assert.match(helper,/classProfile\?\.effective_max_hp/);
+  assert.match(helper,/const visualSheet=heroSheet\|\|/);
+  assert.match(helper,/potionHpReceipt\(potion,visualSheet,/);
+  assert.match(helper,/heroSheet\?Promise.resolve\(null\):getCombatProfile\(jid\)/);
+});
+
 test('potion receipt never changes healing scale for a normal class',()=>{
   const x=potionDisplayHp({name:'Poção',before:100,hp:150,maxHp:200,healed:50});
   assert.deepEqual({before:x.before,after:x.after,max:x.maxHp,heal:x.healed},{before:100,after:150,max:200,heal:50});
@@ -53,7 +76,7 @@ test('all four WhatsApp potion paths use the same receipt',()=>{
   const source=fs.readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   assert.equal((source.match(/usePotion\(sender,/g)||[]).length,4);
   assert.equal((source.match(/potionReceiptForPlayer\(sender,r,/g)||[]).length,4);
-  assert.match(source,/return potionHpReceipt\(potion,heroSheet,/);
+  assert.match(source,/return potionHpReceipt\(potion,visualSheet,/);
   assert.doesNotMatch(source,/finalHeal=healedHero/);
 });
 test('PvP snapshot includes normal and temporary HP without modifying combat math',()=>{
