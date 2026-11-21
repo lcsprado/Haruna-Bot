@@ -72,6 +72,23 @@ export function v2GroupFlashCash(type,remaining,roll=Math.random()){
   return Math.min(remaining,Math.min(V2_GROUP_FLASH.maxCash,amount));
 }
 
+// Limites da roleta V2: conter prêmios desproporcionais sem modificar chances ou V1.
+export const V2_ROULETTE=Object.freeze({
+  maxRedBlackBet:1_000,maxGreenBet:100,maxRoundsPerHour:20,rollingWindowMs:60*60*1000
+});
+export function assertV2RouletteBet(amount,choice,{enabled=rebootEconomyEnabled()}={}){
+  if(!enabled)return true;
+  if(!Number.isSafeInteger(amount)||amount<10)throw new RangeError('Aposta inválida na roleta V2.');
+  const max=choice==='verde'?V2_ROULETTE.maxGreenBet:
+    ['vermelho','preto'].includes(choice)?V2_ROULETTE.maxRedBlackBet:null;
+  if(max===null)throw new Error('Cor inválida.');
+  if(amount>max)throw new Error(
+    'Roleta V2: aposta máxima de R$ '+max.toLocaleString('pt-BR')+
+    ' para '+choice+'. Vermelho/preto até R$ 1.000; verde até R$ 100.'
+  );
+  return true;
+}
+
 export const V2_GOALS=Object.freeze({
   freshPlayers:4,startingLevel:1,startingCash:0,startingCharacterXp:0,
   weeklyEmissionsRequireAggregateCap:true,
