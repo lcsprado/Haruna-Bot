@@ -65,3 +65,43 @@ export async function claimBolsaFamiliaAlpha(jid){
     c.release()
   }
 }
+
+
+/** Consulta em lote, somente para jogadores ativos nas últimas 24 horas.
+ * Pré-filtro não libera saldo: claimBolsaFamiliaAlpha revalida tudo no lock.
+ * Uma consulta a cada 5 minutos evita varrer o banco por mensagem.
+ */
+export async function activeBolsaFamiliaAlphaCandidates(limit=20){
+  if(!rebootEconomyEnabled())return []
+  const size=Math.max(1,Math.min(20,Math.floor(Number(limit)||20)))
+  const now=Date.now()
+  const rows=(await db.query(`
+    SELECT u.jid
+    FROM wallets w
+    JOIN users u ON u.jid=w.jid
+    LEFT JOIN trevo_settings t ON t.key='v2:bolsa-familia-alpha:'||u.jid
+    WHERE u.banned=FALSE
+      AND u.jid ~ '^[0-9]{10,15}@s[.]whatsapp[.]net$'
+      AND u.updated_at >= EXTRACT(EPOCH FROM NOW())::bigint-24*3600
+      AND GREATEST(w.cash,0)+GREATEST(w.bank,0)<=$1
+      AND COALESCE((t.value->>'lastClaimAt')::bigint,0) <= $2
+      AND (
+        SELECT COUNT(*) FROM jsonb_array_elements_text(
+          CASE WHEN jsonb_typeof(t.value->'claims')='array'
+            THEN t.value->'claims' ELSE '[]'::jsonb END
+        ) x(claim_time)
+        WHERE x.claim_time::bigint > $3
+      ) < $4
+      AND COALESCE((
+        SELECT SUM(tr.amount) FROM transactions tr
+        WHERE tr.from_jid=u.jid AND tr.type='transfer'
+          AND tr.created_at >= $5
+      ),0) < $6
+    ORDER BY u.updated_at DESC,u.jid
+    LIMIT $7`,
+    [BOLSA_FAMILIA_ALPHA.maxBalance,now-BOLSA_FAMILIA_ALPHA.cooldownMs,
+      now-BOLSA_FAMILIA_ALPHA.windowMs,BOLSA_FAMILIA_ALPHA.maxClaims,
+      Math.floor((now-BOLSA_FAMILIA_ALPHA.cooldownMs)/1000),
+      BOLSA_FAMILIA_ALPHA.recentPixLimit,size])).rows
+  return rows.map(r=>String(r.jid))
+}
