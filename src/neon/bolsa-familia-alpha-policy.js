@@ -1,7 +1,7 @@
 // Auxílio emergencial V2: valores pequenos, elegibilidade conservadora e custo previsível.
 export const BOLSA_FAMILIA_ALPHA=Object.freeze({
   maxBalance:500,
-  cash:500,
+  cash:600,
   potionId:'pocao_m_bolsa_alpha',
   potionCount:2,
   cooldownMs:72*60*60*1000,

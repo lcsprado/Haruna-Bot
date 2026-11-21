@@ -1,29 +1,42 @@
-// Gatilho independente de sessão: uma concessão por jogador, mesmo em grupo diferente.
-export function bolsaFamiliaAlphaAutoReceipt(result){
-  return `🏛️ *BOLSA FAMÍLIA ALPHA — AUXÍLIO AUTOMÁTICO!*
+// Um único anúncio no grupo por kit efetivamente creditado.
+// Não há aviso prévio nem notificação para jogadores inelegíveis.
+export function bolsaFamiliaAlphaAutoReceipt(result,jid){
+  const player='@'+String(jid||'').split('@')[0]
+  return `🏛️🎊 *━━━━━━━━━━━━━━━━* 🎊🏛️
+      *BOLSA FAMÍLIA ALPHA*
+      🎁 *BENEFÍCIO LIBERADO!*
+🏛️🎊 *━━━━━━━━━━━━━━━━* 🎊🏛️
 
-✅ Seu saldo ficou dentro do limite e você recebeu:
-💰 *R$ ${Number(result.cash).toLocaleString('pt-BR')}* na carteira
-🧪 *${result.potions} Poções Médias* de auxílio
+👤 *${player}*, seu kit emergencial foi entregue!
 
-🔒 As poções são para cura; não podem ser vendidas ou trocadas.
-⏳ Novo auxílio apenas após 72 horas, no máximo 2 vezes em 7 dias.
-❤️ Use *!curar* para recuperar HP.
-_Não é necessário solicitar: o Alpha identifica automaticamente quando você precisa._`
+💰 *+ R$ ${Number(result.cash).toLocaleString('pt-BR')}*
+🧪 *+ ${Number(result.potions)} POÇÕES MÉDIAS*
+✅ *JÁ CREDITADO NA CONTA!*
+
+⚔️ O Alpha garante recursos para você continuar lutando!
+⏳ Limite: 2 concessões a cada 7 dias, intervalo de 72h.
+🛡️ Poções assistenciais não podem ser vendidas ou transferidas.
+
+_Não foi necessário solicitar o benefício._`
 }
 
 export function createBolsaFamiliaAlphaAutoRunner({
-  claim,candidates,sendDirect,isConnected,now=Date.now,
+  claim,candidates,sendGroup,isConnected,now=Date.now,
   logError=()=>{},checkIntervalMs=60*1000
 }={}){
   if(typeof claim!=='function'||typeof candidates!=='function'||
-    typeof sendDirect!=='function'||typeof isConnected!=='function'){
+    typeof sendGroup!=='function'||typeof isConnected!=='function'){
     throw new TypeError('Dependências do auxílio automático são obrigatórias.')
   }
   const checked=new Map(),inFlight=new Set()
   let scanning=false
-  async function check(jid,{force=false}={}){
-    if(!isConnected()||!/^\d{10,15}@s\.whatsapp\.net$/.test(String(jid||'')))return {ok:false,status:'offline-or-identity'}
+  async function check(jid,{chat,force=false}={}){
+    if(!isConnected()||!/^\d{10,15}@s\.whatsapp\.net$/.test(String(jid||''))){
+      return {ok:false,status:'offline-or-identity'}
+    }
+    // Nunca conceder na rotina automática sem um grupo válido de destino:
+    // mensagem pública e crédito precisam se referir ao mesmo beneficiário.
+    if(!String(chat||'').endsWith('@g.us'))return {ok:false,status:'no-group'}
     if(inFlight.has(jid))return {ok:false,status:'in-flight'}
     const at=now()
     if(!force&&at-Number(checked.get(jid)||0)<checkIntervalMs)return {ok:false,status:'throttled'}
@@ -33,9 +46,9 @@ export function createBolsaFamiliaAlphaAutoRunner({
     try{
       const result=await claim(jid)
       if(result?.ok){
-        // Crédito já persistido; nenhuma mensagem em grupo e nenhuma publicação
-        // para inelegíveis. Falha no envio não repete o pagamento.
-        try{await sendDirect(jid,bolsaFamiliaAlphaAutoReceipt(result))}
+        // Aviso SOMENTE após COMMIT; a ausência de resposta ou falha de envio
+        // não autoriza creditar o kit novamente.
+        try{await sendGroup(chat,bolsaFamiliaAlphaAutoReceipt(result,jid),[jid])}
         catch(error){logError('notify',error)}
       }
       return result
@@ -50,14 +63,14 @@ export function createBolsaFamiliaAlphaAutoRunner({
     if(scanning||!isConnected())return {status:'skipped'}
     scanning=true
     try{
-      const jids=await candidates(20)
+      const entries=await candidates(20)
       let granted=0
-      for(const jid of jids){
+      for(const entry of entries){
         if(!isConnected())break
-        const result=await check(jid,{force:true})
+        const result=await check(entry?.jid,{chat:entry?.chat,force:true})
         if(result?.ok)granted++
       }
-      return {status:'ok',candidates:jids.length,granted}
+      return {status:'ok',candidates:entries.length,granted}
     }catch(error){
       logError('scan',error)
       return {status:'error'}

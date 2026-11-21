@@ -76,13 +76,20 @@ export async function activeBolsaFamiliaAlphaCandidates(limit=20){
   const size=Math.max(1,Math.min(20,Math.floor(Number(limit)||20)))
   const now=Date.now()
   const rows=(await db.query(`
-    SELECT u.jid
+    SELECT u.jid, grp.chat_jid
     FROM wallets w
     JOIN users u ON u.jid=w.jid
+    JOIN LATERAL (
+      SELECT ga.chat_jid FROM group_activity ga
+      WHERE ga.jid=u.jid AND ga.day>=CURRENT_DATE-1
+        AND ga.chat_jid LIKE '%@g.us'
+      GROUP BY ga.chat_jid
+      ORDER BY MAX(ga.day) DESC,SUM(ga.commands) DESC,SUM(ga.messages) DESC,ga.chat_jid
+      LIMIT 1
+    ) grp ON true
     LEFT JOIN trevo_settings t ON t.key='v2:bolsa-familia-alpha:'||u.jid
     WHERE u.banned=FALSE
       AND u.jid ~ '^[0-9]{10,15}@s[.]whatsapp[.]net$'
-      AND u.updated_at >= EXTRACT(EPOCH FROM NOW())::bigint-24*3600
       AND GREATEST(w.cash,0)+GREATEST(w.bank,0)<=$1
       AND COALESCE((t.value->>'lastClaimAt')::bigint,0) <= $2
       AND (
@@ -103,5 +110,5 @@ export async function activeBolsaFamiliaAlphaCandidates(limit=20){
       now-BOLSA_FAMILIA_ALPHA.windowMs,BOLSA_FAMILIA_ALPHA.maxClaims,
       Math.floor((now-BOLSA_FAMILIA_ALPHA.cooldownMs)/1000),
       BOLSA_FAMILIA_ALPHA.recentPixLimit,size])).rows
-  return rows.map(r=>String(r.jid))
+  return rows.map(r=>({jid:String(r.jid),chat:String(r.chat_jid)}))
 }

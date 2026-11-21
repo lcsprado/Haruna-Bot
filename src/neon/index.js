@@ -9901,11 +9901,11 @@ console.log('====================================\n')
 }catch(err){console.error('[WhatsApp] falha ao gerar pairing code',err)}
 },3000)
 }
-// Entrega o kit automaticamente e comunica somente ao beneficiário por privado.
+// Entrega o kit automaticamente; anuncia no grupo apenas depois do crédito confirmado.
 const bolsaFamiliaAlphaAuto=createBolsaFamiliaAlphaAutoRunner({
   claim:claimBolsaFamiliaAlpha,
   candidates:activeBolsaFamiliaAlphaCandidates,
-  sendDirect:(jid,text)=>sock.sendMessage(jid,{text}),
+  sendGroup:(chat,text,mentions)=>sock.sendMessage(chat,{text,mentions}),
   isConnected:()=>trevoHealth.whatsapp==='open'&&classesOnlyRebootEnabled(),
   logError:(stage,error)=>console.warn('[Bolsa Família Auto]',stage,String(error?.message||error).slice(0,160))
 })
@@ -10599,12 +10599,12 @@ continue
 }
 }catch(err){ console.error('[moderacao]',err?.message||err) }
 }
-// Sem comando especial: ao usar o bot, jogador elegível recebe o kit no privado.
+// Sem comando especial: no grupo, o jogador elegível recebe o kit e o anúncio após o COMMIT.
 // Só dispara em comandos; uma varredura leve cobre quem não usa comandos.
 if(classesOnlyRebootEnabled()&&body.startsWith(prefix)&&
   !/^!(?:bolsafamilia|bolsaalpha)(?:\s|$)/i.test(body) &&
   sender.endsWith('@s.whatsapp.net')){
-  void bolsaFamiliaAlphaAuto.check(sender)
+  if(isGroup)void bolsaFamiliaAlphaAuto.check(sender,{chat})
 }
 timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
