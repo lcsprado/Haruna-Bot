@@ -1,29 +1,54 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {v2DailyXpStatus,v2XpCredit,reserveV2DailyXp,brazilProgressionDay,V2_CLASS_GROWTH,V2_PVP_ROLES,effectiveAwakeningTier,V2_RAID_DIFFICULTY} from '../src/neon/reboot-combat-progression.js'
+import {v2DailyXpStatus,v2XpCredit,reserveV2DailyXp,brazilProgressionDay,v2HourlyXpRate,V2_CLASS_GROWTH,V2_PVP_ROLES,effectiveAwakeningTier,V2_RAID_DIFFICULTY} from '../src/neon/reboot-combat-progression.js'
 import {candidateRaidConfig} from '../src/neon/reboot-economy-policy.js'
-test('ganho inicial integral, extra a 25%, teto diário e bônus contabilizado no mesmo limite',()=>{
- assert.equal(v2XpCredit(0,8000).awarded,8000)
- assert.equal(v2XpCredit(8000,4000).awarded,1000)
- assert.equal(v2XpCredit(7900,1100).awarded,350)
- assert.equal(v2XpCredit(11900,4000,1200).awarded,100)
- assert.equal(v2XpCredit(12000,999999,999).awarded,0)
- assert.deepEqual(v2XpCredit(7990,10,100),{base:10,bonus:25,awarded:35,used:8025,cap:12000})
- assert.throws(()=>v2XpCredit(-1,5),/inválido/)
+import {raidLoteReward} from '../src/neon/raid-lote-policy.js'
+test('V2: 100% dia, 70% madrugada e XP ilimitado inclusive acima de 12 mil',()=>{
+ const day=new Date('2026-11-21T09:00:00Z') // 06h00 Brasilia
+ const night=new Date('2026-11-21T03:00:00Z') // 00h00 Brasilia
+ assert.equal(v2HourlyXpRate(new Date('2026-11-21T02:59:59Z')),1) // 23h59
+ assert.equal(v2HourlyXpRate(night),.7)
+ assert.equal(v2HourlyXpRate(new Date('2026-11-21T08:59:59Z')),.7) // 05h59
+ assert.equal(v2HourlyXpRate(day),1)
+ assert.equal(v2XpCredit(0,1000,100,{now:day}).awarded,1100)
+ assert.deepEqual(v2XpCredit(0,1000,100,{now:night}),{base:700,bonus:70,awarded:770,used:770,cap:null,rate:.7})
+ assert.equal(v2XpCredit(8000,4000,0,{now:day}).awarded,4000)
+ assert.equal(v2XpCredit(12000,4000,1200,{now:day}).awarded,5200)
+ assert.equal(v2XpCredit(12000,1000,100,{now:night}).awarded,770)
+ assert.equal(v2XpCredit(60000,1000,0,{now:day}).used,61000)
+ assert.throws(()=>v2XpCredit(-1,5),/invalido/)
 })
-test('mesma chave por jogador em WA/Web, meia-noite Brasil e nenhuma nova linha para cada dia',async()=>{
+test('V2: RaidLote mantém 60% durante toda a madrugada, nunca 70% de 60%',()=>{
+ const now=new Date('2026-11-21T05:15:00Z') // 02h15 Brasilia
+ const manualXp=600
+ const loteXp=raidLoteReward(manualXp,'playerXp')
+ assert.equal(loteXp,360)
+ assert.equal(v2XpCredit(12000,manualXp,0,{now}).awarded,420)
+ assert.equal(v2XpCredit(12000,loteXp,0,{now,skipNightRate:true}).awarded,360)
+ assert.equal(v2XpCredit(12000,loteXp,72,{now,skipNightRate:true}).awarded,432)
+ assert.equal(v2XpCredit(12000,loteXp,0,{now}).awarded,252) // resultado incorreto se somar duas reducoes
+ const game=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+ assert.match(game,/ignoreXpBoost:!RAID_LOTE_V1\.applyActivatedXpItems,skipNightRate:true/)
+})
+test('mesma chave por jogador em WA/Web e contador estatístico sem teto',async()=>{
  const state=new Map(),calls=[]
- const client={query:async(sql,params)=>{calls.push(sql);if(sql.startsWith('SELECT'))return {rows:state.has(params[0])?[{value:state.get(params[0])}]:[]};state.set(params[0],JSON.parse(params[1]));return {rows:[]}}}
+ const client={query:async(sql,params)=>{
+  calls.push(sql)
+  if(sql.startsWith('SELECT'))return {rows:state.has(params[0])?[{value:state.get(params[0])}]:[]}
+  state.set(params[0],JSON.parse(params[1]));return {rows:[]}
+ }}
+ const day=new Date('2026-11-21T10:00:00Z')
  assert.equal(brazilProgressionDay(new Date('2026-11-18T02:59:00Z')),'2026-11-17')
  assert.equal(brazilProgressionDay(new Date('2026-11-18T03:00:00Z')),'2026-11-18')
- assert.equal((await reserveV2DailyXp(client,'a',8000,0,{day:'2026-11-18'})).awarded,8000)
- assert.equal((await reserveV2DailyXp(client,'a',16000,0,{day:'2026-11-18'})).awarded,4000)
- const writes=calls.filter(s=>s.startsWith('INSERT')).length
- assert.equal((await reserveV2DailyXp(client,'a',8000,0,{day:'2026-11-18'})).awarded,0)
- assert.equal(calls.filter(s=>s.startsWith('INSERT')).length,writes)
- assert.equal((await reserveV2DailyXp(client,'b',8000,0,{day:'2026-11-18'})).awarded,8000)
- assert.equal((await reserveV2DailyXp(client,'a',8000,0,{day:'2026-11-19'})).awarded,8000)
+ assert.equal((await reserveV2DailyXp(client,'a',8000,0,{day:'2026-11-21',now:day})).awarded,8000)
+ assert.equal((await reserveV2DailyXp(client,'a',16000,0,{day:'2026-11-21',now:day})).awarded,16000)
+ assert.equal((await reserveV2DailyXp(client,'a',8000,0,{day:'2026-11-21',now:day})).awarded,8000)
+ assert.equal(state.get('reboot_xp_daily:a').used,32000)
+ assert.equal(calls.filter(s=>s.startsWith('INSERT')).length,3)
+ assert.equal((await reserveV2DailyXp(client,'b',8000,0,{day:'2026-11-21',now:day})).awarded,8000)
+ assert.equal((await reserveV2DailyXp(client,'a',900,0,{day:'2026-11-22',now:new Date('2026-11-22T10:00:00Z')})).awarded,900)
+ assert.equal(state.get('reboot_xp_daily:a').used,900)
  assert.equal(state.size,2)
 })
 test('quatro papéis distintos sem bônus de collab e Despertar acessível até Nv100',()=>{
@@ -48,7 +73,7 @@ test('Raids de entrada mais acessíveis, dificuldade crescente e Raid70 preserva
 })
 test('XP/boost e Despertar usam regras comuns sem exceções pessoais; dungeon usa classe real',()=>{
  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
- assert.match(db,/dailyXp=await reserveV2DailyXp\(client,jid,eventGain,bonusXp\)/)
+ assert.match(db,/dailyXp=await reserveV2DailyXp\\(client,jid,eventGain,bonusXp,\\{skipNightRate:Boolean\\(options.skipNightRate\\)\\}\\)/)
  assert.match(db,/eventGain=dailyXp.base\s+bonusXp=dailyXp.bonus/)
  assert.ok(db.indexOf('dailyXp=await reserveV2DailyXp')<db.indexOf("UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1"))
  assert.match(db,/classLevelAdvance\(cr.level,cr.xp,eventGain\+bonusXp\)/)
@@ -59,24 +84,31 @@ test('XP/boost e Despertar usam regras comuns sem exceções pessoais; dungeon u
  assert.match(aw,/recoveredQuests=!classesOnlyRebootEnabled\(\)/)
 })
 
-test('perfil V2 mostra a faixa atual, saldo diário e virada sem escrever registros',()=>{
- const day='2026-11-18',opts={day}
- assert.deepEqual(v2DailyXpStatus(null,opts),{day,used:0,fullRemaining:8000,remaining:12000,cap:12000,rate:1})
- assert.equal(v2DailyXpStatus({day,used:8000},opts).rate,.25)
- assert.equal(v2DailyXpStatus({day,used:12000},opts).remaining,0)
- assert.equal(v2DailyXpStatus({day,used:12000},opts).rate,0)
- assert.equal(v2DailyXpStatus({day:'2026-11-17',used:12000},opts).used,0)
- assert.throws(()=>v2DailyXpStatus({day,used:-1},opts),/inválido/)
+test('perfil V2: sem teto, faixa horaria ao vivo, estatistica reinicia sem bloquear',()=>{
+ const day='2026-11-21',now=new Date('2026-11-21T12:00:00Z')
+ assert.deepEqual(v2DailyXpStatus(null,{day,now}),{
+  day,used:0,cap:null,fullRemaining:null,remaining:null,rate:1,unlimited:true
+ })
+ assert.equal(v2DailyXpStatus({day,used:12000},{day,now}).rate,1)
+ assert.equal(v2DailyXpStatus({day,used:12000},{day,now}).remaining,null)
+ assert.equal(v2DailyXpStatus({day,used:12000},{day,now:new Date('2026-11-21T04:00:00Z')}).rate,.7)
+ assert.equal(v2DailyXpStatus({day:'2026-11-20',used:12000},{day,now}).used,0)
+ assert.throws(()=>v2DailyXpStatus({day,used:-1},{day,now}),/invalido/)
 })
-test('perfil WhatsApp e Web recebem o mesmo saldo e pergaminho sem XP não é consumido',()=>{
+test('perfil WA/Web sem quota e pergaminhos usam a mesma regra da madrugada',()=>{
  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
  const wa=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  const web=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
- assert.match(db,/daily_xp:v2DailyXpStatus\(daily_xp_state\)/)
- assert.match(wa,/p\.daily_xp\.fullRemaining/)
- assert.match(web,/raw\.daily_xp\.fullRemaining/)
+ assert.match(db,/daily_xp:v2DailyXpStatus\\(daily_xp_state\\)/)
+ assert.match(db,/reserveV2DailyXp\\(client,jid,eventGain,bonusXp,\\{skipNightRate:Boolean\\(options.skipNightRate\\)\\}\\)/)
+ assert.match(wa,/XP hoje:/)
+ assert.match(wa,/p\\.daily_xp\\.rate/)
+ assert.match(web,/XP hoje • sem teto/)
+ assert.match(web,/raw\\.daily_xp\\.rate/)
+ assert.doesNotMatch(wa,/XP diário:/)
+ assert.doesNotMatch(web,/XP diário/)
  const scroll=db.slice(db.indexOf('export async function useXpConsumable'),db.indexOf('export async function grantExp(jid'))
- assert.match(scroll,/gain\.awardedGain===0\)throw/)
- assert.ok(scroll.indexOf('gain.awardedGain===0')<scroll.indexOf('UPDATE inventories SET quantity=quantity-1'))
- assert.match(scroll,/xp:classesOnlyRebootEnabled\(\)\?gain\.awardedGain:effect\.xp/)
+ assert.doesNotMatch(scroll,/Limite diário de XP atingido/)
+ assert.match(scroll,/Number\\(user.level\\)>=MAX_LEVEL/)
+ assert.ok(scroll.indexOf('await applyExp(client,jid,effect.xp')<scroll.indexOf('UPDATE inventories SET quantity=quantity-1'))
 })
