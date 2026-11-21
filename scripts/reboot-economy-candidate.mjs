@@ -38,7 +38,7 @@ export function candidateEconomyReport(progressionSource,dbSource){
  const riskSignals=assessIntegratedRisks(profiles);
  const conditionalRisks=assessIntegratedRisks(profiles.map(p=>({...p,invested:p.withConditionalEvents})));
  const xp=Object.fromEntries([2000,5000,10000,24000].map((raw,i)=>[
-   PROFILES[i].id,{rawPerActiveDay:raw,creditedPerActiveDay:v2XpCredit(0,raw).awarded}
+   PROFILES[i].id,{rawPerActiveDay:raw,creditedPerActiveDay:v2XpCredit(0,raw,0,{now:new Date('2026-11-21T12:00:00Z')}).awarded}
  ]));
  const boss=ordered.map((id,i)=>({id,...rebootWeeklyBossReward({
    position:i+1,damage:(4-i)*100000,totalDamage:1000000,weekendKey:'2026-11-20'})}));
