@@ -50,8 +50,8 @@ export async function initRaidLoteStore(db){
       keys_total BIGINT NOT NULL CHECK(keys_total>=0),
       fee_total BIGINT NOT NULL CHECK(fee_total>=0),
       total_paid BIGINT NOT NULL CHECK(total_paid>=0),
-      owned_keys_spent INTEGER NOT NULL DEFAULT 0 CHECK(owned_keys_spent BETWEEN 0 AND 10),
-      keys_bought INTEGER NOT NULL DEFAULT 0 CHECK(keys_bought BETWEEN 0 AND 10),
+      owned_keys_spent INTEGER NOT NULL DEFAULT 0 CHECK(owned_keys_spent BETWEEN 0 AND 1000000),
+      keys_bought INTEGER NOT NULL DEFAULT 0 CHECK(keys_bought BETWEEN 0 AND 1000000),
       cash_paid BIGINT NOT NULL CHECK(cash_paid>=0),
       bank_paid BIGINT NOT NULL CHECK(bank_paid>=0),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -80,7 +80,7 @@ export async function initRaidLoteStore(db){
     if(rows.length)await db.query('ALTER TABLE '+table+' DROP CONSTRAINT '+name)
     await db.query('ALTER TABLE '+table+' ADD CONSTRAINT '+name+' CHECK ('+expression+')')
   }
-  for(const col of ['requested','started','won_count']){
+  for(const col of ['requested','started','won_count','owned_keys_spent','keys_bought']){
     await ensureCheck('raid_lote_jobs','raid_lote_jobs_'+col+'_check',
       col+(col==='requested'?' BETWEEN 1 AND 1000000':' BETWEEN 0 AND 1000000'),'1000000')
   }
