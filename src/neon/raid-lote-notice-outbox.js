@@ -6,7 +6,7 @@ import {formatRaidLoteMaterials} from './raid-lote-material-summary.js'
 const safeInt=x=>Math.max(0,Math.floor(Number(x)||0))
 const money=x=>safeInt(x).toLocaleString('pt-BR')
 const privateJid=jid=>/^\d{10,15}@s\.whatsapp\.net$/.test(String(jid||''))
-const finishedStatuses=['won','lost','cancelled']
+const finishedStatuses=['won','lost','cancelled','completed','funds_exhausted']
 
 export function formatRaidLotePrivateReceipt(job,reports=[]){
   if(!job||!finishedStatuses.includes(job.status))throw new Error('Pacote nao concluido')
@@ -16,10 +16,10 @@ export function formatRaidLotePrivateReceipt(job,reports=[]){
   const petXp=earned.reduce((sum,row)=>sum+(row.reward_summary?.rewards||[]).reduce((n,r)=>n+safeInt(r.petXp),0),0)
   const masteryXp=earned.reduce((sum,row)=>sum+(row.reward_summary?.rewards||[]).reduce((n,r)=>n+safeInt(r.masteryXp),0),0)
   const {totalXp,bonusXp}=summarizeRaidLoteXp(earned)
-  const heading=job.status==='won'?'PACOTE CONCLUÍDO':job.status==='lost'?'PACOTE ENCERRADO POR DERROTA':'PACOTE CANCELADO'
+  const heading=job.status==='completed'?'TEMPO ENCERRADO':job.status==='funds_exhausted'?'SEM DINHEIRO PARA A PRÓXIMA RAID':job.status==='won'?'PACOTE CONCLUÍDO':job.status==='lost'?'ENCERRADO POR MORTE/DERROTA':'PACOTE CANCELADO'
   return (job.auction_pass_manual_rewards===true?'🎟️ *PASSE SUPREMO — RECOMPENSAS DE RAID MANUAL*\n':'')+
     '⚔️ *RAIDLOTE '+(job.duration_hours?'2.0':'V1')+' — '+heading+'*'
-    +'\n🎯 Raid Lv.'+safeInt(job.level)+' • '+earned.length+'/'+safeInt(job.requested)+' vitórias'
+    +'\n🎯 Raid Lv.'+safeInt(job.level)+' • '+earned.length+(job.billing_mode==='per_attempt'?' vitórias':'/'+safeInt(job.requested)+' vitórias')
     +(job.duration_hours?'\n⏱️ Pacote contratado: '+safeInt(job.duration_hours)+'h':'')
     +'\n🔑 Tentativas iniciadas: '+safeInt(job.started)
     +'\n💰 Dinheiro ganho: R$ '+money(cash)
@@ -28,7 +28,7 @@ export function formatRaidLotePrivateReceipt(job,reports=[]){
     +(masteryXp>0?'\n🏅 XP de maestria: +'+money(masteryXp):'')
     +(bonusXp>0?'\n⏳ Bônus de ampulheta/elixir: +'+money(bonusXp)+' XP (incluído no XP acima)':'')
     +formatRaidLoteMaterials(records)
-    +'\n💳 Valor pago no pacote: R$ '+money(job.total_paid)
+    +'\n💳 Total cobrado nas tentativas iniciadas: R$ '+money(job.total_paid)
     +'\n📌 Recompensas já contabilizadas; este aviso não credita nada novamente.'
     +'\n🧾 Recibo: '+String(job.id||'').slice(0,8)
 }
