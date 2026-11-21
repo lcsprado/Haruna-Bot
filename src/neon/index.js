@@ -67,7 +67,7 @@ initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, 
 startHangman, hangmanLetter, hangmanWord,
 startQuiz, answerQuiz, expireQuiz,
 startNumberGame, guessNumber,
-startBoss, attackBoss, settleExpiredWeeklyBoss,getWeeklyGolemChoiceStatus,claimWeeklyGolemChoice, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
+startBoss, attackBoss, getAttackableBossTargets, settleExpiredWeeklyBoss,getWeeklyGolemChoiceStatus,claimWeeklyGolemChoice, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
 tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
@@ -92,6 +92,7 @@ import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,for
 import {pvpCritChance} from './pvp-crit.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,critResistancePercent} from './boss-crit-resistance.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
+import {parseBossAttackSelection,formatBossTargetMenu} from './boss-target-selection.js'
 import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
 import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
@@ -303,7 +304,7 @@ return {ok:false,reason:msg}
 }
 }
 const bossSessions=new Map()
-async function runBossSession(chat,jid,name,sendReply,usePet=true){
+async function runBossSession(chat,jid,name,sendReply,usePet=true,target='auto'){
 const key=jid
 const existing=bossSessions.get(key)
 if(existing){
@@ -314,12 +315,12 @@ const runner={chat,active:true,lastProgressAt:Date.now()}
 bossSessions.set(key,runner)
 let first,bossId
 try{
-first=await attackBoss(chat,jid,name,usePet)
+first=await attackBoss(chat,jid,name,usePet,{target})
 if(first?.playerDead){
 const previous=(await db.query("SELECT status FROM boss_auto_sessions WHERE jid=$1",[jid])).rows[0]
 if(previous?.status==='active'){
 const rescue=await tryBossAutomaticRescue(jid)
-if(rescue.ok) first=await attackBoss(chat,jid,name,usePet)
+if(rescue.ok) first=await attackBoss(chat,jid,name,usePet,{target})
 }
 if(first?.playerDead) throw new Error('Você está sem HP. Use !curar e depois !atacar no grupo original.')
 }
@@ -357,7 +358,7 @@ for(let i=0;;i++){
 if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
 let r
 try{
-r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet,{skipEnsureUser:true})
+r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet,{skipEnsureUser:true,target})
 }catch(err){
 if(err?.code!=='40P01') throw err
 // A deadlocked transaction was rolled back; keep the persisted session active.
@@ -698,7 +699,7 @@ await db.query(
 await recoverLegacyWeeklyBossSessions()
 await recoverPecadosParticipantsStoppedByOldPhase()
 const rows=(await db.query(`
-SELECT s.jid,s.chat_jid,s.name,s.use_pet,s.last_attack_at
+SELECT s.jid,s.chat_jid,s.name,s.use_pet,s.last_attack_at,s.boss_id
 FROM boss_auto_sessions s JOIN stats st ON st.jid=s.jid
 WHERE s.status='active' AND st.hp>0
 AND (s.ends_at=0 OR s.ends_at>$1)
@@ -715,7 +716,7 @@ console.warn('[Boss Auto] runner travado/substituído',jid)
 }
 try{
 const started=await runBossSession(chat,jid,s.name||'Jogador',
-text=>sendToChat(chat,text),Boolean(s.use_pet))
+text=>sendToChat(chat,text),Boolean(s.use_pet),String(s.boss_id||'').startsWith('event:')?'event':String(s.boss_id||'').startsWith('weekly:')?'weekly':'auto')
 if(started) console.log('[Boss Auto] runner recuperado',jid,'no grupo',chat)
 }catch(err){
 const message=String(err?.message||err)
