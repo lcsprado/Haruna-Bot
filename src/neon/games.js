@@ -3500,7 +3500,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const eventAvailable=Boolean(event&&event.mode==='event'&&event.active!==false
       &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())
       &&(!rebootEconomyEnabled()||event.eventId==='eclipse'))
-    const weeklyState=weekend.open?await loadWeeklyBoss(c,weekend,{create:true}):null
+    const weeklyState=weekend.open&&(rebootEconomyEnabled()||!eventAvailable)?await loadWeeklyBoss(c,weekend,{create:true}):null
     const weeklyAvailable=Boolean(weekend.open&&weeklyState?.mode==='weekly'&&Number(weeklyState.hp)>0&&Number(weeklyState.endsAt||0)>Date.now())
     if(requestedTarget==='event'&&!eventAvailable)
       throw new Error('O Boss de Evento não está disponível. Use !boss para escolher o alvo.')
