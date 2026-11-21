@@ -1,3 +1,21 @@
-# Alpha Bot 2.0 — RaidLote por período
+# Alpha Bot 2.0 — RaidLote contínuo por período (revisão 21/11/2026)
 
-Apenas PR #387, sem ativação e sem acesso ao banco. Duração nominal escolhida pelo jogador: 4h (3 tentativas), 8h (6), 12h (9); uma tentativa a cada 80 minutos, primeira após 80 minutos, última liberada ao fim do período. Se o serviço ficar offline ou o combate demorar, a duração real pode se estender: nunca executar tentativas acumuladas em rajada e nunca perder direitos por atraso técnico. Derrota/morte/cancelamento preservam as regras originais. Compra antecipada e confirmação explícita; 10 tentativas adquiridas por dia, três vitórias manuais anteriores; passe antigo não concede exceção na V2. Raid 70 continua manual/cooperativa e 75 indisponível. V1 continua com quantidade e execução imediata. Dois campos opcionais na tabela existente raid_lote_jobs: duration_hours e next_attempt_at. Worker apenas seleciona/reserva pacotes devidos, em combate ou cancelados. Nenhuma nova tabela, novo worker ou infraestrutura. O comando é !raidlote 50 8h ou !loteraid 50 8h; confirmação !raidlote confirmar 50 8h. Status/painel apresentam período e próxima tentativa. As escolhas de 3/6/9 e 80 min são uma proposta de balanceamento, não quantidade definida pelo dono. Testes unitários e simulados; homologação PostgreSQL/WhatsApp real pendente. Backup externo e reset permanecem bloqueadores do corte.
+## Regra final solicitada pelo dono
+- O período (4h, 8h, 12h) é a duração do automático, **não** uma quantidade de tentativas.
+- Confirmar `!raidlote confirmar 10 4h` cria sessão de 4h, **sem pagamento antecipado**.
+- Primeira Raid liberada imediatamente; worker inicia na próxima verificação (até 8 segundos com instância saudável).
+- Terminou combate? Próxima Raid liberada imediatamente, sem 80 minutos de espera. Respeitar duração real do motor e suas rodadas.
+- Antes de cada tentativa, em uma transação: consumir uma chave do inventário se houver, ou cobrar uma chave da carteira; cobrar adicional de 10% sobre a chave em qualquer caso. Dividir débito entre dinheiro e banco como no V1.
+- Se faltar saldo para a tentativa seguinte, encerrar sem debitar nem consumir chave. Ao morrer (HP persistido <= 0), ao terminar o prazo ou ao solicitar cancelar, encerrar sem tentar a próxima.
+- Derrota **sem morte** não encerra a sessão. Última Raid que começou antes de expirar pode terminar e pagar recompensa.
+- Permanecem pré-requisitos de acesso (nível mínimo, três vitórias manuais na Raid) e redutores econômicos V1; Raid70 continua cooperativa/manual, Raid75 desativada na V2.
+- Sem teto fixo de três, seis ou nove Raids; limite técnico do schema ampliado apenas para viabilizar sessões. Não publicar esse limite como regra de jogo.
+- Pacotes antigos (`billing_mode='prepaid'`) preservam agendamento, custo e histórico originais. Não converter pacotes existentes.
+- Em falha técnica, não debitar novamente a mesma tentativa já reservada: reserva da tentativa, crédito da taxa municipal e débito ficam na mesma transação.
+
+## Segurança de implantação
+- Alteração separada em `fix/raidlote-v2-continuous-20261121`.
+- A migração acrescenta `billing_mode` e `session_ends_at` à tabela atual e amplia constraints de tentativas; é idempotente.
+- Antes de implantar: testar PostgreSQL real isolado; simular vitórias consecutivas, morte, derrota sem morte, economia e recompensas, cancelamento, expiração, falta de saldo, reboots e concorrência do worker.
+- Preservar backup da V1, não executar reset, não ativar V2 nem modificar ambiente de produção sem homologação e aprovação de corte.
+- Incidente separado: pacote Lv10 de R$6.600 criado em 21/11/2026 às 13:44 e cancelado às 14:25 sem nenhuma tentativa. Estorno total de R$6.600 creditado no banco do jogo, com registro idempotente; não usar migração para reembolsar novamente.
