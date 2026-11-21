@@ -457,6 +457,7 @@ await db.query('UPDATE wallets SET bank_limit=9223372036854775807 WHERE bank_lim
 const starterItems = [
 ['pocao_p','Poção Pequena','Recupera 10% do HP máximo (mínimo de 35 HP).','consumable',500,'common'],
 ['pocao_m','Poção Média','Recupera 20% do HP máximo (mínimo de 80 HP).','consumable',1200,'uncommon'],
+['pocao_m_bolsa_alpha','Poção Média (Bolsa Família Alpha)','Cura 20% do HP máximo, mínimo 80 HP. Auxílio emergencial intransferível e não vendável.','consumable',0,'uncommon'],
 ['pocao_g','Poção Grande','Recupera 40% do HP máximo (mínimo de 160 HP).','consumable',3000,'rare'],
 ['elixir_supremo','Elixir Supremo','Recupera 100% do HP máximo do personagem.','consumable',9000,'epic'],
 ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
@@ -602,6 +603,7 @@ category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE,price=0 WHERE id='pocao_m_bolsa_alpha'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id='insignia_primeiros_conquistadores_20261102'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id='bastiao_eclipse'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
