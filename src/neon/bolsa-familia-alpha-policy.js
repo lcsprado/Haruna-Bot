@@ -7,7 +7,8 @@ export const BOLSA_FAMILIA_ALPHA=Object.freeze({
   cooldownMs:72*60*60*1000,
   windowMs:7*24*60*60*1000,
   maxClaims:2,
-  recentPixLimit:500
+  recentPixLimit:500,
+  pixDrainWindowMs:30*60*1000
 })
 
 export function assessBolsaFamiliaAlpha({cash,bank,claims=[],pixSent=0,now=Date.now()}={}){
@@ -22,6 +23,8 @@ export function assessBolsaFamiliaAlpha({cash,bank,claims=[],pixSent=0,now=Date.
   const last=recent.at(-1)||0
   if(last&&now-last<policy.cooldownMs)return {ok:false,status:'cooldown',remainingMs:policy.cooldownMs-(now-last)}
   if(recent.length>=policy.maxClaims)return {ok:false,status:'weekly',remainingMs:recent[0]+policy.windowMs-now}
-  if(pixSent>=policy.recentPixLimit)return {ok:false,status:'pix',pixSent,limit:policy.recentPixLimit}
+  // Bloqueia apenas a drenagem imediata por PIX; transferências antigas
+  // não podem impedir quem realmente gastou o dinheiro no jogo.
+  if(pixSent>=policy.recentPixLimit)return {ok:false,status:'pix',pixSent,limit:policy.recentPixLimit,windowMs:policy.pixDrainWindowMs}
   return {ok:true,status:'eligible',balance,claims:[...recent,now]}
 }
