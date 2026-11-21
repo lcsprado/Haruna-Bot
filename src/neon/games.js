@@ -3416,7 +3416,7 @@ export async function getAttackableBossTargets(chat){
       &&(!rebootEconomyEnabled()||event.eventId==='eclipse')
     const weeklyAvailable=weekend.open&&weekly?.mode==='weekly'
       &&Number(weekly.hp)>0&&Number(weekly.endsAt||0)>now
-    const commonAvailable=common?.mode==='common'&&Number(common.hp)>0
+    const commonAvailable=common?.mode==='common'&&Number(common.hp)>0&&!weeklyAvailable&&!eventAvailable
     const choices=[]
     if(eventAvailable)choices.push({target:'event',name:event.name,hp:event.hp,maxHp:event.maxHp,state:{...event,already:true}})
     if(weeklyAvailable)choices.push({target:'weekly',name:weekly.name,hp:weekly.hp,maxHp:weekly.maxHp,state:{...weekly,already:true,endsLabel:weekend.endsLabel}})
@@ -3433,7 +3433,7 @@ export async function startBoss(chat){
     if(!rebootEconomyEnabled()&&event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     if(weekend.open){
       const weekly=await loadWeeklyBoss(c,weekend,{create:true})
-      if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel,finished:weekly.mode==='completed'&&weekly.weeklyCompleted===true&&Array.isArray(weekly.result?.rewards)}
+      if(weekly&&(!rebootEconomyEnabled()||(weekly.mode==='weekly'&&Number(weekly.hp)>0&&Number(weekly.endsAt||0)>Date.now()))) return {already:true,...weekly,endsLabel:weekend.endsLabel,finished:weekly.mode==='completed'&&weekly.weeklyCompleted===true&&Array.isArray(weekly.result?.rewards)}
     }
     const current=await loadGame(c,chat,'boss')
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
@@ -3500,18 +3500,22 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const eventAvailable=Boolean(event&&event.mode==='event'&&event.active!==false
       &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())
       &&(!rebootEconomyEnabled()||event.eventId==='eclipse'))
+    const weeklyState=weekend.open&&(rebootEconomyEnabled()||!eventAvailable)?await loadWeeklyBoss(c,weekend,{create:true}):null
+    const weeklyAvailable=Boolean(weekend.open&&weeklyState?.mode==='weekly'&&Number(weeklyState.hp)>0&&Number(weeklyState.endsAt||0)>Date.now())
     if(requestedTarget==='event'&&!eventAvailable)
       throw new Error('O Boss de Evento não está disponível. Use !boss para escolher o alvo.')
-    if(requestedTarget==='weekly'&&!weekend.open)
+    if(requestedTarget==='weekly'&&(!weekend.open||(rebootEconomyEnabled()&&!weeklyAvailable)))
       throw new Error('O Superboss semanal não está disponível. Use !boss.')
-    if(requestedTarget==='auto'&&rebootEconomyEnabled()&&eventAvailable&&weekend.open)
+    if(requestedTarget==='common'&&rebootEconomyEnabled()&&(eventAvailable||weeklyAvailable))
+      throw new Error('O Boss comum aguarda o encerramento dos Bosses especiais. Use !boss.')
+    if(requestedTarget==='auto'&&rebootEconomyEnabled()&&eventAvailable&&weeklyAvailable)
       throw new Error('Há dois Bosses ativos. Use !boss e escolha !atacar 1 ou !atacar 2.')
     const eventActive=eventAvailable&&(requestedTarget==='event'
-      ||(requestedTarget==='auto'&&(!rebootEconomyEnabled()||!weekend.open)))
-    const weeklyActive=!eventActive&&weekend.open&&requestedTarget!=='common'
+      ||(requestedTarget==='auto'&&(!rebootEconomyEnabled()||!weeklyAvailable)))
+    const weeklyActive=!eventActive&&(rebootEconomyEnabled()?weeklyAvailable:weekend.open)&&requestedTarget!=='common'
     const gameType=eventActive?'boss_event':'boss'
     const bossChat=weeklyActive?GLOBAL_WEEKLY_BOSS_CHAT:chat
-    const s=eventActive?event:(weeklyActive?await loadWeeklyBoss(c,weekend,{create:true}):await loadGame(c,chat,'boss'))
+    const s=eventActive?event:(weeklyActive?weeklyState:await loadGame(c,chat,'boss'))
     if(requestedTarget==='common'&&s?.mode!=='common')
       throw new Error('O Boss comum não está disponível. Use !boss.')
     if(requestedTarget==='weekly'&&s?.mode!=='weekly')
