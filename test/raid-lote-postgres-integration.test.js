@@ -203,11 +203,11 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       const replay=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
       assert.equal(replay.alreadyPurchased,true)
       assert.equal(replay.job.id,plan.job.id)
-      const next=await reserveNextRaidLoteAttempt(db,plan.job.id)
+      const next=await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})
       assert.equal(next.status,'reserved')
       assert.equal(Number(next.attempt.seq),1)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),16195)
-      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'resume')
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})).status,'resume')
       const gameStart=1700000000123
       await db.query("UPDATE raid_lote_attempts SET status='active',raid_started_at_ms=$2,reward_summary=$3::jsonb WHERE id=$1",
         [next.attempt.id,gameStart,JSON.stringify({rewards:[{cash:2200,exp:360}]})])
@@ -217,7 +217,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
         })])
       assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'won')
       assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'already_settled')
-      const nextImmediate=await reserveNextRaidLoteAttempt(db,plan.job.id)
+      const nextImmediate=await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})
       assert.equal(nextImmediate.status,'reserved')
       assert.equal(Number(nextImmediate.attempt.seq),2)
       const final=(await db.query('SELECT status,started,won_count,total_paid FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]

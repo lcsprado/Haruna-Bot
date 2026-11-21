@@ -298,8 +298,8 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     await c.query(`
       INSERT INTO raid_lote_jobs(id,jid,request_key,level,requested,key_price,
         duration_hours,billing_mode,session_ends_at,next_attempt_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,'per_attempt',
-        NOW()+($7::integer*INTERVAL '1 hour'),NOW())
+      VALUES($1,$2,$3,$4,$5,$6,$7::smallint,'per_attempt',
+        NOW()+($7::smallint*INTERVAL '1 hour'),NOW())
     `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours])
     return {job:{id,jid,level:cfg.level,requested:RAID_LOTE_V2_MAX_ATTEMPTS,started:0,won_count:0,
       status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours},
@@ -345,7 +345,7 @@ export async function cancelRaidLote(db,jid){
     return rows[0]||null
   })
 }
-export async function reserveNextRaidLoteAttempt(db,jobId){
+export async function reserveNextRaidLoteAttempt(db,jobId,{getCatalog}={}){
   return inTransaction(db,async c=>{
     const info=(await c.query('SELECT jid FROM raid_lote_jobs WHERE id=$1',[jobId])).rows[0]
     if(!info)return {status:'inactive'}
@@ -384,9 +384,9 @@ export async function reserveNextRaidLoteAttempt(db,jobId){
       // Cobrança exatamente uma vez, na MESMA transação que reserva a tentativa.
       // Chave já possuída é consumida; saldo paga a chave quando necessário,
       // mais 10% de serviço em cada tentativa. Sem fundos, encerra sem nova luta.
-      const catalog=(await import('./games.js')).getRaidCatalog
+      if(typeof getCatalog!=='function')throw new Error('Catálogo de Raids não fornecido; sem débito')
       // O preço da chave é persistido na ativação, mas o ID vem do catálogo.
-      const cfg=typeof catalog==='function'?catalog().find(r=>Number(r.level)===Number(job.level)):null
+      const cfg=getCatalog().find(r=>Number(r.level)===Number(job.level))
       if(!cfg?.keyId)throw new Error('Catálogo de chave indisponível; sem débito')
       const owned=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[job.jid,cfg.keyId])).rows[0]
       const quote=raidLoteQuote(Number(job.key_price),1,Number(owned?.quantity||0))

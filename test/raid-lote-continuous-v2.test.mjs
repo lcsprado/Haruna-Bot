@@ -35,7 +35,7 @@ function fakeDb({cash=5000,bank=0,owned=0,expired=false,attemptId=null}={}){
 
 test('V2 cobra uma única Raid ao reservar; não vende três tentativas antecipadas',async()=>{
   const f=fakeDb()
-  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id)
+  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id,{getCatalog:()=>[{level:10,keyId:'chave_raid_10'}]})
   assert.equal(result.status,'reserved')
   assert.equal(result.attempt.seq,1)
   assert.equal(f.walletDebit,2200)
@@ -46,7 +46,7 @@ test('V2 cobra uma única Raid ao reservar; não vende três tentativas antecipa
 })
 test('V2 usa chave do inventário sem recomprar, mas cobra taxa de automação',async()=>{
   const f=fakeDb({cash:500,owned:2})
-  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id)
+  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id,{getCatalog:()=>[{level:10,keyId:'chave_raid_10'}]})
   assert.equal(result.status,'reserved')
   assert.equal(f.walletDebit,200)
   assert.equal(f.fees,200)
@@ -55,7 +55,7 @@ test('V2 usa chave do inventário sem recomprar, mas cobra taxa de automação',
 })
 test('V2 sem saldo encerra sem iniciar nem cobrar tentativa',async()=>{
   const f=fakeDb({cash:50})
-  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id)
+  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id,{getCatalog:()=>[{level:10,keyId:'chave_raid_10'}]})
   assert.equal(result.status,'funds_exhausted')
   assert.equal(f.walletDebit,0)
   assert.equal(f.attempts,0)
@@ -63,7 +63,7 @@ test('V2 sem saldo encerra sem iniciar nem cobrar tentativa',async()=>{
 })
 test('V2 após prazo encerra sem cobrar e sem reservar batalha',async()=>{
   const f=fakeDb({expired:true})
-  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id)
+  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id,{getCatalog:()=>[{level:10,keyId:'chave_raid_10'}]})
   assert.equal(result.status,'expired')
   assert.equal(f.walletDebit,0)
   assert.equal(f.attempts,0)

@@ -2557,7 +2557,7 @@ delayBetweenTriesMs:500
 // O runner V1 so nasce com flag explicita; desativado por padrao.
 if(raidLoteV1Enabled){
   const raidLoteWorker=createRaidLoteWorker({
-    db,startRaid,raidRound,
+    db,startRaid,raidRound,getCatalog:getRaidCatalog,
     // Relatorios privados saem pela fila persistente, gravada na mesma
     // transacao da recompensa. Nao tentar enviar durante o settle: se a
     // conexao cair, o recibo deve continuar pendente no banco.
