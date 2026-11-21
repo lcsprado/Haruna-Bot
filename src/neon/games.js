@@ -3950,7 +3950,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         let commonV2=rebootEconomyEnabled()&&!weekly?commonBossRewardV2(p.damage,total):null
         // Recompensa global por jogador: trocar de grupo não reinicia a janela.
         // Cooldown e pagamento são atômicos na mesma transação de liquidação.
-        if(commonV2&&commonV2.xp>0){
+        if(commonV2&&commonV2.xp>0&&!eventMode){
           const cd=await claimCooldown(c,`v2:common-boss-reward:${p.jid}`,3600)
           if(!cd.ok) commonV2={cash:0,xp:0,boxChance:0}
         }
