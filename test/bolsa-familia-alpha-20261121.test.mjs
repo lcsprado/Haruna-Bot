@@ -15,6 +15,7 @@ test('kit pequeno, poções vinculadas e 2 pedidos em 7 dias',()=>{
  assert.equal(P.maxClaims,2)
  assert.equal(P.windowMs,7*24*60*60*1000)
  assert.equal(P.recentPixLimit,500)
+ assert.equal(P.pixDrainWindowMs,30*60*1000)
 })
 
 test('saldo considera carteira e banco inclusive valores separados',()=>{
@@ -40,9 +41,10 @@ test('resgate usa relógio de 72 horas e limite móvel de 7 dias',()=>{
  assert.equal(check({claims:[now-12*60*60*1000]}).status,'cooldown')
 })
 
-test('bloqueia PIX relevante na janela e falha fechado para dados inválidos',()=>{
+test('bloqueia somente drenagem recente por PIX e falha fechado para dados inválidos',()=>{
  assert.equal(check({pixSent:499}).ok,true)
  assert.equal(check({pixSent:500}).status,'pix')
+ assert.equal(check({pixSent:500}).windowMs,30*60*1000)
  assert.equal(check({cash:NaN}).status,'invalid')
  assert.equal(check({claims:'wrong'}).status,'invalid')
 })
@@ -56,6 +58,8 @@ test('integração: benefício atômico, não vendável, com cura e comandos na 
  const wa=source('src/neon/index.js')
  assert.match(app,/SELECT cash,bank FROM wallets WHERE jid=\$1 FOR UPDATE/)
  assert.match(app,/AND type='transfer'/)
+ assert.match(app,/Math\.floor\(\(now-BOLSA_FAMILIA_ALPHA\.pixDrainWindowMs\)\/1000\)/)
+ assert.doesNotMatch(app,/Math\.floor\(\(now-BOLSA_FAMILIA_ALPHA\.cooldownMs\)\/1000\)/)
  assert.match(app,/INSERT INTO trevo_settings\(key,value,updated_at\)/)
  assert.match(app,/INSERT INTO transactions\(from_jid,to_jid,amount,type,note\)/)
  assert.match(app,/VALUES\('system',\$1,\$2,'bolsa_familia_alpha'/)
