@@ -3,6 +3,8 @@
 export const PLAYER_POTIONS = Object.freeze({
   pocao_p: Object.freeze({name:'Poção Pequena', fraction:0.10, minimum:35}),
   pocao_m: Object.freeze({name:'Poção Média', fraction:0.20, minimum:80}),
+  // Mesma cura da Poção Média; cópia exclusiva não revendível do auxílio Alpha.
+  pocao_m_bolsa_alpha: Object.freeze({name:'Poção Média (Bolsa Família Alpha)', fraction:0.20, minimum:80}),
   pocao_g: Object.freeze({name:'Poção Grande', fraction:0.40, minimum:160}),
   elixir_supremo: Object.freeze({name:'Elixir Supremo', fraction:1, minimum:0}),
 })
