@@ -76,7 +76,7 @@ test('all four WhatsApp potion paths use the same receipt',()=>{
   const source=fs.readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   assert.equal((source.match(/usePotion\(sender,/g)||[]).length,4);
   assert.equal((source.match(/potionReceiptForPlayer\(sender,r,/g)||[]).length,4);
-  assert.match(source,/return potionHpReceipt\(potion,heroSheet,/);
+  assert.match(source,/return potionHpReceipt\(potion,visualSheet,/);
   assert.doesNotMatch(source,/finalHeal=healedHero/);
 });
 test('PvP snapshot includes normal and temporary HP without modifying combat math',()=>{
