@@ -716,7 +716,7 @@ console.warn('[Boss Auto] runner travado/substituído',jid)
 }
 try{
 const started=await runBossSession(chat,jid,s.name||'Jogador',
-text=>sendToChat(chat,text),Boolean(s.use_pet),String(s.boss_id||'').startsWith('event:')?'event':String(s.boss_id||'').startsWith('weekly:')?'weekly':'auto')
+text=>sendToChat(chat,text),Boolean(s.use_pet),String(s.boss_id||'').startsWith('event:')?'event':String(s.boss_id||'').startsWith('weekly:')?'weekly':String(s.boss_id||'').startsWith('common:')?'common':'auto')
 if(started) console.log('[Boss Auto] runner recuperado',jid,'no grupo',chat)
 }catch(err){
 const message=String(err?.message||err)
