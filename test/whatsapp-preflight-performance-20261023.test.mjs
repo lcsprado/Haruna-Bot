@@ -12,6 +12,8 @@ test('evento de grupo mantém chance por mensagem e evita transação nos 96,5% 
   let transactions=0,queries=0,roll=0,reboot=false
   const math=Object.create(Math);math.random=()=>roll
   const context={Math:math,Date,randomGroupEventCash:()=>10000,rebootEconomyEnabled:()=>reboot,
+    V2_GROUP_FLASH_LOCK:'v2:group-flash:all-groups',V2_GROUP_FLASH:{minCash:300},
+    v2GroupFlashBudget:async()=>({remaining:12000}),v2GroupFlashCash:()=>750,
     tx:async fn=>{transactions++;return fn({query:async sql=>{queries++;return {rows:sql.startsWith('SELECT *')?[]:[]}}})}}
   vm.createContext(context)
   vm.runInContext(section(progression,'export async function maybeSpawnGroupEvent','export async function claimGroupEvent').replace('export async function','async function'),context)
@@ -33,9 +35,9 @@ test('evento de grupo mantém chance por mensagem e evita transação nos 96,5% 
   assert.equal(queries,3)
   roll=.01
   const v2event=await context.maybeSpawnGroupEvent('group@g.us')
-  assert.equal(v2event.reward,1000)
+  assert.equal(v2event.reward,750)
   assert.equal(transactions,2)
-  assert.equal(queries,6)
+  assert.equal(queries,7)
 })
 
 test('evento ativo continua protegido pelo lock e pela leitura transacional',async()=>{

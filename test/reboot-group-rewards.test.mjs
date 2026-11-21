@@ -12,7 +12,7 @@ function load(name,deps){
   return new Function(...Object.keys(deps),'return ('+fn+')')(...Object.values(deps))
 }
 function fixture(reboot){
-  const claimed=new Set(), cooldowns=new Set(), locks=[], paid=[]
+  const claimed=new Set(), cooldowns=new Set(), locks=[], paid=[],claimedEvents=new Map()
   const base={ensureUser:async()=>{},rebootEconomyEnabled:()=>reboot,getDoubleEventMultiplier:async()=>2,
     getGroupMissionLeaderboard:async chat=>({mission:{week_key:'2026-W47',completed:true,reward_cash:reboot?5000:50000},total:2,rows:[]}),
     claimCooldown:async(c,key,seconds)=>{
@@ -20,13 +20,17 @@ function fixture(reboot){
       if(cooldowns.has(key))return {ok:false}
       cooldowns.add(key);return {ok:true}
     },
-    pickWeightedGroupEventItem:()=>null}
+    pickWeightedGroupEventItem:()=>null,
+    V2_GROUP_FLASH_LOCK:'v2:group-flash:all-groups',
+    V2_GROUP_FLASH:{maxCash:1000,dailyCashCap:12000},
+    v2GroupFlashBudget:async()=>({paid:paid.reduce((n,v)=>n+v,0),held:0})}
   let currentChat=''
   const query=async(sql,args)=>{
     if(sql.includes('SELECT * FROM group_mission_members'))return {rows:[{contribution:1,claimed:claimed.has(args[0]+'|'+args[2])}]}
     if(sql.includes('pg_advisory_xact_lock')){locks.push(args[0]);return {rows:[]}}
     if(sql.includes('SELECT 1 FROM group_mission_members'))return {rows:[...claimed].some(x=>x.endsWith('|'+args[1]))?[{}]:[]}
-    if(sql.includes('SELECT * FROM group_events'))return {rows:[{event_type:'pix',reward_cash:20000,expires_at:Math.floor(Date.now()/1000)+60}]}
+    if(sql.includes('SELECT * FROM group_events'))return {rows:[{event_type:'pix',reward_cash:reboot?800:20000,claimed_by:claimedEvents.get(args[0])||null,expires_at:Math.floor(Date.now()/1000)+60}]}
+    if(sql.includes('UPDATE group_events SET claimed_by'))claimedEvents.set(args[1],args[0])
     if(sql.includes('UPDATE wallets'))paid.push(args[0])
     if(sql.includes('UPDATE group_mission_members'))claimed.add(args[0]+'|'+args[2])
     return {rows:[]}
@@ -42,13 +46,16 @@ test('V2: missões coletivas não pagam duas vezes ao mesmo jogador em grupos di
   assert.deepEqual(f.locks,['v2:group-mission:2026-W47:p','v2:group-mission:2026-W47:p'])
   assert.equal((await f.mission('b@g.us','q')).share,2500)
 })
-test('V2: evento relâmpago limita recompensa residual e resgate global em 24h',async()=>{
+test('V2: mesmo jogador pode pegar eventos em grupos diferentes; grupo só paga uma vez',async()=>{
   const f=fixture(true)
-  assert.equal((await f.event('a@g.us','p')).reward_cash,2000)
-  await assert.rejects(f.event('b@g.us','p'),/24 horas/)
-  assert.equal((await f.event('b@g.us','q')).reward_cash,2000)
-  assert.deepEqual(f.paid,[2000,2000])
-  assert.deepEqual([...f.cooldowns],['v2:group-event:p','v2:group-event:q'])
+  assert.equal((await f.event('a@g.us','p')).reward_cash,800)
+  assert.equal((await f.event('b@g.us','p')).reward_cash,800)
+  await assert.rejects(f.event('a@g.us','q'),/Não há evento disponível/)
+  assert.equal((await f.event('c@g.us','q')).reward_cash,800)
+  assert.deepEqual(f.paid,[800,800,800])
+  assert.deepEqual([...f.cooldowns],[])
+  assert.deepEqual(f.locks,['v2:group-flash:all-groups','v2:group-flash:all-groups',
+    'v2:group-flash:all-groups','v2:group-flash:all-groups'])
 })
 test('V1 preserva multiplicador coletivo e resgates por grupo',async()=>{
   const f=fixture(false)
@@ -61,5 +68,5 @@ test('V1 preserva multiplicador coletivo e resgates por grupo',async()=>{
 })
 test('V2 aplica orçamento reduzido ao gerar os eventos e ao exibir missões',()=>{
   assert.match(source,/rebootEconomyEnabled\(\)\?\{\.\.\.base,reward:Math\.floor\(base\.reward\/10\)\}/)
-  assert.match(source,/if\(rebootEconomyEnabled\(\)\) e\.reward=Math\.floor\(e\.reward\/10\)/)
+  assert.match(source,/e\.reward=v2GroupFlashCash\(e\.type,budget\.remaining\)/)
 })

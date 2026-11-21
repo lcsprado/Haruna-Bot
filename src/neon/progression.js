@@ -5,7 +5,7 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
-import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2} from './reboot-economy-policy.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2} from './reboot-economy-policy.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
@@ -1694,6 +1694,29 @@ function pickWeightedGroupEventItem(pool){
   return pool[pool.length-1]||null
 }
 
+
+const V2_GROUP_FLASH_LOCK='v2:group-flash:all-groups'
+// Sempre chamar com o advisory lock global da transação já adquirido.
+// Os pagamentos são contados pelo dia de crédito em Brasília; eventos
+// anunciados e ainda válidos reservam orçamento, inclusive entre grupos.
+async function v2GroupFlashBudget(client,now){
+  const {rows}=await client.query(`
+    SELECT
+      (SELECT COALESCE(SUM(amount),0)::bigint
+       FROM transactions WHERE from_jid='system' AND type='group_event'
+         AND created_at >= EXTRACT(EPOCH FROM (
+           date_trunc('day',to_timestamp($1::double precision) AT TIME ZONE 'America/Sao_Paulo')
+           AT TIME ZONE 'America/Sao_Paulo'
+         ))::bigint
+      ) AS paid,
+      (SELECT COALESCE(SUM(reward_cash),0)::bigint
+       FROM group_events WHERE claimed_by IS NULL AND expires_at > $1
+      ) AS held
+  `,[now]);
+  const paid=Number(rows[0]?.paid||0),held=Number(rows[0]?.held||0);
+  return {paid,held,remaining:v2GroupFlashBudgetRemaining(paid,held)};
+}
+
 export async function maybeSpawnGroupEvent(chatJid){
   if(!String(chatJid).endsWith('@g.us')) return null
   // A tentativa tem a mesma chance por mensagem elegível. Sorteie antes da
@@ -1701,6 +1724,9 @@ export async function maybeSpawnGroupEvent(chatJid){
   if(Math.random()>.035) return null
   return tx(async client=>{
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`group-event:${chatJid}`])
+    const reboot=rebootEconomyEnabled()
+    // Mesma ordem de locks do resgate: GLOBAL -> registro do grupo.
+    if(reboot)await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[V2_GROUP_FLASH_LOCK])
     const now=Math.floor(Date.now()/1000)
     const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
     const old=rows[0]
@@ -1712,7 +1738,12 @@ export async function maybeSpawnGroupEvent(chatJid){
       {type:'tesouro',reward:randomGroupEventCash(6000,12000),text:'🧰 Um *Tesouro Alpha* apareceu!',hint:'Menos dinheiro, mas chance alta de item.'}
     ]
     const e=events[Math.floor(Math.random()*events.length)]
-    if(rebootEconomyEnabled()) e.reward=Math.floor(e.reward/10)
+    if(reboot){
+      const budget=await v2GroupFlashBudget(client,now)
+      // Não anunciar evento sem verba para pagar ao vencedor.
+      if(budget.remaining<V2_GROUP_FLASH.minCash)return null
+      e.reward=v2GroupFlashCash(e.type,budget.remaining)
+    }
     await client.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
       VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
       event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
@@ -1725,18 +1756,21 @@ export async function claimGroupEvent(chatJid,jid){
   await ensureUser(jid)
   const now=Math.floor(Date.now()/1000)
   return tx(async client=>{
+    const reboot=rebootEconomyEnabled()
+    // Resgates em grupos diferentes disputam o mesmo orçamento global.
+    if(reboot)await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[V2_GROUP_FLASH_LOCK])
     const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
     const e=rows[0]
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
 
-    // Eventos-relâmpago do grupo têm economia própria e não recebem multiplicador global.
-    const reboot=rebootEconomyEnabled()
+    // A disputa é livre: não existe limite ou cooldown por jogador na V2.
+    const rewardCash=reboot?Math.max(0,Math.min(V2_GROUP_FLASH.maxCash,Math.round(Number(e.reward_cash||0)))):Math.round(Number(e.reward_cash||0))
     if(reboot){
-      // O cooldown é transacional e compartilhado entre WhatsApp, Web e grupos.
-      const cd=await claimCooldown(client,`v2:group-event:${jid}`,24*60*60)
-      if(!cd.ok) throw new Error('Você já resgatou um evento-relâmpago nas últimas 24 horas.')
+      const budget=await v2GroupFlashBudget(client,now)
+      // Em caso de migração/meia-noite, a guarda final impede pagamento acima do teto.
+      if(budget.paid+rewardCash>V2_GROUP_FLASH.dailyCashCap)
+        throw new Error('O orçamento diário dos eventos-relâmpago esgotou. Nenhum prêmio foi pago.')
     }
-    const rewardCash=reboot?Math.max(0,Math.min(2000,Math.round(Number(e.reward_cash||0)))):Math.round(Number(e.reward_cash||0))
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])

@@ -44,6 +44,34 @@ export const V2_BUSINESS_ECONOMY=Object.freeze({
     posto:1_000,mercado:1_500,hotel:2_500,shopping:4_250,tech:7_000
   })
 });
+
+/** V2: flash events are open races, not a daily claim reward.
+ * Budget is shared by all groups and counted by settlement date in São Paulo.
+ * Active unclaimed events reserve capacity; expired events release it.
+ */
+export const V2_GROUP_FLASH=Object.freeze({
+  dailyCashCap:12_000,minCash:300,maxCash:1_000,
+  ranges:Object.freeze({
+    maleta:Object.freeze([400,850]),
+    pix:Object.freeze([600,1000]),
+    tesouro:Object.freeze([300,650])
+  })
+});
+export function v2GroupFlashBudgetRemaining(paid,held=0){
+  if(!Number.isSafeInteger(paid)||paid<0||!Number.isSafeInteger(held)||held<0)
+    throw new RangeError('Orçamento de evento inválido');
+  return Math.max(0,V2_GROUP_FLASH.dailyCashCap-paid-held);
+}
+export function v2GroupFlashCash(type,remaining,roll=Math.random()){
+  if(!Number.isSafeInteger(remaining)||remaining<0||!Number.isFinite(roll)||roll<0||roll>=1)
+    throw new RangeError('Prêmio de evento inválido');
+  if(remaining<V2_GROUP_FLASH.minCash)return 0;
+  const range=V2_GROUP_FLASH.ranges[type];
+  if(!range)throw new Error('Tipo de evento desconhecido');
+  const amount=Math.floor(range[0]+roll*(range[1]-range[0]+1));
+  return Math.min(remaining,Math.min(V2_GROUP_FLASH.maxCash,amount));
+}
+
 export const V2_GOALS=Object.freeze({
   freshPlayers:4,startingLevel:1,startingCash:0,startingCharacterXp:0,
   weeklyEmissionsRequireAggregateCap:true,
