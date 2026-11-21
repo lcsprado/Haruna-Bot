@@ -7,7 +7,7 @@ import {raidLoteCombatAdapter} from './raid-lote-combat-adapter.js'
 const JOB_BATCH_LIMIT=15
 
 export function createRaidLoteWorker({
-  db,startRaid,raidRound,onFinished=async()=>{},onError=()=>{},
+  db,startRaid,raidRound,getCatalog,onFinished=async()=>{},onError=()=>{},
   now=()=>Date.now()
 }={}){
   for(const [name,fn] of Object.entries({startRaid,raidRound,onFinished,onError,now})){
@@ -61,7 +61,7 @@ export function createRaidLoteWorker({
         summary.checked++
         try{
           // Lote cancelado ou encerrado nao faz nova tentativa.
-          const next=await reserveNextRaidLoteAttempt(db,row.id)
+          const next=await reserveNextRaidLoteAttempt(db,row.id,{getCatalog})
           if(['inactive','cancelled','exhausted','player_busy','waiting_schedule'].includes(next.status)){
             summary.paused++
             continue

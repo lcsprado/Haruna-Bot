@@ -179,27 +179,53 @@ test('cancelamento nao altera carteira nem reembolsa tentativas',async()=>{
   assert.equal(seen.some(s=>/UPDATE wallets|INSERT INTO transactions/.test(s)),false)
 })
 
-test('V2 compra por horas usa limite diário, ignora passe legado e persiste horário sem cobrar novamente',async()=>{
+test('V2: fluxo pré-pago antigo é bloqueado em favor das sessões contínuas',async()=>{
  const old=process.env.ALPHA_REBOOT_MODE
  process.env.ALPHA_REBOOT_MODE='classes_only'
- const catalogV2=()=>[{level:50,minLevel:50,keyPrice:1000}]
- const at=Date.now(),pass={activatedAt:at-1000,expiresAt:at+3600000,maxPackages:3}
- const req={...order,level:50,attempts:6,durationHours:8}
  try{
-  const f=dbForPurchase({pass})
-  const r=await purchaseRaidLote(f.db,req,{getCatalog:catalogV2})
-  assert.equal(r.job.duration_hours,8)
-  assert.equal(r.job.auction_pass_manual_rewards,false)
-  assert.equal(r.quote.attempts,6)
-  assert.equal(r.quote.totalPrice,6600)
-  assert.equal(f.amounts.job[14],8)
-  assert.equal(f.amounts.job[15],80)
-  const blocked=dbForPurchase({pass,purchased:5})
-  await assert.rejects(()=>purchaseRaidLote(blocked.db,req,{getCatalog:catalogV2}),/Limite de 10/)
-  assert.equal(blocked.amounts.wallet,null)
-  const wrong=dbForPurchase()
-  await assert.rejects(()=>purchaseRaidLote(wrong.db,{...req,attempts:9},{getCatalog:catalogV2}),/divergentes/)
-  assert.equal(wrong.statements.length,0)
+  const f=dbForPurchase()
+  await assert.rejects(()=>purchaseRaidLote(f.db,
+    {...order,level:50,attempts:6,durationHours:8},
+    {getCatalog:()=>[{level:50,keyPrice:1000,minLevel:50}]}),/sessões contínuas/)
+  assert.equal(f.statements.length,0)
+ }finally{
+  if(old===undefined)delete process.env.ALPHA_REBOOT_MODE
+  else process.env.ALPHA_REBOOT_MODE=old
+ }
+})
+test('V2: ativação cria sessão de tempo, sem débito e sem limite de tentativas por pacote',async()=>{
+ const old=process.env.ALPHA_REBOOT_MODE
+ process.env.ALPHA_REBOOT_MODE='classes_only'
+ const jid='11999999999@s.whatsapp.net'
+ const statements=[]
+ let insertArgs=null
+ const db={connect:async()=>({release(){},async query(sql,args=[]){
+  statements.push(sql)
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rows:[]}
+  if(sql.includes('pg_advisory_xact_lock'))return {rows:[]}
+  if(sql.includes('SELECT * FROM raid_lote_jobs'))return {rows:[]}
+  if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:[]}
+  if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:[]}
+  if(sql.includes('SELECT level FROM users'))return {rows:[{level:100}]}
+  if(sql.includes('SELECT hp FROM stats'))return {rows:[{hp:1000}]}
+  if(sql.includes('COUNT(*)::int AS n FROM transactions'))return {rows:[{n:3}]}
+  if(sql.includes('SELECT quantity FROM inventories'))return {rows:[]}
+  if(sql.includes('SELECT cash,bank FROM wallets'))return {rows:[{cash:5000,bank:0}]}
+  if(sql.includes('INSERT INTO raid_lote_jobs')){insertArgs=args;return {rows:[]}}
+  throw Error('SQL unexpected: '+sql.slice(0,90))
+ }})}
+ try{
+  const {startTimedRaidLoteSession}=await import('../src/neon/raid-lote-store.js')
+  const result=await startTimedRaidLoteSession(db,{jid,level:10,durationHours:4,requestKey:'wamsg-timed-20261121',confirmed:true},
+    {getCatalog:()=>[{level:10,keyPrice:2000,keyId:'chave_raid_10',minLevel:10}]})
+  assert.equal(result.job.billing_mode,'per_attempt')
+  assert.equal(result.job.requested,1000000)
+  assert.equal(result.job.duration_hours,4)
+  assert.equal(result.firstPrice.totalPrice,2200)
+  assert.ok(insertArgs)
+  assert.equal(insertArgs[6],4)
+  assert.ok(statements.some(sql=>sql.includes('INSERT INTO raid_lote_jobs')))
+  assert.equal(statements.some(sql=>/UPDATE wallets|UPDATE inventories|INSERT INTO transactions/.test(sql)),false)
  }finally{
   if(old===undefined)delete process.env.ALPHA_REBOOT_MODE
   else process.env.ALPHA_REBOOT_MODE=old
