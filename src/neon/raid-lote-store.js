@@ -70,24 +70,25 @@ export async function initRaidLoteStore(db){
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS billing_mode TEXT NOT NULL DEFAULT 'prepaid'")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS session_ends_at TIMESTAMPTZ")
-  // Regras de V1 continuam limitadas a 10 pela aplicação. V2 requer mais
-  // tentativas durante sessões longas sem descartar pacotes antigos.
-  for(const [table,column,range] of [
-    ['raid_lote_jobs','requested','BETWEEN 1 AND 1000000'],
-    ['raid_lote_jobs','started','BETWEEN 0 AND 1000000'],
-    ['raid_lote_jobs','won_count','BETWEEN 0 AND 1000000'],
-    ['raid_lote_attempts','seq','BETWEEN 1 AND 1000000']
-  ]){
-    // A constraint da tabela de tentativas é tratada após CREATE TABLE.
-    if(table==='raid_lote_attempts')continue
-    const name=table+'_'+column+'_check'
-    await db.query('ALTER TABLE '+table+' DROP CONSTRAINT IF EXISTS '+name)
-    await db.query('ALTER TABLE '+table+' ADD CONSTRAINT '+name+' CHECK ('+column+' '+range+')')
+  // Só migra constraints quando ainda estiverem na versão antiga.
+  // Evita DROP/ADD e locks desnecessários a cada boot.
+  async function ensureCheck(table,name,expression,marker){
+    const {rows}=await db.query(
+      'SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid=$1::regclass AND conname=$2',
+      [table,name])
+    if(rows[0]?.definition?.includes(marker))return
+    if(rows.length)await db.query('ALTER TABLE '+table+' DROP CONSTRAINT '+name)
+    await db.query('ALTER TABLE '+table+' ADD CONSTRAINT '+name+' CHECK ('+expression+')')
   }
-  await db.query("ALTER TABLE raid_lote_jobs DROP CONSTRAINT IF EXISTS raid_lote_jobs_status_check")
-  await db.query("ALTER TABLE raid_lote_jobs ADD CONSTRAINT raid_lote_jobs_status_check CHECK(status IN ('queued','running','won','lost','cancelled','failed','completed','funds_exhausted'))")
-  await db.query("ALTER TABLE raid_lote_jobs DROP CONSTRAINT IF EXISTS raid_lote_jobs_billing_mode_check")
-  await db.query("ALTER TABLE raid_lote_jobs ADD CONSTRAINT raid_lote_jobs_billing_mode_check CHECK(billing_mode IN ('prepaid','per_attempt'))")
+  for(const col of ['requested','started','won_count']){
+    await ensureCheck('raid_lote_jobs','raid_lote_jobs_'+col+'_check',
+      col+(col==='requested'?' BETWEEN 1 AND 1000000':' BETWEEN 0 AND 1000000'),'1000000')
+  }
+  await ensureCheck('raid_lote_jobs','raid_lote_jobs_status_check',
+    "status IN ('queued','running','won','lost','cancelled','failed','completed','funds_exhausted')",
+    'funds_exhausted')
+  await ensureCheck('raid_lote_jobs','raid_lote_jobs_billing_mode_check',
+    "billing_mode IN ('prepaid','per_attempt')",'per_attempt')
   await db.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS raid_lote_one_open_job_per_player
     ON raid_lote_jobs(jid) WHERE status IN ('queued','running')
@@ -113,8 +114,7 @@ export async function initRaidLoteStore(db){
     )
   `)
   await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_summary JSONB NOT NULL DEFAULT '{}'::jsonb")
-  await db.query("ALTER TABLE raid_lote_attempts DROP CONSTRAINT IF EXISTS raid_lote_attempts_seq_check")
-  await db.query("ALTER TABLE raid_lote_attempts ADD CONSTRAINT raid_lote_attempts_seq_check CHECK(seq BETWEEN 1 AND 1000000)")
+  await ensureCheck('raid_lote_attempts','raid_lote_attempts_seq_check','seq BETWEEN 1 AND 1000000','1000000')
   await db.query(`
     CREATE TABLE IF NOT EXISTS raid_lote_municipality(
       id SMALLINT PRIMARY KEY CHECK(id=1),
