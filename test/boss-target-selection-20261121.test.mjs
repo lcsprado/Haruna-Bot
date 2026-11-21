@@ -39,7 +39,7 @@ test('bot fixa alvo em ataques seguintes e reboots; evento V2 não recebe prêmi
   const wa=source('src/neon/index.js')
   assert.match(games,/requestedTarget=String\(options\.target\|\|'auto'\)/)
   assert.match(games,/event\.eventId==='eclipse'/)
-  assert.match(games,/requestedTarget==='auto'&&rebootEconomyEnabled\(\)&&eventAvailable&&weekend\.open/)
+  assert.match(games,/requestedTarget==='auto'&&rebootEconomyEnabled\(\)&&eventAvailable&&weeklyAvailable/)
   assert.match(games,/commonV2=rebootEconomyEnabled\(\)&&!weekly\?commonBossRewardV2/)
   assert.match(games,/if\(eventMode&&!rebootEconomyEnabled\(\)\)/)
   assert.match(games,/boss_event_eclipse_v2/)
@@ -48,4 +48,14 @@ test('bot fixa alvo em ataques seguintes e reboots; evento V2 não recebe prêmi
   assert.match(wa,/s\.boss_id\|\|''\)\.startsWith\('event:'\)/)
   assert.match(wa,/parseBossAttackSelection\(args,targets\)/)
   assert.match(wa,/formatBossTargetMenu\(targets,prefix\)/)
+})
+
+test('restaura o fluxo antigo: especial tem prioridade e o comum volta após a conclusão semanal',()=>{
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  assert.ok(games.includes("const commonAvailable=common?.mode==='common'&&Number(common.hp)>0&&!weeklyAvailable&&!eventAvailable"),'Boss comum não deve aparecer com Boss especial ativo')
+  assert.ok(games.includes("if(weekly&&(!rebootEconomyEnabled()||(weekly.mode==='weekly'&&Number(weekly.hp)>0&&Number(weekly.endsAt||0)>Date.now())))"),'!boss deve deixar o comum voltar quando o semanal termina na V2, mantendo a V1')
+  assert.ok(games.includes("if(requestedTarget==='common'&&rebootEconomyEnabled()&&(eventAvailable||weeklyAvailable))"),'atacar comum não deve contornar a prioridade dos especiais')
+  assert.ok(games.includes("const weeklyActive=!eventActive&&(rebootEconomyEnabled()?weeklyAvailable:weekend.open)&&requestedTarget!=='common'"),'Boss semanal concluído não deve continuar sendo selecionado no lugar do comum')
+  assert.ok(games.includes("const weeklyState=weekend.open&&(rebootEconomyEnabled()||!eventAvailable)?await loadWeeklyBoss(c,weekend,{create:true}):null"),'preservar o fluxo de evento da V1')
+  assert.ok(games.includes('lastCommonEndedAt<60*60*1000'),'recarga comum de 60 minutos preservada')
 })
