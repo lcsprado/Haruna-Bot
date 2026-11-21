@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import pg from 'pg'
 const {Pool}=pg
 import {createRaidLoteWorker} from '../src/neon/raid-lote-worker.js'
-import {initRaidLoteStore,purchaseRaidLote,cancelRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt} from '../src/neon/raid-lote-store.js'
+import {initRaidLoteStore,purchaseRaidLote,cancelRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt,startTimedRaidLoteSession} from '../src/neon/raid-lote-store.js'
 
 test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembolso',async t=>{
   if(!process.env.RAID_LOTE_TEST_DATABASE_URL){
@@ -175,8 +175,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
 
 
 
-    // V2: valida o pacote POR HORAS no PostgreSQL descartável do CI.
-    // A produção não é usada; a modalidade V1 é restaurada após o teste.
+    // V2: sessões contínuas e pagamento por tentativa no PostgreSQL isolado.
     const originalReboot=process.env.ALPHA_REBOOT_MODE
     process.env.ALPHA_REBOOT_MODE='classes_only'
     try{
@@ -189,29 +188,25 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
         "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,2500,'minigame','raid_10')",
         [v2Jid]
       )
-      const plan=await purchaseRaidLote(db,{
-        jid:v2Jid,level:10,attempts:3,durationHours:4,
-        requestKey:'v2-timed-four-hours-idempotent',confirmed:true
-      },{getCatalog:v2Catalog})
-      assert.equal(plan.quote.totalPrice,6600)
+      const req={jid:v2Jid,level:10,durationHours:4,
+        requestKey:'v2-timed-four-hours-idempotent',confirmed:true}
+      const plan=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
+      assert.equal(plan.firstPrice.totalPrice,2200)
       assert.equal(plan.job.duration_hours,4)
       const row=(await db.query('SELECT * FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
-      assert.equal(Number(row.duration_hours),4)
+      assert.equal(row.billing_mode,'per_attempt')
+      assert.equal(Number(row.requested),1000000)
       assert.ok(row.next_attempt_at instanceof Date)
-      assert.ok(row.next_attempt_at.getTime()-row.created_at.getTime()>=79*60000)
-      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'waiting_schedule')
-      assert.equal(Number((await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_attempts WHERE job_id=$1',[plan.job.id])).rows[0].n),0)
-      const replay=await purchaseRaidLote(db,{
-        jid:v2Jid,level:10,attempts:3,durationHours:4,
-        requestKey:'v2-timed-four-hours-idempotent',confirmed:true
-      },{getCatalog:v2Catalog})
+      assert.ok(Math.abs(row.next_attempt_at.getTime()-row.created_at.getTime())<3000)
+      assert.ok(row.session_ends_at.getTime()-row.created_at.getTime()>=239*60000)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),18395)
+      const replay=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
       assert.equal(replay.alreadyPurchased,true)
       assert.equal(replay.job.id,plan.job.id)
-      // Simula apenas o relógio da tentativa isolada, sem esperar 80min.
-      await db.query("UPDATE raid_lote_jobs SET next_attempt_at=NOW()-INTERVAL '1 second' WHERE id=$1",[plan.job.id])
       const next=await reserveNextRaidLoteAttempt(db,plan.job.id)
       assert.equal(next.status,'reserved')
       assert.equal(Number(next.attempt.seq),1)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),16195)
       assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'resume')
       const gameStart=1700000000123
       await db.query("UPDATE raid_lote_attempts SET status='active',raid_started_at_ms=$2,reward_summary=$3::jsonb WHERE id=$1",
@@ -222,13 +217,15 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
         })])
       assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'won')
       assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'already_settled')
-      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'waiting_schedule')
-      const final=(await db.query('SELECT status,started,won_count,next_attempt_at FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
+      const nextImmediate=await reserveNextRaidLoteAttempt(db,plan.job.id)
+      assert.equal(nextImmediate.status,'reserved')
+      assert.equal(Number(nextImmediate.attempt.seq),2)
+      const final=(await db.query('SELECT status,started,won_count,total_paid FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
       assert.equal(final.status,'running')
-      assert.equal(Number(final.started),1)
+      assert.equal(Number(final.started),2)
       assert.equal(Number(final.won_count),1)
-      assert.ok(final.next_attempt_at.getTime()>Date.now()+79*60000)
-      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),11795)
+      assert.equal(Number(final.total_paid),4400)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),13995)
     }finally{
       if(originalReboot===undefined)delete process.env.ALPHA_REBOOT_MODE
       else process.env.ALPHA_REBOOT_MODE=originalReboot
