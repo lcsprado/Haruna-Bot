@@ -5,7 +5,7 @@ import {createBolsaFamiliaAlphaAutoRunner,bolsaFamiliaAlphaAutoReceipt} from '..
 
 const JID='5511999999999@s.whatsapp.net'
 const OTHER='5511888888888@s.whatsapp.net'
-const make=({claim=async()=>({ok:true,cash:300,potions:2}),candidates=async()=>[JID],
+const make=({claim=async()=>({ok:true,cash:500,potions:2}),candidates=async()=>[JID],
   connected=true,send=async()=>{},now=()=>1000000,logs=[],interval=60000}={})=>
   createBolsaFamiliaAlphaAutoRunner({
     claim,candidates,sendDirect:send,isConnected:()=>connected,
@@ -13,9 +13,9 @@ const make=({claim=async()=>({ok:true,cash:300,potions:2}),candidates=async()=>[
   })
 
 test('o recibo automático informa que o kit já foi creditado no privado',()=>{
- const text=bolsaFamiliaAlphaAutoReceipt({cash:300,potions:2})
+ const text=bolsaFamiliaAlphaAutoReceipt({cash:500,potions:2})
  assert.match(text,/AUXÍLIO AUTOMÁTICO/)
- assert.match(text,/R\$ 300/)
+ assert.match(text,/R\$ 500/)
  assert.match(text,/2 Poções Médias/)
  assert.match(text,/Não é necessário solicitar/)
 })
@@ -23,7 +23,7 @@ test('o recibo automático informa que o kit já foi creditado no privado',()=>{
 test('comando comum pode gerar concessão e exatamente um aviso privado',async()=>{
  const sends=[]
  let claims=0
- const runner=make({claim:async jid=>{claims++;assert.equal(jid,JID);return {ok:true,cash:300,potions:2}},
+ const runner=make({claim:async jid=>{claims++;assert.equal(jid,JID);return {ok:true,cash:500,potions:2}},
    send:async(jid,message)=>sends.push({jid,message})})
  const r=await runner.check(JID)
  assert.equal(r.ok,true)
@@ -46,7 +46,7 @@ test('varredura periódica contempla jogadores que não enviaram comando',async(
  const sends=[]
  const runner=make({
   candidates:async()=>[JID,OTHER],
-  claim:async jid=>jid===JID?{ok:true,cash:300,potions:2}:{ok:false,status:'cooldown'},
+  claim:async jid=>jid===JID?{ok:true,cash:500,potions:2}:{ok:false,status:'cooldown'},
   send:async(jid)=>sends.push(jid)
  })
  const result=await runner.scan()
@@ -58,7 +58,7 @@ test('falha na notificação não repete o crédito; erro do banco não mata var
  let claims=0
  const logs=[]
  const runner=make({
-  claim:async()=>{claims++;return {ok:true,cash:300,potions:2}},
+  claim:async()=>{claims++;return {ok:true,cash:500,potions:2}},
   send:async()=>{throw Error('offline no envio')},logs
  })
  assert.equal((await runner.check(JID)).ok,true)
