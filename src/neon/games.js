@@ -1178,7 +1178,7 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
 }
 
 function raidPotion(rows,maxHp){
-  const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
+  const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_m_bolsa_alpha:'Poção Média (Bolsa Família Alpha)',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
   const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:playerPotionHealAmount(x.item_id,maxHp)})).sort((x,y)=>x.heal-y.heal)
   const p=a.find(x=>x.heal>=maxHp)||a[a.length-1]
   return p?{...p,name:names[p.item_id]}:null
@@ -1971,7 +1971,7 @@ export async function raidRound(chat,level){
 
     const special=Math.random()<.22
     const specialName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):null
-    const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
+    const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_m_bolsa_alpha','pocao_g','elixir_supremo']])).rows
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
@@ -3826,8 +3826,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       }
 
       if(php<=0){
-        const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
-        const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
+        const ids=['pocao_p','pocao_m','pocao_m_bolsa_alpha','pocao_g','elixir_supremo']
+        const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_m_bolsa_alpha:'Poção Média (Bolsa Família Alpha)',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
         const inv=(await c.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[jid,ids])).rows
         const available=inv.map(x=>({...x,heal:playerPotionHealAmount(x.item_id,effectiveMaxHp)})).sort((a,b)=>a.heal-b.heal)
         const chosen=available.find(x=>x.heal>=effectiveMaxHp)||available[available.length-1]
