@@ -175,5 +175,64 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
 
 
 
+    // V2: valida o pacote POR HORAS no PostgreSQL descartável do CI.
+    // A produção não é usada; a modalidade V1 é restaurada após o teste.
+    const originalReboot=process.env.ALPHA_REBOOT_MODE
+    process.env.ALPHA_REBOOT_MODE='classes_only'
+    try{
+      const v2Jid='5511999000042@s.whatsapp.net'
+      const v2Catalog=()=>[{level:10,minLevel:10,keyPrice:2000,keyId:'chave_raid_10'}]
+      await db.query('INSERT INTO users VALUES($1,13)',[v2Jid])
+      await db.query('INSERT INTO stats VALUES($1,172)',[v2Jid])
+      await db.query('INSERT INTO wallets VALUES($1,18395,0)',[v2Jid])
+      for(let i=0;i<3;i++)await db.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,2500,'minigame','raid_10')",
+        [v2Jid]
+      )
+      const plan=await purchaseRaidLote(db,{
+        jid:v2Jid,level:10,attempts:3,durationHours:4,
+        requestKey:'v2-timed-four-hours-idempotent',confirmed:true
+      },{getCatalog:v2Catalog})
+      assert.equal(plan.quote.totalPrice,6600)
+      assert.equal(plan.job.duration_hours,4)
+      const row=(await db.query('SELECT * FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
+      assert.equal(Number(row.duration_hours),4)
+      assert.ok(row.next_attempt_at instanceof Date)
+      assert.ok(row.next_attempt_at.getTime()-row.created_at.getTime()>=79*60000)
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'waiting_schedule')
+      assert.equal(Number((await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_attempts WHERE job_id=$1',[plan.job.id])).rows[0].n),0)
+      const replay=await purchaseRaidLote(db,{
+        jid:v2Jid,level:10,attempts:3,durationHours:4,
+        requestKey:'v2-timed-four-hours-idempotent',confirmed:true
+      },{getCatalog:v2Catalog})
+      assert.equal(replay.alreadyPurchased,true)
+      assert.equal(replay.job.id,plan.job.id)
+      // Simula apenas o relógio da tentativa isolada, sem esperar 80min.
+      await db.query("UPDATE raid_lote_jobs SET next_attempt_at=NOW()-INTERVAL '1 second' WHERE id=$1",[plan.job.id])
+      const next=await reserveNextRaidLoteAttempt(db,plan.job.id)
+      assert.equal(next.status,'reserved')
+      assert.equal(Number(next.attempt.seq),1)
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'resume')
+      const gameStart=1700000000123
+      await db.query("UPDATE raid_lote_attempts SET status='active',raid_started_at_ms=$2,reward_summary=$3::jsonb WHERE id=$1",
+        [next.attempt.id,gameStart,JSON.stringify({rewards:[{cash:2200,exp:360}]})])
+      await db.query('INSERT INTO trevo_games(chat_jid,game_type,state) VALUES($1,$2,$3::jsonb)',
+        [next.attempt.raid_chat,'raid:10',JSON.stringify({
+          status:'completed',mode:'lote',loteAttemptId:next.attempt.id,startedAt:gameStart
+        })])
+      assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'won')
+      assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'already_settled')
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id)).status,'waiting_schedule')
+      const final=(await db.query('SELECT status,started,won_count,next_attempt_at FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
+      assert.equal(final.status,'running')
+      assert.equal(Number(final.started),1)
+      assert.equal(Number(final.won_count),1)
+      assert.ok(final.next_attempt_at.getTime()>Date.now()+79*60000)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),11795)
+    }finally{
+      if(originalReboot===undefined)delete process.env.ALPHA_REBOOT_MODE
+      else process.env.ALPHA_REBOOT_MODE=originalReboot
+    }
+
   }finally{await db.end()}
 })
