@@ -136,7 +136,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
   assertRaid70V2Start({level:cfg.level,partySize:1,mode:'lote'})
   const v2=classesOnlyRebootEnabled()
   const plan=v2?raidLoteDurationPlan(durationHours):null
-  if(plan&&Number(attempts)!==plan.attempts)throw new Error('Tentativas divergentes do período escolhido')
+  if(v2)throw new Error('RaidLote 2.0 usa sessões contínuas; utilize startTimedRaidLoteSession')
   if(!v2&&durationHours!=null)throw new Error('Pacote por horas disponível somente na V2')
   const initialQuote=raidLoteQuote(cfg.keyPrice,attempts)
   return inTransaction(db,async c=>{
@@ -478,7 +478,7 @@ export async function settleRaidLoteAttempt(db,attemptId){
     const newWins=Number(job.won_count)+(won?1:0)
     let jobStatus
     if(job.billing_mode==='per_attempt'){
-      const dead=won?false:Number((await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[job.jid])).rows[0]?.hp||0)<=0
+      const dead=Number((await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[job.jid])).rows[0]?.hp||0)<=0
       const expired=(await c.query('SELECT NOW()>=session_ends_at AS expired FROM raid_lote_jobs WHERE id=$1',[job.id])).rows[0]?.expired===true
       jobStatus=job.cancel_requested?'cancelled':dead?'lost':expired?'completed':'running'
     }else{
