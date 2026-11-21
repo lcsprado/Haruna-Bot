@@ -3404,6 +3404,28 @@ export async function reconcileAllWeeklyBossOutages20261009(){
   })
 }
 
+export async function getAttackableBossTargets(chat){
+  const weekend=bossWeekendInfo()
+  return tx(async c=>{
+    const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    const weekly=weekend.open?await loadWeeklyBoss(c,weekend,{create:true}):null
+    const common=await loadGame(c,chat,'boss')
+    const now=Date.now()
+    const eventAvailable=event&&event.mode==='event'&&event.active!==false
+      &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>now)
+      &&(!rebootEconomyEnabled()||event.eventId==='eclipse')
+    const weeklyAvailable=weekend.open&&weekly?.mode==='weekly'
+      &&Number(weekly.hp)>0&&Number(weekly.endsAt||0)>now
+    const commonAvailable=common?.mode==='common'&&Number(common.hp)>0
+    const choices=[]
+    if(eventAvailable)choices.push({target:'event',name:event.name,hp:event.hp,maxHp:event.maxHp,state:{...event,already:true}})
+    if(weeklyAvailable)choices.push({target:'weekly',name:weekly.name,hp:weekly.hp,maxHp:weekly.maxHp,state:{...weekly,already:true,endsLabel:weekend.endsLabel}})
+    if(commonAvailable)choices.push({target:'common',name:common.name,hp:common.hp,maxHp:common.maxHp,state:{...common,already:true}})
+    return choices
+  })
+}
+// A seleção jamais pode converter silenciosamente um ataque no Eclipse
+// em dano ao Golem ou vice-versa.
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
@@ -3472,12 +3494,28 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     if(weekend.open){
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`weekly-boss-player:${weekend.weekendKey}:${jid}`])
     }
+    const requestedTarget=String(options.target||'auto').toLowerCase()
+    if(!['auto','event','weekly','common'].includes(requestedTarget))throw new Error('Alvo de Boss inválido.')
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    const eventActive=!rebootEconomyEnabled()&&Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
-    const weeklyActive=!eventActive&&weekend.open
+    const eventAvailable=Boolean(event&&event.mode==='event'&&event.active!==false
+      &&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())
+      &&(!rebootEconomyEnabled()||event.eventId==='eclipse'))
+    if(requestedTarget==='event'&&!eventAvailable)
+      throw new Error('O Boss de Evento não está disponível. Use !boss para escolher o alvo.')
+    if(requestedTarget==='weekly'&&!weekend.open)
+      throw new Error('O Superboss semanal não está disponível. Use !boss.')
+    if(requestedTarget==='auto'&&rebootEconomyEnabled()&&eventAvailable&&weekend.open)
+      throw new Error('Há dois Bosses ativos. Use !boss e escolha !atacar 1 ou !atacar 2.')
+    const eventActive=eventAvailable&&(requestedTarget==='event'
+      ||(requestedTarget==='auto'&&(!rebootEconomyEnabled()||!weekend.open)))
+    const weeklyActive=!eventActive&&weekend.open&&requestedTarget!=='common'
     const gameType=eventActive?'boss_event':'boss'
     const bossChat=weeklyActive?GLOBAL_WEEKLY_BOSS_CHAT:chat
     const s=eventActive?event:(weeklyActive?await loadWeeklyBoss(c,weekend,{create:true}):await loadGame(c,chat,'boss'))
+    if(requestedTarget==='common'&&s?.mode!=='common')
+      throw new Error('O Boss comum não está disponível. Use !boss.')
+    if(requestedTarget==='weekly'&&s?.mode!=='weekly')
+      throw new Error('O Superboss semanal não está disponível. Use !boss.')
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
     if(gameType==='boss'&&!s.mode&&Number(s.maxHp)>=25000&&s.weekendKey===weekend.weekendKey){
       s.mode='weekly'; s.weeklyCompleted=false
@@ -3909,7 +3947,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
-        let commonV2=rebootEconomyEnabled()&&!weekly&&!eventMode?commonBossRewardV2(p.damage,total):null
+        let commonV2=rebootEconomyEnabled()&&!weekly?commonBossRewardV2(p.damage,total):null
         // Recompensa global por jogador: trocar de grupo não reinicia a janela.
         // Cooldown e pagamento são atômicos na mesma transação de liquidação.
         if(commonV2&&commonV2.xp>0){
@@ -3918,7 +3956,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         const tier=weekly?((upgradedWeeklyEdition(s.weekendKey)?BOSS_PLACEMENT:OLD_BOSS_PLACEMENT)[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
-        if(eventMode){
+        if(eventMode&&!rebootEconomyEnabled()){
           const night=s.eventId==='night_0303'
           const night0404=s.eventId===NIGHT_EVENT_ID
           const siege=s.eventId==='cerco_colosso'
@@ -4002,7 +4040,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             :weeklyNov13Xp
           exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
-          if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
+          if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':(eventMode?'boss_event_eclipse_v2':'boss_common'))
           if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp&&(!commonV2||commonV2.xp>0)){
             petXp=weekly
