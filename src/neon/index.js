@@ -1,4 +1,5 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
+import {BOSS_PROGRESS_LAST_REPORT_PREFIX,bossProgressIdentity,bossProgressSnapshot,chooseBossProgressBulletin} from './boss-progress-bulletin-policy.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
@@ -3234,8 +3235,21 @@ const eventActive=Boolean(event?.mode==='event'&&event.active!==false&&Number(ev
 && (!event.endsAt||Number(event.endsAt)>now))
 const weeklyActive=Boolean(weekly?.mode==='weekly'&&Number(weekly.hp)>0
 && Number(weekly.endsAt||0)>now)
-const current=eventActive?event:(weeklyActive?weekly:null)
-if(!current) return
+const candidates=[eventActive?event:null,weeklyActive?weekly:null].filter(Boolean)
+const reportable=candidates.filter(bossProgressSnapshot)
+if(!reportable.length)return
+const snapshotKeys=reportable.map(b=>BOSS_PROGRESS_LAST_REPORT_PREFIX+bossProgressIdentity(b))
+const {rows:lastReports}=await db.query(
+  'SELECT key,value FROM trevo_settings WHERE key=ANY($1::text[])',
+  [snapshotKeys]
+)
+const prior=Object.fromEntries(lastReports.map(r=>[
+  String(r.key).slice(BOSS_PROGRESS_LAST_REPORT_PREFIX.length),r.value
+]))
+// Se o evento estiver parado, um Boss semanal que recebeu dano pode ser informado.
+const chosen=chooseBossProgressBulletin(reportable,prior)
+if(!chosen)return
+const {current,identity:bossIdentity,snapshot}=chosen
 const maxHp=Number(current.maxHp||0)
 const hp=Math.max(0,Number(current.hp||0))
 if(!Number.isFinite(maxHp)||maxHp<=0||!Number.isFinite(hp)) return
@@ -3281,9 +3295,6 @@ const brTime=new Intl.DateTimeFormat('pt-BR',{
 timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
 }).format(new Date(windowStart))
 const weeklyBoss=current.mode==='weekly'
-const bossIdentity=weeklyBoss
-?'semanal-'+String(current.weekendKey||current.startedAt||current.endsAt)
-:'evento-'+String(current.scheduleKey||current.eventId||current.startedAt)
 const body=`🌍👹 *${weeklyBoss?'SUPERBOSS SEMANAL':'BOSS GLOBAL'} — BOLETIM 30 MIN*
 👹 *${safeName(current.name||'Boss do Alpha')}*
 🕒 Atualização: *${brTime}* (São Paulo)
@@ -3294,7 +3305,7 @@ const body=`🌍👹 *${weeklyBoss?'SUPERBOSS SEMANAL':'BOSS GLOBAL'} — BOLETI
 🏆 *RANKING DE DANO*
 ${ranking}${extra}
 📊 Golpes corrigidos são *estimativas*, separados dos ataques registrados.
-⚔️ O combate continua automaticamente.
+⚔️ Para lutar, use *!atacar*.
 🔎 Use *!boss* para consultar o HP quando quiser.`
 const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
 let sent=0
@@ -3325,6 +3336,14 @@ await db.query(
 }catch(err){
 console.error('[Boss 30m] falha ao registrar boletim',chat,err?.message||err)
 }
+}
+if(sent>0){
+  // Avança o marcador apenas após uma entrega confirmada; sem novos golpes,
+  // os slots seguintes ficam silenciosos, inclusive após reinicialização.
+  await db.query(
+    "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",
+    [BOSS_PROGRESS_LAST_REPORT_PREFIX+bossIdentity,JSON.stringify({...snapshot,sentAt:Date.now()})]
+  ).catch(err=>console.warn('[Boss 30m] marcador de progresso não atualizado',err?.message||err))
 }
 console.log('[Boss 30m] boletim',JSON.stringify({
 boss:current.name,slot:new Date(windowStart).toISOString(),
