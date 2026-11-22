@@ -52,8 +52,9 @@ test('opção 2 cancela apenas a prévia, não debita nem ativa sessão',()=>{
 
 test('resposta pertence ao mesmo jogador e chat, não interfere em outros menus ou quiz',()=>{
  assert.match(wa,/const quickFlowKey=\(chat,sender\)=>/)
- assert.match(wa,/const raidLoteNumericFlow=!body\.startsWith\(prefix\)&&\/\^\[12\]\$\/\.test\(body\)/)
- assert.match(wa,/raidLoteNumericFlow\?\.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE/)
+ assert.match(wa,/const route=await pocoNumericRoute\(\{db,sender,chat,body\}\)/)
+ assert.match(wa,/const activePoco=await pocoNumericRoute\(\{db,sender,chat,body:'1'\}\)/)
+ assert.match(wa,/Finalize sua decisão ativa no \*Poço do Abismo\*/)
  assert.match(wa,/const activeNumericMenu=!body\.startsWith\(prefix\)/)
  assert.match(wa,/hasPlayerMenu:Boolean\(activeNumericMenu\)/)
  assert.match(wa,/await handleQuickGameFlow\(\{sock,chat,sender,body,reply,msg,isOwner,isGroup\}\)/)
