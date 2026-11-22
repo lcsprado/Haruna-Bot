@@ -23,7 +23,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Instalar e aplicar patch de offline no Baileys
-        run: npm ci
+        run: npm install
       - name: Comprovar que a versão instalada não trata offline=0 como offline
         run: |
           node --input-type=module -e "import fs from 'node:fs';const src=fs.readFileSync('node_modules/baileys/lib/Socket/messages-recv.js','utf8');if(!src.includes(\"const isOffline = node.attrs.offline === '1';\"))process.exit(1);if(!src.includes(\"node.attrs.offline === '1' ? 'append' : 'notify'\"))process.exit(1);console.log('Baileys offline attribute: patched')"
