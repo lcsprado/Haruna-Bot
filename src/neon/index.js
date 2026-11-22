@@ -1625,11 +1625,19 @@ return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed,
 // A mesma fonte de bônus de vitalidade usada pelo !perfil: pet principal
 // apto + sinergia da equipe. Nada é persistido ou curado a mais aqui.
 async function potionReceiptForPlayer(jid,potion,heroSheet=null){
-  const [pet,team]=await Promise.all([getPet(jid),getPetTeam(jid)])
+  // A poção altera HP persistido; o recibo deve usar a escala de combate
+  // da classe ativa, assim como !perfil e !batalhar. Preserve a escala
+  // do herói quando existir (collab/V1).
+  const [pet,team,classProfile]=await Promise.all([
+    getPet(jid),
+    getPetTeam(jid),
+    heroSheet?Promise.resolve(null):getCombatProfile(jid)
+  ])
   const synergy=petTeamSynergy(team||[])||{}
   const pvpPet=pet&&Number(pet.hp)>0&&Number(pet.energy)>0
     ?petPvpSpecialty(pet.species,pet.level):null
-  return potionHpReceipt(potion,heroSheet,{
+  const displaySheet=heroSheet??(classProfile?{maxHp:classProfile.effective_max_hp}:null)
+  return potionHpReceipt(potion,displaySheet,{
     petHpRate:Number(pvpPet?.hp||0),
     teamHpRate:Number(synergy.hp||0)
   })
