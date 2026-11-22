@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {raidLoteReward} from '../src/neon/raid-lote-policy.js'
 const src=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const from=src.indexOf('const materialRanges={',src.indexOf('async function finishRaidRewards'))
 const to=src.indexOf('\n    const weightedRange=',from)
@@ -25,4 +26,20 @@ test('Faixas das outras raids são ampliadas em +1 fragmento por colocação',()
 test('Colocação exige participação real e respeita eventos sem somar múltiplos',()=>{
   assert.match(src,/share>=\.02/)
   assert.match(src,/baseQty\*Math\.max\(raidEventActive\?3:\(doubleRaidFragments\?2:1\),ownerFragments\)/)
+})
+
+test('RaidLote V2 Lv.20 entrega de 2 a 3 materiais; manual entrega de 5 a 7',()=>{
+  const [min,max]=materialRanges[20][0]
+  assert.deepEqual([min,max],[5,7])
+  assert.deepEqual([min,min+1,max].map(n=>raidLoteReward(n,'fragment')),[2,2,3])
+  assert.equal(raidLoteReward(max,'fragment')<min,true)
+})
+test('RaidLote V2 conserva vantagem manual em todas as Raids',()=>{
+  for(const [level,placements] of Object.entries(materialRanges)){
+    for(const [min,max] of placements){
+      assert.ok(raidLoteReward(min,'fragment')<min,'Lv.'+level+' manual min')
+      assert.ok(raidLoteReward(max,'fragment')<max,'Lv.'+level+' manual max')
+      assert.ok(raidLoteReward(min,'fragment')>=0)
+    }
+  }
 })
