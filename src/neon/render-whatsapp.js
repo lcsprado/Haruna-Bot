@@ -9,10 +9,16 @@ import {handleWebApi} from './web-api.js'
 // A dependência Signal pode imprimir sessões criptográficas completas em texto.
 // Silencia exclusivamente esse diagnóstico verboso, protegendo as chaves e a CPU;
 // demais avisos e erros continuam registrados normalmente.
-const originalConsoleLog=console.log.bind(console)
-console.log=(...args)=>{
-  if(typeof args[0]==='string' && args[0].startsWith('Closing session:'))return
-  originalConsoleLog(...args)
+// A dependência Signal também imprime "Removing old closed session:" com
+// objetos que contêm material criptográfico. Filtra apenas esses cabeçalhos;
+// erros normais continuam visíveis para investigação.
+const secretSessionLine=/^(?:Closing session:|Closing stale open session|Removing old closed session:)/
+for(const level of ['log','info','warn','error']){
+  const original=console[level].bind(console)
+  console[level]=(...args)=>{
+    if(typeof args[0]==='string'&&secretSessionLine.test(args[0]))return
+    original(...args)
+  }
 }
 
 
