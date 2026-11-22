@@ -12,6 +12,27 @@ test('V2 só remunera dois veículos por comando e preserva os outros para CLT',
   assert.equal(v2ManualPaidFleet(fleet,{enabled:false}),fleet);
   assert.equal(V2_TRANSPORT.maxManualPaidVehicles,2);
 });
+test('iFood inclui a bicicleta e todas as motos livres na mesma rodada',()=>{
+  const garage=[
+    {id:'bicicleta',price:1_500},
+    {id:'moto_125',price:8_000},
+    {id:'moto_160',price:14_000},
+    {id:'moto_300',price:30_000}
+  ];
+  assert.deepEqual(v2ManualPaidFleet(garage,{enabled:true,kind:'ifood'}),garage);
+  assert.equal(v2ManualPaidFleet(garage,{enabled:true,kind:'ifood'}).length,4);
+  const inClt=new Set(['moto_125']);
+  const available=garage.filter(vehicle=>!inClt.has(vehicle.id));
+  assert.deepEqual(v2ManualPaidFleet(available,{enabled:true,kind:'ifood'}).map(vehicle=>vehicle.id),
+    ['bicicleta','moto_160','moto_300']);
+  assert.deepEqual(v2ManualPaidFleet(garage,{enabled:false,kind:'ifood'}),garage);
+  // O limite de dois carros no Uber permanece intacto.
+  assert.deepEqual(v2ManualPaidFleet(garage,{enabled:true}).map(vehicle=>vehicle.id),
+    ['moto_300','moto_160']);
+  const src=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8');
+  assert.match(src,/v2ManualPaidFleet\(garage\.filter\(x=>!busyIds\.has\(x\.id\)\),\{kind:'ifood'\}\)/);
+});
+
 test('tarifas V2 reduzem sem prejudicar as mesmas ações na V1',()=>{
   assert.equal(v2TransportFare(1000,'uber',{enabled:true}),550);
   assert.equal(v2TransportFare(1000,'ifood',{enabled:true}),600);
