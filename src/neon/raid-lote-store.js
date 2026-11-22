@@ -198,9 +198,11 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
       WHERE (game_type='raid' OR game_type LIKE 'raid:%')
         AND state->>'status' IN ('lobby','active')
         AND COALESCE(state->'players','{}'::jsonb) ? $1
+      UNION ALL
+      SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT
       LIMIT 1
     `,[jid])).rows[0]
-    if(publicRaid)throw new Error('Finalize a Raid em andamento antes de comprar o pacote')
+    if(publicRaid)throw new Error('Finalize a Raid em andamento ou encerre o Carpinar antes de comprar o pacote')
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!u||Number(u.level)<Number(cfg.minLevel||cfg.level))throw new Error('Nivel insuficiente para a Raid')
     const hp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -280,8 +282,14 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     }
     const active=(await c.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') FOR UPDATE",[jid])).rows[0]
     if(active)throw new Error('Já existe Raidlote em andamento')
-    const busy=(await c.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
-    if(busy)throw new Error('Finalize a Raid atual antes de ativar o automático')
+    const busy=(await c.query(`
+      SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%')
+        AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1
+      UNION ALL
+      SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT
+      LIMIT 1
+    `,[jid])).rows[0]
+    if(busy)throw new Error('Finalize a Raid atual ou encerre o Carpinar antes de ativar o automático')
     const user=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!user||Number(user.level)<Number(cfg.minLevel||cfg.level))throw new Error('Nível insuficiente')
     const hp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -373,11 +381,15 @@ export async function reserveNextRaidLoteAttempt(db,jobId,{getCatalog}={}){
     }
     // Não reservar nem escrever enquanto a próxima tentativa programada não venceu.
     if(raidLoteWaitsForSchedule(job))return {status:'waiting_schedule'}
-    // Nao permite iniciar uma nova tentativa enquanto houver Raid ativa do mesmo jogador.
+    // Não cobra nem inicia uma tentativa quando o jogador está em Raid manual
+    // ou carpindo. Um estado anterior inconsistente fica pausado, sem gasto novo.
     const busy=(await c.query(`
       SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%')
-      AND state->>'status' IN ('lobby','active')
-      AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1
+        AND state->>'status' IN ('lobby','active')
+        AND COALESCE(state->'players','{}'::jsonb) ? $1
+      UNION ALL
+      SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT
+      LIMIT 1
     `,[job.jid])).rows[0]
     if(busy)return {status:'player_busy'}
     const id=crypto.randomUUID(),seq=Number(job.started)+1
