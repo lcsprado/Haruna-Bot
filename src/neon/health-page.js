@@ -73,12 +73,17 @@ export const healthPageHtml=String.raw`<!doctype html>
         server.textContent=serverState;
       }
       function update(data){
-        connected=data.ok===true&&data.whatsapp==='open';
+        connected=data.whatsappConnected===true;
         var uptime=Number(data.uptimeSeconds||0);
         var seconds=uptime<60?uptime+' segundo(s)':Math.floor(uptime/60)+' minuto(s)';
-        if(data.ok===true&&data.whatsapp==='open'){
+        if(data.whatsappConnected===true){
           show('ready','✅','Bot acordado e conectado!',
             'WhatsApp online. Pode usar os comandos normalmente. Tempo ativo: '+seconds+'.','Online');
+          return;
+        }
+        if(data.whatsapp==='open'&&data.authRegistered===false){
+          show('wait','🔐','WhatsApp aguardando pareamento',
+            'O socket está aberto, mas o número do bot ainda não está autenticado. Acesse /parear com a senha temporária para vincular o aparelho.','Pareamento pendente');
           return;
         }
         if(data.whatsapp==='starting'||data.whatsapp==='connecting'||data.whatsapp==='reconnecting'){

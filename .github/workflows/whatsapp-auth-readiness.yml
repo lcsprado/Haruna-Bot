@@ -1,0 +1,28 @@
+name: WhatsApp registration readiness
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/render-whatsapp.js'
+      - 'src/neon/health-page.js'
+      - 'test/whatsapp-auth-readiness-20261122.test.mjs'
+      - '.github/workflows/whatsapp-auth-readiness.yml'
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe
+        run: |
+          node --check src/neon/render-whatsapp.js
+          node --check src/neon/index.js
+          node --check src/neon/health-page.js
+      - name: Validar autenticação e página protegida de pareamento
+        run: node --test test/whatsapp-auth-readiness-20261122.test.mjs

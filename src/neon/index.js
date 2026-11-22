@@ -2515,6 +2515,8 @@ console.log('[Eventos] Double Lucky agendado para 03/10 21:30–21:40 BRT')
 }
 }
 const { state, saveCreds }=await useNeonAuthState(sessionId)
+// O socket aberto sozinho não prova que as credenciais estão registradas.
+trevoHealth.authRegistered=state.creds.registered===true
 const { version }=await fetchLatestBaileysVersion()
 const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
 const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
@@ -2694,8 +2696,9 @@ process.exit(1)
 }
 },60*1000)
 deafWatchdog.unref?.()
-sock.ev.on('creds.update',()=>{
-void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
+sock.ev.on('creds.update',update=>{
+  trevoHealth.authRegistered=(update?.registered===true||state.creds.registered===true)
+  void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
 })
 const botGroupIntroKey=chat=>'bot_group_intro:'+chat
 const botGroupIntroSentCache=new Map()
@@ -9958,7 +9961,8 @@ reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
 offlineRecovery.onOpen()
-console.log('[WhatsApp] ALPHA BOT CONECTADO')
+if(trevoHealth.authRegistered)console.log('[WhatsApp] ALPHA BOT CONECTADO E AUTENTICADO')
+else console.warn('[WhatsApp] socket aberto, mas pareamento pendente: sem autenticação válida')
 if(classesOnlyRebootEnabled()){
   clearInterval(bolsaFamiliaAlphaAutoTimer)
   bolsaFamiliaAlphaAutoTimer=setInterval(()=>{void bolsaFamiliaAlphaAuto.scan()},5*60*1000)
