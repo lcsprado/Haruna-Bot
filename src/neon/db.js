@@ -5331,6 +5331,15 @@ hours=Number(hours)
 const plan=CARPINAR_PLANS[hours]
 if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
 return transaction(async client=>{
+// Mesmo lock transacional do RaidLote: duas atividades não podem começar juntas,
+// mesmo que comandos sejam recebidos em grupos diferentes ou por duas instâncias.
+await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['raid-membership:'+jid])
+// Em ambientes antigos o recurso Raidlote pode não estar instalado ainda.
+const raidLoteTable=(await client.query("SELECT to_regclass('raid_lote_jobs')::text AS name")).rows[0]?.name
+if(raidLoteTable){
+const activeLote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid])).rows[0]
+if(activeLote)throw new Error('⚔️ Você tem um RaidLote em andamento. Finalize ou cancele o RaidLote antes de carpinar.')
+}
 const now=Math.floor(Date.now()/1000)
 const sleep=(await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(sleep&&Number(sleep.ends_at)>now) throw new Error('Você está dormindo e não pode começar a carpinar agora.')
