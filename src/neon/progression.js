@@ -901,7 +901,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
   const busy=(await db.query('SELECT motorcycle_id FROM clt_ifood_drivers WHERE jid=$1 AND shift_ends_at>$2',[jid,Math.floor(Date.now()/1000)])).rows
   const busyIds=new Set(busy.map(x=>x.motorcycle_id))
-  const freeGarage=v2ManualPaidFleet(garage.filter(x=>!busyIds.has(x.id)))
+  const freeGarage=v2ManualPaidFleet(garage.filter(x=>!busyIds.has(x.id)),{kind:'ifood'})
   if(!freeGarage.length)throw new Error('Todas as motos estão em turno CLT iFood.')
   const tiers={
     bicicleta:{category:'Bike',min:45,max:95}, moto_125:{category:'Básica',min:130,max:230},
