@@ -53,7 +53,9 @@ test('all four WhatsApp potion paths use the same receipt',()=>{
   const source=fs.readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   assert.equal((source.match(/usePotion\(sender,/g)||[]).length,4);
   assert.equal((source.match(/potionReceiptForPlayer\(sender,r,/g)||[]).length,4);
-  assert.match(source,/return potionHpReceipt\(potion,heroSheet,/);
+  assert.match(source,/return potionHpReceipt\(potion,displaySheet,/);
+  assert.match(source,/heroSheet\?Promise\.resolve\(null\):getCombatProfile\(jid\)/);
+  assert.match(source,/maxHp:classProfile\.effective_max_hp/);
   assert.doesNotMatch(source,/finalHeal=healedHero/);
 });
 test('PvP snapshot includes normal and temporary HP without modifying combat math',()=>{
@@ -61,4 +63,16 @@ test('PvP snapshot includes normal and temporary HP without modifying combat mat
   assert.match(source,/fighter\.vitalBaseHp=baseHp/);
   assert.match(source,/vitalBaseHp:Number\(fighter\.vitalBaseHp/);
   assert.match(source,/applyVitalCombatHp\(baseHp,baseMax/);
+});
+
+test('V2 Samurai potion receipt uses combat HP including class-level growth',()=>{
+  // Level 45 Samurai gets +95 combat HP, but only 512 HP is stored.
+  const potion={name:'Poção Grande',before:286,hp:491,maxHp:512,healed:205};
+  const combat={maxHp:607};
+  const view=potionDisplayHp(potion,combat);
+  assert.deepEqual(view,{before:339,after:582,maxHp:607,healed:243,originalStoredHeal:205});
+  const receipt=potionHpReceipt(potion,combat);
+  assert.match(receipt,/\+243 HP recuperados/);
+  assert.match(receipt,/HP no PvP: \*582\/607\*/);
+  assert.match(receipt,/HP normal após a cura: \*582\/607\*/);
 });
