@@ -10644,14 +10644,11 @@ if(classesOnlyRebootEnabled()&&body.startsWith(prefix)&&
 }
 timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
-// A resposta à prévia Raidlote é estritamente vinculada ao mesmo chat e jogador.
-const raidLoteNumericFlow=!body.startsWith(prefix)&&/^[12]$/.test(body)
-  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
-// No Raidlote, 1/2 deve chegar à prévia antes de Poço e Quiz. Para todos
-// os demais jogadores, o roteamento de combate permanece inalterado.
+// Durante uma decisão ativa do Poço, 1–4 pertencem ao combate do
+// próprio jogador e grupo. Menus e quizzes usam números apenas quando
+// não existe decisão ativa; menus anteriores não podem roubar o turno.
 if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
-  const route=raidLoteNumericFlow?.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE
-    ? null : await pocoNumericRoute({db,sender,chat,body})
+  const route=await pocoNumericRoute({db,sender,chat,body})
   if(route){
     const betaMeta=route==='beta'&&isGroup
       ? await sock.groupMetadata(chat).catch(()=>null) : null
@@ -10668,7 +10665,7 @@ if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
 // Fora de uma tentativa ativa, preservar prioridade do menu do jogador
 // sobre os quizzes globais, inclusive após reinício.
 const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
-  ? (raidLoteNumericFlow||getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
   if(await quizHandleChoice(chat,sender,body,reply))continue
 }
@@ -13567,6 +13564,10 @@ if(confirmation){
 }
 const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
 if(timedRaidLote){
+  // O Poço tem prioridade nos números 1–4. Não abrir uma prévia 1/2
+  // enquanto a pessoa precisa decidir uma ação do combate no mesmo chat.
+  const activePoco=await pocoNumericRoute({db,sender,chat,body:'1'})
+  if(activePoco)return await reply('⚠️ Finalize sua decisão ativa no *Poço do Abismo* antes de iniciar um Raidlote. Os números 1 e 2 estão reservados ao combate.')
   const each=raidLoteQuote(cfg.keyPrice,1,Math.max(0,Number(owned?.quantity||0)))
   const quoteMessageId=String(msg?.key?.id||'')
   if(!quoteMessageId)return await reply('⚠️ Não foi possível identificar a prévia do Raidlote. Tente o comando novamente. Nenhuma sessão foi iniciada.')
