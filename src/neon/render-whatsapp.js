@@ -67,7 +67,7 @@ http.createServer((req,res)=>{
           return res.end('Unauthorized')
         }
         try{
-          const connected=health.whatsapp==='open'
+          const connected=health.whatsapp==='open'&&health.authRegistered===true
           const qrState=globalThis.__alphaPairingQr||{}
           const fresh=Date.now()-Number(qrState.updatedAt||0)<45000
           const value=!connected&&fresh?qrState.value:null
@@ -103,7 +103,7 @@ http.createServer((req,res)=>{
         return res.end('Unauthorized')
       }
       try{
-        const connected=health.whatsapp==='open'
+        const connected=health.whatsapp==='open'&&health.authRegistered===true
         const qrState=globalThis.__alphaPairingQr||{}
         const value=!connected && Date.now()-Number(qrState.updatedAt||0)<45000?qrState.value:null
         const image=value?await QRCode.toDataURL(value,{width:320,margin:2,errorCorrectionLevel:'M'}):null
@@ -129,13 +129,15 @@ http.createServer((req,res)=>{
   // marcar a instancia como indisponivel durante uma reconexao do Baileys.
   // /ready preserva o diagnostico estrito: 503 se o WhatsApp nao estiver aberto.
   if(url.pathname==='/health' || url.pathname==='/ready'){
-    const connected=health.whatsapp==='open'
+    const connected=health.whatsapp==='open'&&health.authRegistered===true
     const isReadyCheck=url.pathname==='/ready'
     res.writeHead(isReadyCheck&&!connected?503:200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
     return res.end(JSON.stringify({
       ...(url.searchParams.get('metrics')==='1'?{bandwidth:bandwidthSnapshot()}:{}),
       commit:process.env.RENDER_GIT_COMMIT||null,
-      ok:isReadyCheck?connected:true,whatsappConnected:connected,service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,
+      ok:isReadyCheck?connected:true,whatsappConnected:connected,authRegistered:health.authRegistered===true,
+      qrReady:Boolean(!connected&&globalThis.__alphaPairingQr?.value&&(Date.now()-Number(globalThis.__alphaPairingQr.updatedAt||0)<45000)),
+      service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,
       lastOpen:health.lastOpen||null,
       uptimeSeconds:Math.floor(process.uptime()),
       messagesSeen:Number(health.messagesSeen||0),
