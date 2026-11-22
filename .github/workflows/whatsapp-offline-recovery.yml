@@ -1,0 +1,35 @@
+name: WhatsApp inbound - Baileys 6.7.24 offline recovery
+on:
+  pull_request:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/whatsapp-offline-recovery.js'
+      - 'src/neon/render-whatsapp.js'
+      - 'scripts/patch-baileys-media.mjs'
+      - 'test/whatsapp-offline-recovery-20261122.test.mjs'
+      - '.github/workflows/whatsapp-offline-recovery.yml'
+jobs:
+  inbound-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar e aplicar patch de offline no Baileys
+        run: npm ci
+      - name: Comprovar que a versão instalada não trata offline=0 como offline
+        run: |
+          node --input-type=module -e "import fs from 'node:fs';const src=fs.readFileSync('node_modules/baileys/lib/Socket/messages-recv.js','utf8');if(!src.includes(\"const isOffline = node.attrs.offline === '1';\"))process.exit(1);if(!src.includes(\"node.attrs.offline === '1' ? 'append' : 'notify'\"))process.exit(1);console.log('Baileys offline attribute: patched')"
+      - name: Validar sintaxe e testes direcionados
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/render-whatsapp.js
+          node --check src/neon/whatsapp-offline-recovery.js
+          node --test test/whatsapp-offline-recovery-20261122.test.mjs test/render-whatsapp-standby-20261116.test.mjs test/whatsapp-outbound-durable-retry-20261113.test.mjs
