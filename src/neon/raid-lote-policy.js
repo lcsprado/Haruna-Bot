@@ -65,6 +65,16 @@ export function raidLoteShouldStop({cancelRequested=false,dead=false,won=false,a
   return Boolean(cancelRequested||dead||!won||attemptsCompleted>=attemptsRequested)
 }
 
+// Escolha numérica limitada à prévia de RaidLote 2.0, nunca ao menu global.
+export const RAID_LOTE_NUMERIC_CONFIRM_STAGE='raid_lote_v2_confirm'
+export const RAID_LOTE_NUMERIC_CONFIRM_TTL_MS=90*1000
+export function raidLoteNumericDecision(input){
+  const value=String(input??'').trim()
+  if(value==='1')return 'confirm'
+  if(value==='2')return 'cancel'
+  return null
+}
+
 // V2: uma sessão define o TEMPO máximo de automação, nunca o número de Raids.
 // Cada tentativa é debitada de forma atômica imediatamente antes de iniciar.
 export const RAID_LOTE_V2_MAX_ATTEMPTS=1000000 // salvaguarda técnica, não limite por período
