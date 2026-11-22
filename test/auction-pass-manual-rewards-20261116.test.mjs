@@ -16,7 +16,8 @@ test('RaidLote comum conserva economia reduzida e chance padrão',()=>{
  assert.equal(raidLoteReward(10000,'heroXp'),6000)
  assert.equal(raidLoteReward(10000,'petXp'),6000)
  assert.equal(raidLoteReward(10000,'masteryXp'),5000)
- assert.equal(raidLoteReward(10000,'fragment'),4000)
+ assert.equal(raidLoteReward(10000,'fragment'),4500) // V2: recompensa automática de materiais ajustada
+ assert.equal(raidLoteReward(10000,'collabFragment'),4000) // mantém regra da collab legado
  assert.equal(raidLoteGearChance(.40),.10)
  assert.equal(RAID_LOTE_V1.maxAttempts,10)
  assert.equal(RAID_LOTE_V1.refundUnusedAttempts,false)
