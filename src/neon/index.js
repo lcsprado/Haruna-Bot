@@ -28,6 +28,7 @@ import {groupFlashPolicy} from './group-flash-policy.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
+import {createWhatsAppOfflineRecovery} from './whatsapp-offline-recovery.js'
 import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
 import {lookupOutboundWithGrace} from './whatsapp-retry-lookup-grace.js'
 import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
@@ -2631,21 +2632,39 @@ let whatsappDeafRecoveryTriggered=false
 trevoHealth.pendingNotificationsReceived=false
 trevoHealth.offlinePreviewCount=0
 trevoHealth.offlineCompletionCount=0
+const offlineRecovery=createWhatsAppOfflineRecovery({
+  socket:sock,
+  isOpen:()=>trevoHealth.whatsapp==='open',
+  onAction:(action,count)=>{
+    if(action==='flush'){
+      trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
+      console.warn('[WhatsApp Sync] buffer local liberado por timeout seguro')
+    }else if(action==='batch'){
+      trevoHealth.offlineBatchRetryCount=Number(count)||0
+      console.warn('[WhatsApp Sync] solicitacao limitada de lote offline',count)
+    }else console.warn('[WhatsApp Sync] recuperacao indisponivel',action)
+  }
+})
 sock.ws?.on?.('CB:ib,,offline_preview',()=>{
 trevoHealth.offlinePreviewCount++
 trevoHealth.lastOfflinePreviewAt=Date.now()
+offlineRecovery.onPreview()
 console.warn('[WhatsApp Sync] preview de mensagens pendentes recebido')
 })
 sock.ws?.on?.('CB:ib,,offline',()=>{
 trevoHealth.offlineCompletionCount++
+offlineRecovery.onComplete()
 console.warn('[WhatsApp Sync] lote offline encerrado pelo servidor')
 })
 sock.ev.on('connection.update',update=>{
 if(update.receivedPendingNotifications!==undefined){
 trevoHealth.pendingNotificationsReceived=Boolean(update.receivedPendingNotifications)
+if(trevoHealth.pendingNotificationsReceived)offlineRecovery.onComplete()
 console.log('[WhatsApp Sync] notificações pendentes sincronizadas:',trevoHealth.pendingNotificationsReceived)
 }
 })
+// Alguns servidores enviam offline="0": nunca tratar esse valor como offline.
+// O patch de postinstall reforça essa regra dentro do Baileys 6.7.24.
 for(const eventName of ['CB:message','CB:notification','CB:receipt']){
 sock.ws?.prependListener?.(eventName,node=>{
 if(node?.attrs?.offline==='0'){
@@ -2654,31 +2673,6 @@ trevoHealth.offlineZeroCorrected=Number(trevoHealth.offlineZeroCorrected||0)+1
 }
 })
 }
-let forceFlushAttempted=false
-const forceFlushTimer=setTimeout(()=>{
-if(forceFlushAttempted || trevoHealth.whatsapp!=='open')return
-if(trevoHealth.pendingNotificationsReceived || trevoHealth.offlineCompletionCount>0)return
-if(trevoHealth.offlinePreviewCount===0 && trevoHealth.rawMessagesSeen===0)return
-if(typeof sock.ev?.flush!=='function'){
-console.error('[WhatsApp Sync] flush indisponível no evento Baileys')
-return
-}
-forceFlushAttempted=true
-try{
-const fakeEnd={tag:'ib',attrs:{},content:[{tag:'offline',attrs:{count:'0'}}]}
-const emitters=sock.ws?.listenerCount?.('CB:ib,,offline')||0
-if(emitters>0){
-sock.ws.emit('CB:ib,,offline',fakeEnd)
-trevoHealth.syntheticOfflineCompleted=Date.now()
-console.warn('[WhatsApp Sync] buffer inicial destravado: encerramento offline local',emitters)
-}else{
-sock.ev.flush()
-console.warn('[WhatsApp Sync] fallback flush após ausência do sinal offline')
-}
-trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
-}catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
-},40000)
-forceFlushTimer.unref?.()
 sock.ws?.on?.('CB:receipt',node=>{
   if(String(node?.attrs?.type||'')==='retry')
     console.warn('[WhatsApp Retry] retry receipt received')
@@ -9963,6 +9957,7 @@ if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null }
 reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
+offlineRecovery.onOpen()
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(classesOnlyRebootEnabled()){
   clearInterval(bolsaFamiliaAlphaAutoTimer)
@@ -10280,7 +10275,7 @@ clearInterval(bolsaFamiliaAlphaAutoTimer)
 bolsaFamiliaAlphaAutoTimer=null
 privateQrState.value=null
 privateQrState.updatedAt=0
-clearTimeout(forceFlushTimer)
+offlineRecovery.stop()
 clearInterval(deafWatchdog)
 eventSchedulerClosed=true
 clearInterval(doubleRewardEventScheduler)
@@ -10374,6 +10369,7 @@ await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,
 // Menus, confirmações e transações de CADA jogador continuam sequenciais.
 const enqueueIncomingByPlayer=createKeyedAsyncQueue()
 sock.ev.on('messages.upsert',({messages,type})=>{
+if(messages?.length)offlineRecovery.onMessage()
 const receivedAt=Date.now()
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
