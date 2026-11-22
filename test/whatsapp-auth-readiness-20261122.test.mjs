@@ -15,10 +15,15 @@ test('HTTP /ready e QR não declaram conectado com socket aberto sem credenciais
   assert.match(server,/authorization\|\|''/)
   assert.match(server,/timingSafeEqual/)
 })
-test('auth registrado é recebido do estado persistido e acompanha credenciais atualizadas',()=>{
-  assert.match(index,/trevoHealth\.authRegistered=state\.creds\.registered===true/)
-  assert.match(index,/trevoHealth\.authRegistered=\(update\?\.registered===true\|\|state\.creds\.registered===true\)/)
+test('Baileys 6.7.24 aceita autenticação com account e me mesmo que registered fique false',()=>{
+  assert.match(index,/const hasPairedAuth=\(\)=>Boolean\(state\.creds\.account&&state\.creds\.me\?\.id\)/)
+  assert.match(index,/trevoHealth\.authRegistered=hasPairedAuth\(\)/)
+  assert.match(index,/trevoHealth\.authRegistered=hasPairedAuth\(\)\|\|Boolean\(update\?\.account&&update\?\.me\?\.id\)/)
+  assert.match(index,/if\(hasPairedAuth\(\)\)\{[\s\S]*?state\.creds\.registered=true[\s\S]*?saveCreds\(\)/)
   assert.match(index,/socket aberto, mas pareamento pendente/)
+  assert.match(index,/if\(!hasPairedAuth\(\) && !pairingNumber\)/)
+  assert.match(index,/if\(!pairingNumber && !hasPairedAuth\(\)\)/)
+  assert.doesNotMatch(index,/if\(!state\.creds\.registered && !pairingNumber\)/)
 })
 test('painel só afirma conectado depois de confirmar estado de autenticação',()=>{
   assert.match(page,/connected=data\.whatsappConnected===true/)
