@@ -2515,8 +2515,11 @@ console.log('[Eventos] Double Lucky agendado para 03/10 21:30–21:40 BRT')
 }
 }
 const { state, saveCreds }=await useNeonAuthState(sessionId)
-// O socket aberto sozinho não prova que as credenciais estão registradas.
-trevoHealth.authRegistered=state.creds.registered===true
+// Baileys 6.7.24 entrega account + me no pareamento, mas pode manter
+// creds.registered=false. Pareamento exige conta validada e identidade;
+// /ready exige ainda o socket confirmado pelo servidor.
+const hasPairedAuth=()=>Boolean(state.creds.account&&state.creds.me?.id)
+trevoHealth.authRegistered=hasPairedAuth()
 const { version }=await fetchLatestBaileysVersion()
 const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
 const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
@@ -2697,7 +2700,7 @@ process.exit(1)
 },60*1000)
 deafWatchdog.unref?.()
 sock.ev.on('creds.update',update=>{
-  trevoHealth.authRegistered=(update?.registered===true||state.creds.registered===true)
+  trevoHealth.authRegistered=hasPairedAuth()||Boolean(update?.account&&update?.me?.id)
   void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
 })
 const botGroupIntroKey=chat=>'bot_group_intro:'+chat
@@ -9927,10 +9930,10 @@ return true
 clearQuickFlow(chat,sender)
 return false
 }
-if(!state.creds.registered && !pairingNumber){
+if(!hasPairedAuth() && !pairingNumber){
 console.error('[WhatsApp] sessão sem login e PAIRING_NUMBER não configurado. Defina o novo número no Render e use um SESSION_ID novo.')
 }
-if(pairingNumber && !state.creds.registered){
+if(pairingNumber && !hasPairedAuth()){
 setTimeout(async()=>{
 try{
 const raw=await sock.requestPairingCode(pairingNumber)
@@ -9960,6 +9963,14 @@ if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null }
 reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
+// Consolidar registered somente depois do handshake aceito pelo WhatsApp.
+if(hasPairedAuth()){
+  trevoHealth.authRegistered=true
+  if(state.creds.registered!==true){
+    state.creds.registered=true
+    void saveCreds().catch(err=>console.error('[WhatsApp] falha ao consolidar vínculo',err?.code||'persist_failed'))
+  }
+}
 offlineRecovery.onOpen()
 if(trevoHealth.authRegistered)console.log('[WhatsApp] ALPHA BOT CONECTADO E AUTENTICADO')
 else console.warn('[WhatsApp] socket aberto, mas pareamento pendente: sem autenticação válida')
@@ -10300,11 +10311,11 @@ setTimeout(()=>process.exit(0),100)
 return
 }
 if(loggedOut){
-if(!pairingNumber && !state.creds.registered){
+if(!pairingNumber && !hasPairedAuth()){
 console.warn('[WhatsApp] QR não autenticado; aguardando reinicialização controlada para gerar novo QR')
 return
 }
-if(pairingNumber && !state.creds.registered){
+if(pairingNumber && !hasPairedAuth()){
 console.warn('[WhatsApp] pareamento não concluído; reiniciando sessão de conexão para solicitar novo código')
 scheduleReconnect()
 return
