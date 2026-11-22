@@ -136,7 +136,7 @@ const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(
 // No modo V2, o consumidor real só inicia após aprovação explícita do cutover.
 assertRebootWhatsappPermission()
 
-import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText,RAID_LOTE_NUMERIC_CONFIRM_STAGE,RAID_LOTE_NUMERIC_CONFIRM_TTL_MS,raidLoteNumericDecision} from './raid-lote-policy.js'
 import {shopForge5ServiceFee} from './shop-forge5-plan.js'
 import {effectiveExpeditionPlans} from './reboot-pet-economy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote,startTimedRaidLoteSession} from './raid-lote-store.js'
@@ -4786,6 +4786,42 @@ msg?.message?.buttonsResponseMessage?.selectedButtonId ||
 ''
 const rawInput=String(listSelection || body || '').trim()
 const input=rawInput.toLowerCase()
+if(flow.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE){
+  const decision=raidLoteNumericDecision(input)
+  if(decision==='cancel'||['0','cancelar','cancel','sair'].includes(input)){
+    clearQuickFlow(chat,sender)
+    await reply('❌ *RAIDLOTE 2.0 CANCELADO*\nNenhuma sessão iniciada e nenhuma chave ou valor consumido.')
+    return true
+  }
+  if(decision!=='confirm'){
+    await reply('⚔️ *RAIDLOTE 2.0*\nResponda somente *1 — Confirmar* ou *2 — Cancelar*.')
+    return true
+  }
+  const level=Number(flow.data?.level),hours=Number(flow.data?.hours)
+  const requestKey=String(flow.data?.requestKey||'')
+  if(!classesOnlyRebootEnabled()||!raidLoteV1Enabled ||
+    ![4,8,12].includes(hours) || level===70 ||
+    !getRaidCatalog().some(x=>Number(x.level)===level) ||
+    !/^wa:[a-f0-9]{64}$/.test(requestKey)){
+    clearQuickFlow(chat,sender)
+    await reply('⚠️ Prévia do Raidlote inválida ou indisponível. Consulte novamente com *!raidlote 15 8h*. Nenhuma sessão foi ativada.')
+    return true
+  }
+  // A chave nasce do pedido de prévia: resposta 1 repetida não cria
+  // sessões duplicadas, mesmo com IDs de mensagens diferentes.
+  const activated=await startTimedRaidLoteSession(db,
+    {jid:sender,level,durationHours:hours,requestKey,confirmed:true},
+    {getCatalog:getRaidCatalog})
+  clearQuickFlow(chat,sender)
+  await reply((activated.alreadyPurchased?'✅ *SESSÃO JÁ REGISTRADA*':'✅ *RAIDLOTE AUTOMÁTICO ATIVADO*')
+    +'\n⚔️ Raid Lv.'+level+' • '+hours+' horas'
+    +'\n⚡ Primeira Raid: imediata, na próxima verificação do bot (até 8s)'
+    +'\n🔄 Ao terminar uma Raid, começa outra sem espera de 80 minutos'
+    +'\n💳 Chave e taxa cobradas apenas ao iniciar CADA tentativa'
+    +'\n🛑 Encerra por tempo, morte, falta de saldo ou cancelamento'
+    +'\n📊 Acompanhe: !raidlote status')
+  return true
+}
 if(['0','sair','cancelar','cancel'].includes(input)){
 clearQuickFlow(chat,sender)
 await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':String(flow.stage||'').startsWith('enchant_')?'✅ Encantamento cancelado. Nenhuma pedra consumida. Use *!encantar* para voltar.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
@@ -10608,11 +10644,14 @@ if(classesOnlyRebootEnabled()&&body.startsWith(prefix)&&
 }
 timingMarks.preflight=Date.now()
 const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
-// Durante uma decisão ativa do Poço, 1–4 pertencem ao combate do
-// próprio jogador e grupo. Menus e quizzes usam números apenas quando
-// não existe decisão ativa; menus anteriores não podem roubar o turno.
+// A resposta à prévia Raidlote é estritamente vinculada ao mesmo chat e jogador.
+const raidLoteNumericFlow=!body.startsWith(prefix)&&/^[12]$/.test(body)
+  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+// No Raidlote, 1/2 deve chegar à prévia antes de Poço e Quiz. Para todos
+// os demais jogadores, o roteamento de combate permanece inalterado.
 if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
-  const route=await pocoNumericRoute({db,sender,chat,body})
+  const route=raidLoteNumericFlow?.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE
+    ? null : await pocoNumericRoute({db,sender,chat,body})
   if(route){
     const betaMeta=route==='beta'&&isGroup
       ? await sock.groupMetadata(chat).catch(()=>null) : null
@@ -10629,7 +10668,7 @@ if(!body.startsWith(prefix)&&/^[1-4]$/.test(body)){
 // Fora de uma tentativa ativa, preservar prioridade do menu do jogador
 // sobre os quizzes globais, inclusive após reinício.
 const activeNumericMenu=!body.startsWith(prefix)&&/^[1-4]$/.test(body)
-  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+  ? (raidLoteNumericFlow||getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
 if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
   if(await quizHandleChoice(chat,sender,body,reply))continue
 }
@@ -13467,9 +13506,13 @@ if(action==='historico'){
   )).join('\n\n'))
 }
 if(action==='cancelar'){
+  const pending=getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)
+  const hadPreview=pending?.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE
+  if(hadPreview)clearQuickFlow(chat,sender)
   const cancelled=await cancelRaidLote(db,sender)
   return await reply(cancelled
     ?'🛑 Cancelamento solicitado. A tentativa já iniciada poderá concluir; nenhuma próxima tentativa começará. O valor pago não é devolvido.'
+    :hadPreview?'❌ Prévia do Raidlote cancelada. Nenhum valor ou chave consumido.'
     :'ℹ️ Você não possui pacote ativo para cancelar.')
 }
 const confirmation=action==='confirmar'
@@ -13497,6 +13540,7 @@ if(confirmation&&timedRaidLote){
   const activated=await startTimedRaidLoteSession(db,
     {jid:sender,level,durationHours:durationPlan.hours,requestKey,confirmed:true},
     {getCatalog:getRaidCatalog})
+  if(getQuickFlow(chat,sender)?.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE)clearQuickFlow(chat,sender)
   return await reply((activated.alreadyPurchased?'✅ *SESSÃO JÁ REGISTRADA*':'✅ *RAIDLOTE AUTOMÁTICO ATIVADO*')
     +'\n⚔️ Raid Lv.'+level+' • '+durationPlan.hours+' horas'
     +'\n⚡ Primeira Raid: imediata, na próxima verificação do bot (até 8s)'
@@ -13524,6 +13568,12 @@ if(confirmation){
 const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
 if(timedRaidLote){
   const each=raidLoteQuote(cfg.keyPrice,1,Math.max(0,Number(owned?.quantity||0)))
+  const quoteMessageId=String(msg?.key?.id||'')
+  if(!quoteMessageId)return await reply('⚠️ Não foi possível identificar a prévia do Raidlote. Tente o comando novamente. Nenhuma sessão foi iniciada.')
+  setQuickFlow(chat,sender,RAID_LOTE_NUMERIC_CONFIRM_STAGE,{
+    level,hours:durationPlan.hours,
+    requestKey:'wa:'+createHash('sha256').update('raidlote2:quote:'+sender+':'+chat+':'+quoteMessageId).digest('hex')
+  },RAID_LOTE_NUMERIC_CONFIRM_TTL_MS)
   return await reply('⚔️ *RAIDLOTE 2.0 — AUTOMÁTICO CONTÍNUO*'
     +'\n🎯 Raid Lv.'+level
     +'\n⏱️ Duração: '+durationPlan.hours+' horas'
@@ -13533,7 +13583,9 @@ if(timedRaidLote){
     +(each.ownedKeysUsed?' (usará sua chave existente)':'')
     +'\n💀 Se morrer, ficar sem saldo ou acabar o tempo, encerra automaticamente'
     +'\n🚫 Nenhuma compra antecipada nem quantidade fixa de tentativas'
-    +'\n✅ Confirme: *!raidlote confirmar '+level+' '+durationPlan.hours+'h*')
+    +'\n\n1️⃣ *Confirmar*'
+    +'\n2️⃣ *Cancelar*'
+    +'\n_Responda somente 1 ou 2 em até 90 segundos._')
 }
 const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
 const nextPassPackage=!timedRaidLote&&await isNextRaidLotePassPackage(sender)
