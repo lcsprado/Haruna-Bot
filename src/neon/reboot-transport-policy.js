@@ -15,11 +15,13 @@ export function v2TransportFare(amount,kind,{enabled=rebootEconomyEnabled()}={})
   if(!Number.isSafeInteger(amount)||amount<0)throw new RangeError('Tarifa inválida');
   return enabled?Math.floor(amount*factor(kind)):amount;
 }
-export function v2ManualPaidFleet(garage,{enabled=rebootEconomyEnabled()}={}){
+export function v2ManualPaidFleet(garage,{enabled=rebootEconomyEnabled(),kind='uber'}={}){
   if(!Array.isArray(garage))throw new TypeError('Garagem inválida');
-  if(!enabled)return garage;
-  // Garagem maior continua útil para reservas/CLT, mas não multiplica
-  // a emissão de dinheiro em um único comando a cada 6 ou 9 minutos.
+  // No iFood todos os veículos disponíveis entregam; motos em turno CLT
+  // já são excluídas pelo serviço antes desta seleção. Uber mantém o teto V2.
+  if(!enabled||kind==='ifood')return garage;
+  // Carros excedentes continuam disponíveis para reservas/CLT, mas não
+  // multiplicam a emissão do Uber a cada 9 minutos.
   return [...garage].sort((a,b)=>Number(b.price||0)-Number(a.price||0))
     .slice(0,V2_TRANSPORT.maxManualPaidVehicles);
 }
