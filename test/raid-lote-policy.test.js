@@ -22,6 +22,10 @@ test('chaves existentes sao gastas no pacote sem cobrar duas vezes',()=>{
 test('recompensas menores com truncamento',()=>{
   assert.equal(raidLoteCashPayout(633600,480000),604800) // líquido 76.800 = metade de 153.600
   assert.equal(raidLoteReward(10,'fragment'),4)
+  assert.equal(raidLoteReward(7,'fragment'),3) // 45% da Raid manual, arredondado
+  assert.equal(raidLoteReward(5,'fragment'),2)
+  assert.equal(raidLoteReward(10,'collabFragment'),4) // collab mantém a regra antiga de 40%
+  assert.equal(RAID_LOTE_V1.fragmentBasisPoints,4500)
   assert.equal(raidLoteReward(1,'fragment'),0)
   assert.equal(raidLoteReward(90,'masteryXp'),45)
   assert.equal(raidLoteReward(29000,'heroXp'),17400)

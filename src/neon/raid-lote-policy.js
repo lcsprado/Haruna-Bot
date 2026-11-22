@@ -5,7 +5,8 @@ export const RAID_LOTE_V1=Object.freeze({
   feeBasisPoints:1000,
   cashNetProfitBasisPoints:5000, // RaidLote comum: 50% do LUCRO liquido manual por vitoria
   playerXpBasisPoints:6000,heroXpBasisPoints:6000,petXpBasisPoints:6000,
-  masteryXpBasisPoints:5000,fragmentBasisPoints:4000,
+  masteryXpBasisPoints:5000,fragmentBasisPoints:4500,
+  collabFragmentBasisPoints:4000, // Raid collab V1 segue 40%; não é afetada pelo rebalanceamento V2
   gearChanceBasisPoints:2500,
   applyTemporaryRewardMultipliers:false, // eventos globais nao amplificam premio automatico
   applyActivatedXpItems:true, // ampulheta/elixir do jogador aplica-se APOS XP reduzido
@@ -36,7 +37,8 @@ export function raidLoteReward(base,kind){
     heroXp:RAID_LOTE_V1.heroXpBasisPoints,
     petXp:RAID_LOTE_V1.petXpBasisPoints,
     masteryXp:RAID_LOTE_V1.masteryXpBasisPoints,
-    fragment:RAID_LOTE_V1.fragmentBasisPoints
+    fragment:RAID_LOTE_V1.fragmentBasisPoints,
+    collabFragment:RAID_LOTE_V1.collabFragmentBasisPoints
   }[kind]
   if(rate===undefined)throw new RangeError('Recompensa nao suportada')
   if(!integer(base))throw new RangeError('Recompensa base invalida')

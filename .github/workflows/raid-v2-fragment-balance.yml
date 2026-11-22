@@ -1,0 +1,28 @@
+name: Raid V2 - balanceamento de fragmentos
+on:
+  pull_request:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/games.js'
+      - 'src/neon/raid-lote-policy.js'
+      - 'test/raid1-fragment-drop-20261013.test.mjs'
+      - 'test/raid-lote-policy.test.js'
+      - '.github/workflows/raid-v2-fragment-balance.yml'
+jobs:
+  raid-fragments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/raid-lote-policy.js
+      - name: Testar economia de fragmentos manual e Raidlote
+        run: node --test test/raid1-fragment-drop-20261013.test.mjs test/raid-lote-policy.test.js

@@ -1462,7 +1462,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         const stored=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
         const creditedToday=Math.max(0,Math.floor(Number(stored.earned||0)))
         const qty=loteReduced
-          ?Math.min(raidLoteReward(COLLAB_RAID_FRAGMENTS_PER_WIN,'fragment'),Math.max(0,COLLAB_RAID_DAILY_CAP-creditedToday))
+          ?Math.min(raidLoteReward(COLLAB_RAID_FRAGMENTS_PER_WIN,'collabFragment'),Math.max(0,COLLAB_RAID_DAILY_CAP-creditedToday))
           :collabRaidPayout(creditedToday,p.damage,share)
         if(qty>0){
           await c.query(
@@ -1481,17 +1481,19 @@ async function finishRaidRewards(c,s,cfg,chat){
         }
       }
     }else{
+    // V2: +1 material por vitória para os três primeiros colocados
+    // com participação real. Aumenta apenas material, não XP, caixa nem dinheiro.
     const materialRanges={
-      10:[[5,7],[1,3],[1,2]],
-      15:[[3,5],[2,4],[1,2]],
-      20:[[4,6],[2,4],[1,3]],
-      25:[[5,7],[3,5],[1,3]],
-      30:[[6,9],[4,6],[2,3]],
-      40:[[8,11],[5,7],[2,4]],
-      50:[[9,12],[6,8],[3,5]],
-      60:[[10,13],[7,9],[4,6]],
-      65:[[11,14],[8,10],[5,7]],
-      70:[[12,15],[9,11],[6,8]]
+      10:[[6,8],[2,4],[2,3]],
+      15:[[4,6],[3,5],[2,3]],
+      20:[[5,7],[3,5],[2,4]],
+      25:[[6,8],[4,6],[2,4]],
+      30:[[7,10],[5,7],[3,4]],
+      40:[[9,12],[6,8],[3,5]],
+      50:[[10,13],[7,9],[4,6]],
+      60:[[11,14],[8,10],[5,7]],
+      65:[[12,15],[9,11],[6,8]],
+      70:[[13,16],[10,12],[7,9]]
     }
     const weightedRange=(min,max)=>{
       const values=[]
