@@ -20,8 +20,8 @@ test('Relatório inclui todas as fontes de cura e omite bloco vazio',()=>{
   assert.match(healing,/if\(total<=0\)return ''/)
   assert.match(index,/formatRaidPlayerHealing\(x,fmt\)/)
 })
-test('Não altera fórmulas de XP, dinheiro, drops ou condição de ativação da cura',()=>{
-  assert.match(raid,/10:\[\[5,7\],\[1,3\],\[1,2\]\]/)
+test('Preserva XP, dinheiro e cura ao ajustar apenas fragmentos V2',()=>{
+  assert.match(raid,/10:\[\[6,8\],\[2,4\],\[2,3\]\]/)
   assert.match(raid,/const collaborationBonus=Math\.floor\(cfg\.cashPool\*\(\.04\+\.12\*share\)\)/)
   assert.match(raid,/Number\(p\.hp\)\/Number\(p\.maxHp\)<\.70/)
 })
