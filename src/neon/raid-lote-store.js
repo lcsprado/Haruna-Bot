@@ -166,6 +166,13 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
       [jid]
     )).rows[0]
     if(carpinar)throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
+    // A ativação de dormir e do Raidlote usa o mesmo advisory lock acima.
+    // Validar no banco evita que o jogador obtenha XP de sono durante o lote.
+    const sleep=(await c.query(
+      "SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+      [jid]
+    )).rows[0]
+    if(sleep)throw new Error('😴 Você está dormindo. Aguarde acordar ou use !acordar antes de ativar o Raidlote.')
     const active=(await c.query(
       "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status=ANY($2::text[]) FOR UPDATE",
       [jid,openStatuses]
@@ -292,6 +299,13 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
       [jid]
     )).rows[0]
     if(carpinar)throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
+    // A ativação de dormir e do Raidlote usa o mesmo advisory lock acima.
+    // Validar no banco evita que o jogador obtenha XP de sono durante o lote.
+    const sleep=(await c.query(
+      "SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+      [jid]
+    )).rows[0]
+    if(sleep)throw new Error('😴 Você está dormindo. Aguarde acordar ou use !acordar antes de ativar o Raidlote.')
     const active=(await c.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') FOR UPDATE",[jid])).rows[0]
     if(active)throw new Error('Já existe Raidlote em andamento')
     const busy=(await c.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
