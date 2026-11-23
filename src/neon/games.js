@@ -1655,7 +1655,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         }
       }
     }
-    if(rebootEconomyEnabled()&&!p.heroId){
+    if(rebootEconomyEnabled()&&!lote&&!p.heroId){
       const coopPlayers=ranked.filter(q=>Number(q.damage||0)>0&&Number(q.damage||0)>=total*.02)
       await recordAwakeningTrial(c,{
         jid:p.jid,source:'raid',sourceId:'raid:'+String(s.startedAt),
@@ -3819,6 +3819,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       classLastProcAttack:passiveHit.lastProcAttack,
       awakeningState:passiveHit.awakeningState,
       heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState,
+      classId:st.class_id,
       curseHits:Number(old.curseHits||0)+(!heroId&&st.class_applied&&st.class_id==='necromancer'&&awakeningStage>=2&&attackCount%7===0?1:0)
     }
     let php=Math.min(Number(heroCombatHp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null,vitalPulseEvent=null
@@ -3935,7 +3936,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           if(!contributor.jid||dealt/total<.05||Number(contributor.attacks||0)<3)continue
           await recordAwakeningTrial(c,{
             jid:contributor.jid,source:'boss',sourceId:runKey,
-            heroId:contributor.heroId||null,
+            heroId:contributor.heroId||null,classId:contributor.classId||null,
             metrics:{damage:dealt,share:dealt/total,attacks:Number(contributor.attacks||0),
               curseHits:Number(contributor.curseHits||0)}
           })
