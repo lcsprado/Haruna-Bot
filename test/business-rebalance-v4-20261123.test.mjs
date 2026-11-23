@@ -66,7 +66,7 @@ test('Cap 24h, tempo negativo, segundo resgate e seguranca numerica',()=>{
  assert.equal(businessV4IntervalGross({...base,now:start+36*3600}),2400)
  assert.equal(businessV4IntervalGross({...base,now:start-120}),0)
  assert.equal(businessV4IntervalGross({...base,start:start+7*3600,now:start+7*3600}),0)
- assert.throws(()=>businessV4IntervalGross({...base,v4EffectiveAt:start-200}),/inválida/)
+ assert.throws(()=>businessV4IntervalGross({...base,now:start+100,v4EffectiveAt:start-200}),/inválida/)
  assert.throws(()=>businessV4CycleStatus({lastCollectedAt:1,now:10,cycleHours:30,cutoverAt:1}),/invalido/)
 })
 
