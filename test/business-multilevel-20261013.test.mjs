@@ -6,7 +6,9 @@ const source=readFileSync(new URL('../src/neon/progression.js',import.meta.url),
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const helperSource=source.slice(source.indexOf('export function businessUpgradeQuote'),source.indexOf('export async function upgradeBusiness')).replace(/^export /gm,'')
 const quote=new Function('candidateBusinessCatalog','rebootEconomyEnabled','V2_BUSINESS_ECONOMY',
-  helperSource+';return businessUpgradeQuote')(candidateBusinessCatalog,()=>false,V2_BUSINESS_ECONOMY)
+  'businessV3Enabled','BUSINESS_V3_UPGRADE_PRICE_RATES','BUSINESS_V3_LEVEL_GROWTH_PERCENT',
+  helperSource+';return businessUpgradeQuote')(candidateBusinessCatalog,()=>false,V2_BUSINESS_ECONOMY,
+  ()=>false,{1:.08,2:.10,3:.12,4:.14},20)
 const hotel={price:4500000,profitHour:55000,capacityHours:16}
 test('Upgrade hotel soma os custos reais sem desconto nem duplicação',()=>{
   assert.equal(quote(hotel,1,5).cost,6300000)
