@@ -3558,7 +3558,9 @@ if(classesOnlyRebootEnabled()&&!winner.heroId&&winner.classApplied){
  await recordAwakeningTrial(client,{
   jid:winner.jid,source:'pvp',sourceId:'duel:'+duelTx,
   opponentJid:loser.jid,opponentLevel:Number(loser===A?au.level:bu.level),
-  metrics:{rounds:roundCount,damage:Number(pvpMetrics[winner.jid]?.damageDealt||0)}
+  metrics:{rounds:roundCount,damage:Number(pvpMetrics[winner.jid]?.damageDealt||0),
+   criticalHits:Number(pvpMetrics[winner.jid]?.criticalHits||0),
+   skillsUsed:Number(pvpMetrics[winner.jid]?.skillsUsed||0)}
  })
 }
 return {
