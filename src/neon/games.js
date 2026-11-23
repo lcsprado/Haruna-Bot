@@ -7,6 +7,7 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
+import {clanBenefits,clanBenefitsForUser,clanBenefitsForPlayers,applyClanXpBonus,applyClanDamageBonus,applyClanDefenseBonus} from './clan-level-bonuses.js'
 import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
@@ -1301,6 +1302,7 @@ export async function startRaid(chat,host,level=null,options={}){
     const forgeRows=(await c.query('SELECT jid,item_id,stars,level FROM equipment_star_forges WHERE jid=ANY($1::text[])',[ids])).rows
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
+    const clanBuffs=rebootEconomyEnabled()?await clanBenefitsForPlayers(c,ids):new Map()
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
       const heroId=await getActivePlayableHero(c,jid)
@@ -1343,7 +1345,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0),clanPerks:clanBuffs.get(jid)||clanBenefits(1)}
       vitalRaidOpening(s.players[jid])
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
@@ -1433,7 +1435,8 @@ async function finishRaidRewards(c,s,cfg,chat){
     const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
-    const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
+    const expBeforeClan=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
+    const exp=!lote&&rebootEconomyEnabled()?applyClanXpBonus(expBeforeClan,p.clanPerks):expBeforeClan
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
       ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems,skipNightRate:true}
@@ -1862,7 +1865,8 @@ export async function raidRound(chat,level){
       if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
-      const baseRaidDamage=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const plainRaidDamage=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const baseRaidDamage=rebootEconomyEnabled()&&s.mode!=='lote'?applyClanDamageBonus(plainRaidDamage,p.clanPerks):plainRaidDamage
       const curse=rebootEconomyEnabled()?raidNecromancerCurse(alive,p,baseRaidDamage,Number(s.hp)):{damage:baseRaidDamage,bonus:0,source:null}
       const dmg=curse.damage
       const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
@@ -1986,7 +1990,8 @@ export async function raidRound(chat,level){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*raidPlayerDefenseCoefficient(cfg.level))*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
-      const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
+      const preClanDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
+      const hitDamage=rebootEconomyEnabled()&&s.mode!=='lote'?applyClanDefenseBonus(preClanDamage,p.clanPerks):preClanDamage
       // Aura Consagrada IV: proteção cooperativa de 2%, sem acumular por Paladino.
       // O próprio Paladino recebe o efeito dentro de classDefense.
       const alreadyGuarded=p.classId==='paladin'&&p.classApplied&&
@@ -3672,6 +3677,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     // Lê composição do time, melhorias e despertar no mesmo round-trip.
     // Sem cache: qualquer troca de equipamento, pet ou evolução é observada
     // no próximo golpe, inclusive após reconexão/redeploy.
+    const clanPerks=rebootEconomyEnabled()?await clanBenefitsForUser(c,jid):clanBenefits(1)
     const combatSnapshot=(await c.query(`
       SELECT
         COALESCE((SELECT stage FROM player_awakenings WHERE jid=$1),0) AS awakening_stage,
@@ -3742,6 +3748,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const eclipseRelic=equippedRelic
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage+Math.round(rawBase*(crit?1.5:1)*Number(enchanted.damage||0))
+    if(rebootEconomyEnabled())damage=applyClanDamageBonus(damage,clanPerks)
     if(s.eventId===COLLAB_FARM_ID){
       // Cada participante pode remover no máximo 60% do HP da fase, sem exceções.
       // O cap vale para ataques manuais e automáticos, incluindo críticos e pets.
@@ -3782,7 +3789,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           awakeningState:s.participants[jid].awakeningState}
         :classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
       if(heroId)s.participants[jid].heroState=defResult.state
-      bossDamage=defResult.damage
+      bossDamage=rebootEconomyEnabled()?applyClanDefenseBonus(defResult.damage,clanPerks):defResult.damage
       s.participants[jid].awakeningState=defResult.awakeningState
       php=Math.max(0,php-bossDamage+Number(defResult.healAfter||0))
       if(pet){
@@ -3969,6 +3976,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const weeklyCashShares=s.mode==='weekly'?weeklyBossCashPoolShares(s.weekendKey,entries):null
       for(let i=0;i<entries.length;i++){
         const p=entries[i],position=i+1,share=p.damage/total
+        const clanRewardPerks=rebootEconomyEnabled()?await clanBenefitsForUser(c,p.jid):clanBenefits(1)
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
@@ -4066,6 +4074,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             :weeklyNov13Xp
           exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
+          if(rebootEconomyEnabled())exp=applyClanXpBonus(exp,clanRewardPerks)
           if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':(eventMode?'boss_event_eclipse_v2':'boss_common'))
           if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp&&(!commonV2||commonV2.xp>0)){
