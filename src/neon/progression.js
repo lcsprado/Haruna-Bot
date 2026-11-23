@@ -5,8 +5,9 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
-import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled,businessV4Enabled,businessV4EffectiveAt} from './reboot-economy-policy.js'
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
+import {businessV4CycleStatus} from './business-rebalance-v4.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
@@ -1488,10 +1489,25 @@ export async function collectBusinesses(jid){
       return {total:0,gross:0,tax:0,taxRate:10,details:[],cooldownRemaining}
     }
     let total=0
+    let nextCycleRemaining=0
     const details=[]
     for(const row of rows){
       const b=BUSINESSES.find(x=>x.id===row.business_id)
       if(!b) continue
+      if(businessV4Enabled()){
+        const catalog=candidateBusinessCatalog(b)
+        const cycle=businessV4CycleStatus({
+          lastCollectedAt:Number(row.last_collected_at),now,
+          cycleHours:catalog.cycleHours,
+          cutoverAt:businessV4EffectiveAt(),
+          accruedGross:Number(row.accrued_gross||0)
+        })
+        if(!cycle.ready){
+          nextCycleRemaining=nextCycleRemaining===0?cycle.remainingSeconds:
+            Math.min(nextCycleRemaining,cycle.remainingSeconds)
+          continue
+        }
+      }
       const earned=Number(row.accrued_gross||0)+(rebootEconomyEnabled()
         ?businessIntervalGrossV2(b,row,now):businessIntervalGross(b,row,now))
       if(earned>0){
@@ -1502,7 +1518,7 @@ export async function collectBusinesses(jid){
         await client.query('UPDATE user_businesses SET last_collected_at=$1,accrued_gross=0 WHERE id=$2',[now,row.id])
       }
     }
-    if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
+    if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details,nextCycleRemaining}
     const moneyMultiplier=rebootEconomyEnabled()?1:await getDoubleEventMultiplier(client,'money')
     const gross=Math.round(total*moneyMultiplier)
     const {tax,operating,net}=rebootEconomyEnabled()?businessSettlementV2(gross):{tax:Math.floor(gross*.10),operating:0,net:gross-Math.floor(gross*.10)}
@@ -1538,7 +1554,7 @@ export async function collectBusinesses(jid){
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
     if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_operating','operacao 10% V2')",[jid,operating])
-    return {total:creditedNet,gross,tax,operating,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
+    return {total:creditedNet,gross,tax,operating,taxRate:10,details,nextCycleRemaining,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
   })
 }
 
