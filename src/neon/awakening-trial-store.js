@@ -1,6 +1,7 @@
 // Registros transacionais de provas do Despertar IV/V: eventos idempotentes e auditaveis.
 // Nao contabiliza historicos anteriores; os resultados V1 e de Raidlote ficam intactos.
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
+import {challengeQuests} from './awakening-v1-challenges.js';
 
 export async function initAwakeningTrialStore(db){
  await db.query(`CREATE TABLE IF NOT EXISTS awakening_trial_events(
@@ -23,13 +24,13 @@ export async function initAwakeningTrialStore(db){
 
 export async function recordAwakeningTrial(client,{
  jid,source,sourceId,opponentJid=null,opponentLevel=null,raidLevel=null,
- manual=false,metrics={},heroId=null
+ manual=false,metrics={},heroId=null,classId=null
 }={}){
  if(!classesOnlyRebootEnabled()||!jid||heroId||!['raid','pvp','boss'].includes(source)||!String(sourceId||'').trim())return false;
  const status=(await client.query(`SELECT a.stage,s.class_id,s.class_applied
   FROM player_awakenings a JOIN stats s ON s.jid=a.jid
   WHERE a.jid=$1 AND a.stage IN (3,4)`,[jid])).rows[0];
- if(!status||!status.class_applied)return false;
+ if(!status||!status.class_applied||(classId&&status.class_id!==classId))return false;
  // A classe ativa deve ser a classe que realmente participou da batalha.
  // O historico da etapa anterior nunca e reutilizado para a proxima.
  const result=await client.query(`INSERT INTO awakening_trial_events
@@ -44,7 +45,6 @@ export async function recordAwakeningTrial(client,{
 }
 
 export async function awakeningTrialQuests(client,{jid,stage,classId,baseline}={}){
- const {challengeQuests}=await import('./awakening-v1-challenges.js');
  const after=Math.max(0,Math.floor(Number(baseline?.__challenge_since)||0));
  const {rows}=await client.query(`SELECT id,source,source_id,opponent_jid,opponent_level,
  raid_level,manual,metrics,happened_at FROM awakening_trial_events
