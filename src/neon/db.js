@@ -5212,6 +5212,14 @@ await ensureUser(jid)
 hours=Number(hours)
 if(!SLEEP_CHOICES.includes(hours)) throw new Error('Escolha 1, 4 ou 8 horas de sono.')
 return transaction(async client=>{
+// A mesma trava transacional e usada por Raidlote e Carpinar. Impede a
+// corrida de duas requisições concorrentes vindas de Web/WhatsApp.
+await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+const activeLote=(await client.query(
+ "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",
+ [jid]
+)).rows[0]
+if(activeLote)throw new Error('⚔️ Você está em um Raidlote ativo. Aguarde o término ou cancele o pacote antes de dormir.')
 const now=Math.floor(Date.now()/1000)
 const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(carp&&Number(carp.ends_at)>now) throw new Error('Você está carpindo e não pode dormir agora. Use !carpinarsair se quiser encerrar antes.')
