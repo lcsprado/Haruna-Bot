@@ -9,6 +9,7 @@ import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudg
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
 import {businessV4CycleStatus} from './business-rebalance-v4.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
+import {clanProgress,clanLevelFromXp} from './clan-level-bonuses.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
@@ -378,7 +379,7 @@ export async function getClanForUser(jid){
   `,[jid])
   if(!rows[0]) return null
   const c=rows[0]
-  return {...c,level:1+Math.floor(Number(c.xp||0)/25000)}
+  return {...c,...clanProgress(c.xp)}
 }
 
 export async function createClan(jid,name){
@@ -408,7 +409,7 @@ export async function createClan(jid,name){
       "INSERT INTO clan_members(jid,clan_id,role) VALUES($1,$2,'leader')",
       [jid,clan.id]
     )
-    return {...clan,role:'leader',members:1,level:1}
+    return {...clan,role:'leader',members:1,...clanProgress(0)}
   })
 }
 
@@ -545,7 +546,8 @@ export async function donateClan(jid,amount){
       amount,
       treasury:Number(row.treasury),
       xp:Number(row.xp),
-      level:1+Math.floor(Number(row.xp)/25000)
+      ...clanProgress(row.xp),
+      leveledUp:clanLevelFromXp(Number(row.xp)-amount)<clanLevelFromXp(row.xp)
     }
   })
 }
@@ -579,7 +581,7 @@ export async function listClans(limit=10){
     ORDER BY c.xp DESC,c.treasury DESC,c.created_at ASC
     LIMIT $1
   `,[limit])
-  return rows.map(r=>({...r,level:1+Math.floor(Number(r.xp||0)/25000)}))
+  return rows.map(r=>({...r,...clanProgress(r.xp)}))
 }
 
 function resolveCatalog(input,catalog){
