@@ -7,7 +7,7 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
-import {clanBenefits,clanBenefitsForUser,clanBenefitsForPlayers,applyClanXpBonus,applyClanDamageBonus,applyClanDefenseBonus} from './clan-level-bonuses.js'
+import {clanBenefits,clanBenefitsForUser,clanBenefitsForPlayers,applyClanXpBonus,applyClanDamageBonus,applyClanDefenseBonus,recordClanCoopVictory} from './clan-level-bonuses.js'
 import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
@@ -1374,6 +1374,15 @@ async function finishRaidRewards(c,s,cfg,chat){
   const loteReduced=lote&&(rebootEconomyEnabled()||s.auctionPassManualRewards!==true)
   const ranked=raidV2EligibleRewards(Object.values(s.players||{})).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
+  // Apenas vitória manual, com 2+ integrantes ativos do mesmo clã causando
+  // pelo menos 2% do dano cada. Créditos idempotentes e atômicos com a Raid.
+  // Concluir a 3ª Raid libera bônus SOMENTE na próxima entrada em combate.
+  if(rebootEconomyEnabled()&&!lote){
+    await recordClanCoopVictory(c,{
+      raidKey:'raid:'+String(chat)+':'+String(s.startedAt),
+      participants:Object.values(s.players||{}),manual:true
+    })
+  }
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
   // A compensação por desconexões usa uma janela dinâmica persistida no Neon.
   const now=Date.now()
