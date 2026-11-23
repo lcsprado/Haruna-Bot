@@ -2133,7 +2133,7 @@ export async function raidRound(chat,level){
           if(!charged)throw new Error('Poção indisponível durante a cura automática da Raid')
           p.hp=Math.min(Number(p.maxHp),beforePotionHeal+chosen.heal)
           const healed=Math.max(0,Number(p.hp)-beforePotionHeal)
-          p.potionHealing=Number(p.potionHealing||0)+healed
+          p.potionHealing=Number(p.potionHealing||0)+Math.max(0,Number(p.hp)-beforePotionHeal)
           p.heals=Number(p.heals||0)+1
           const row=potionRows.find(x=>x.jid===p.jid&&x.item_id===chosen.item_id)
           if(row)row.quantity=Number(charged.quantity)
