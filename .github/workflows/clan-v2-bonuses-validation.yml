@@ -1,0 +1,29 @@
+name: Clan V2 - bonuses and donation progression
+on:
+  pull_request:
+    paths:
+      - 'src/neon/clan-level-bonuses.js'
+      - 'src/neon/progression.js'
+      - 'src/neon/games.js'
+      - 'src/neon/index.js'
+      - 'test/clan-level-bonuses-v2-20261123.test.mjs'
+      - '.github/workflows/clan-v2-bonuses-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/neon/clan-level-bonuses.js
+          node --check src/neon/progression.js
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+      - name: Clan perks and donation regression tests
+        run: node --test test/clan-level-bonuses-v2-20261123.test.mjs test/clan-donation-ranking-20261107.test.mjs
