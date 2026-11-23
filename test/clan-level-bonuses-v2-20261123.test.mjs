@@ -118,7 +118,7 @@ test('crédito cooperativo só em Raid manual, com 2+ do mesmo clã e 2% do dano
  const total=p.reduce((sum,x)=>sum+x.damage,0);
  assert.ok(p[0].damage/total<.02);
  assert.equal(await recordClanCoopVictory(client,{raidKey:'raid-1',participants:p,manual:true}),0,'abaixo de 2% nao credita');
- assert.equal(writes.length,1);
+ assert.equal(writes.length,0,'sem dois participantes elegíveis não toca no banco');
  const valid=[{jid:'a',damage:600},{jid:'b',damage:400},{jid:'c',damage:3000}];
  assert.equal(await recordClanCoopVictory(client,{raidKey:'raid-2',participants:valid,manual:true}),2);
  assert.equal(await recordClanCoopVictory(client,{raidKey:'raid-2',participants:valid,manual:true}),0,'mesma raid nao duplica');
