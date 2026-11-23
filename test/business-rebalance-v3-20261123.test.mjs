@@ -12,7 +12,7 @@ import {V2_BUSINESS_ECONOMY,rebootEconomyEnabled} from '../src/neon/reboot-econo
 import {readFileSync} from 'node:fs'
 const progressionSource=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
 const catalogSource=progressionSource.slice(progressionSource.indexOf('export const BUSINESSES=['),progressionSource.indexOf('const MISSION_POOL='))
-const BUSINESSES=[...catalogSource.matchAll(/\\{id:'([^']+)',name:'([^']+)',price:(\\d+),profitHour:(\\d+),capacityHours:(\\d+)\\}/g)]
+const BUSINESSES=[...catalogSource.matchAll(/\{id:'([^']+)',name:'([^']+)',price:(\d+),profitHour:(\d+),capacityHours:(\d+)\}/g)]
   .map(([,id,name,price,profitHour,capacityHours])=>({id,name,price:Number(price),profitHour:Number(profitHour),capacityHours:Number(capacityHours)}))
 const helperSource=progressionSource.slice(
  progressionSource.indexOf('export function businessUpgradeQuote('),
