@@ -5062,6 +5062,12 @@ clearQuickFlow(chat,sender)
 await reply('👹 Você está em uma sessão automática de Boss. Espere ela terminar antes de carpinar.')
 return true
 }
+const activeLote=await getRaidLoteJob(db,sender)
+if(activeLote&&['queued','running'].includes(activeLote.status)){
+clearQuickFlow(chat,sender)
+await reply('⚔️ Você já está no Raidlote. Aguarde o término ou cancele o pacote antes de carpinar.')
+return true
+}
 const r=await startPlayerCarpinar(sender,choice.hours)
 clearQuickFlow(chat,sender)
 await reply(
@@ -11169,6 +11175,11 @@ if(cmd==='carpinar'){
 const bossBusy=[...bossSessions.keys()].some(key=>key.endsWith('|'+sender))
 if(bossBusy){
 await reply('👹 Você está em uma sessão automática de Boss. Espere ela terminar antes de carpinar.')
+continue
+}
+const activeLote=await getRaidLoteJob(db,sender)
+if(activeLote&&['queued','running'].includes(activeLote.status)){
+await reply('⚔️ Você já está no Raidlote. Aguarde o término ou cancele o pacote antes de carpinar.')
 continue
 }
 const option=Number(args[0]||0)
