@@ -1,6 +1,18 @@
 // Simulação offline e reproduzível. Não conecta Aiven, WhatsApp ou Render.
-import {BUSINESSES,businessUpgradeQuote} from '../src/neon/progression.js'
-import {businessV3CatalogPatch} from '../src/neon/business-rebalance-v3.js'
+import {readFileSync} from 'node:fs'
+import {businessV3CatalogPatch,BUSINESS_V3_UPGRADE_PRICE_RATES,BUSINESS_V3_LEVEL_GROWTH_PERCENT} from '../src/neon/business-rebalance-v3.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled} from '../src/neon/reboot-economy-policy.js'
+const src=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
+const catalog=src.slice(src.indexOf('export const BUSINESSES=['),src.indexOf('const MISSION_POOL='))
+const BUSINESSES=[...catalog.matchAll(/\{id:'([^']+)',name:'([^']+)',price:(\d+),profitHour:(\d+),capacityHours:(\d+)\}/g)]
+  .map(([,id,name,price,profitHour,capacityHours])=>({id,name,price:Number(price),profitHour:Number(profitHour),capacityHours:Number(capacityHours)}))
+const helper=src.slice(src.indexOf('export function businessUpgradeQuote('),src.indexOf('export async function upgradeBusiness(')).replace(/^export /gm,'')
+const businessUpgradeQuote=new Function(
+ 'candidateBusinessCatalog','rebootEconomyEnabled','V2_BUSINESS_ECONOMY',
+ 'businessV3Enabled','BUSINESS_V3_UPGRADE_PRICE_RATES','BUSINESS_V3_LEVEL_GROWTH_PERCENT',
+ helper+';return businessUpgradeQuote'
+)(candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,
+ businessV3Enabled,BUSINESS_V3_UPGRADE_PRICE_RATES,BUSINESS_V3_LEVEL_GROWTH_PERCENT)
 process.env.ALPHA_REBOOT_MODE='classes_only'
 process.env.ALPHA_BUSINESS_REBALANCE_V3='on'
 const hoursScenarios=[7,10,12,24]
