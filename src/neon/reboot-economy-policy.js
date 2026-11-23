@@ -6,6 +6,7 @@ import {classesOnlyRebootEnabled} from './reboot-classes-policy.js';
 import {equipmentCatalogPrice} from './reboot-gear-economy.js';
 import {consumableCatalogPrice} from './reboot-progression-rewards.js';
 import {V2_RAID_DIFFICULTY} from './reboot-combat-progression.js';
+import {businessV3CatalogPatch,businessV3IntervalGross} from './business-rebalance-v3.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
   weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
@@ -194,26 +195,44 @@ export function raid70V2Contributors(players,{level,enabled=rebootEconomyEnabled
   const count=new Set(qualified.map(p=>p.jid)).size;
   return {valid:total>0&&count>=3,required:3,contributors:count};
 }
-export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled()}={}){
+// Novo perfil fica desligado por padrão. Exige ativação explícita e corte UTC.
+export function businessV3Enabled(env=process.env){
+ return rebootEconomyEnabled(env)&&env.ALPHA_BUSINESS_REBALANCE_V3==='on'
+}
+export function businessV3EffectiveAt(env=process.env){
+ if(!businessV3Enabled(env))return null
+ const n=Number(env.ALPHA_BUSINESS_V3_EFFECTIVE_AT_UNIX)
+ if(!Number.isSafeInteger(n)||n<1700000000||n>2200000000)
+   throw Error('Ativação V3 exige ALPHA_BUSINESS_V3_EFFECTIVE_AT_UNIX em segundos UTC válidos.')
+ return n
+}
+export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled(),v3=businessV3Enabled()}={}){
  if(!business)return business;
  if(!enabled)return business;
+ if(v3)return businessV3CatalogPatch(business);
  const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business.id];
  if(!Number.isSafeInteger(hourly)||hourly<0)throw new Error('Negócio sem tarifa V2 aprovada.');
- // Mantém aproximadamente o orçamento de uma coleta diária, mesmo se o jogador coletar a cada hora.
- // O catálogo e o cálculo de crédito usam a mesma tarifa inteira efetiva.
  const capacity=Number(business.capacityHours);
  if(!Number.isSafeInteger(capacity)||capacity<=0||capacity>24)throw Error('Capacidade inválida.');
  return {...business,profitHour:Math.floor(hourly*capacity/24),capacityHours:24};
 }
 export function businessIntervalGrossV2(business,row,now){
- const effective=candidateBusinessCatalog(business,{enabled:true});
- const hourly=effective?.profitHour,cap=Number(effective?.capacityHours);
+ const legacy=candidateBusinessCatalog(business,{enabled:true,v3:false});
+ const hourly=legacy?.profitHour,cap=Number(legacy?.capacityHours);
  const end=Number(now),start=Number(row?.last_collected_at??end),level=Number(row?.level||1);
  if(!Number.isSafeInteger(hourly)||!Number.isFinite(cap)||cap<=0||!Number.isFinite(end)||
     !Number.isFinite(start)||!Number.isInteger(level)||level<1||level>5)
     throw new Error('Dados de coleta V2 inválidos.');
+ if(businessV3Enabled()){
+   const newRate=candidateBusinessCatalog(business,{enabled:true,v3:true});
+   return businessV3IntervalGross({
+     start,now:end,effectiveAt:businessV3EffectiveAt(),baseHourOld:hourly,
+     baseHourNew:newRate.profitHour,level,maxHours:cap,
+     oldGrowthPercent:Math.round(V2_BUSINESS_ECONOMY.levelBonus*100)
+   });
+ }
  const seconds=Math.min(Math.max(0,end-start),cap*3600);
- // Inteiros em pontos percentuais: evita perder R$ 1 por erro binário em 1,4.
+ // Inteiros em pontos percentuais: evita perder R$ 1 por erro binário.
  const growthPercent=100+(level-1)*Math.round(V2_BUSINESS_ECONOMY.levelBonus*100);
  return Math.floor(seconds*hourly*growthPercent/(3600*100));
 }

@@ -1,0 +1,48 @@
+name: Alpha Business V3 - ROI e ciclos isolados
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/business-rebalance-v3.js'
+      - 'src/neon/reboot-economy-policy.js'
+      - 'src/neon/progression.js'
+      - 'src/neon/index.js'
+      - 'test/business-rebalance-v3-20261123.test.mjs'
+      - 'scripts/business-v3-roi.mjs'
+      - 'docs/business-v3-roi-cycles-20261123.md'
+      - '.github/workflows/business-v3-roi-cycles.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-business-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências mínimas e isoladas, sem alterar lockfile
+        run: |
+          mkdir -p "$RUNNER_TEMP/business-v3-deps"
+          npm install --prefix "$RUNNER_TEMP/business-v3-deps" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund pg@8.13.0 dotenv@16.4.7
+          ln -s "$RUNNER_TEMP/business-v3-deps/node_modules" "$GITHUB_WORKSPACE/node_modules"
+      - name: Verificar sintaxe, incluindo WhatsApp
+        run: |
+          node --check src/neon/business-rebalance-v3.js
+          node --check src/neon/reboot-economy-policy.js
+          node --check src/neon/progression.js
+          node --check src/neon/index.js
+          node --check scripts/business-v3-roi.mjs
+      - name: Testar V3 e regressões V1/V2
+        env:
+          ALPHA_BUSINESS_REBALANCE_V3: 'off'
+        run: |
+          node --test test/business-rebalance-v3-20261123.test.mjs test/reboot-economy-policy.test.mjs test/business-multilevel-20261013.test.mjs test/business-financial-20261020.test.mjs
+      - name: Simulação offline de retorno e limite de emissão
+        env:
+          ALPHA_BUSINESS_REBALANCE_V3: 'off'
+        run: node scripts/business-v3-roi.mjs > "${RUNNER_TEMP}/business-v3-roi.json"
