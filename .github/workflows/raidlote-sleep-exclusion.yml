@@ -1,0 +1,26 @@
+name: Raidlote and sleep exclusivity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'test/raidlote-sleep-exclusion-20261123.test.mjs'
+      - 'test/raid-lote-store.test.js'
+      - '.github/workflows/raidlote-sleep-exclusion.yml'
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/raid-lote-store.js
+          node --check test/raidlote-sleep-exclusion-20261123.test.mjs
+      - name: Mutual exclusion and Raidlote regressions
+        run: node --test test/raidlote-sleep-exclusion-20261123.test.mjs test/carpinar-raidlote-exclusion-20261122.test.mjs test/raid-lote-store.test.js test/raid-lote-continuous-v2.test.mjs
