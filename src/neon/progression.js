@@ -5,7 +5,8 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
-import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2} from './reboot-economy-policy.js'
+import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
+import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
@@ -1550,13 +1551,13 @@ export function businessUpgradeQuote(business,currentLevel,targetLevel){
   if(fromLevel>=5)throw new Error('Esse negócio já está no nível máximo (5).')
   if(!Number.isInteger(toLevel)||toLevel<=fromLevel||toLevel>5)
     throw new Error('Escolha um nível final entre '+(fromLevel+1)+' e 5.')
-  const rates={1:0.20,2:0.30,3:0.40,4:0.50}
+  const rates=businessV3Enabled()?BUSINESS_V3_UPGRADE_PRICE_RATES:{1:0.20,2:0.30,3:0.40,4:0.50}
   let cost=0
   for(let level=fromLevel;level<toLevel;level++)
     cost+=Math.floor(Number(business.price)*rates[level])
   const effectiveBusiness=candidateBusinessCatalog(business)
   const base=effectiveBusiness.profitHour
-  const growth=rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:0.25
+  const growth=businessV3Enabled()?BUSINESS_V3_LEVEL_GROWTH_PERCENT/100:(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:0.25)
   const extraHours=rebootEconomyEnabled()?0:1
   return {fromLevel,toLevel,levelsGained:toLevel-fromLevel,cost,
     previousProfitHour:Math.floor(base*(1+(fromLevel-1)*growth)),
@@ -1588,7 +1589,7 @@ export async function upgradeBusiness(jid,input,targetLevel=null){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",
       [jid,quote.cost,business.name+' Lv.'+level+' → Lv.'+target])
     return {...candidateBusinessCatalog(business),...quote,level:target,cost:quote.cost,
-      multiplier:1+(target-1)*(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25),cash:cash-quote.cost}
+      multiplier:1+(target-1)*(businessV3Enabled()?BUSINESS_V3_LEVEL_GROWTH_PERCENT/100:(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25)),cash:cash-quote.cost}
   })
 }
 
