@@ -8,7 +8,22 @@ import {
   candidateBusinessCatalog,businessV3Enabled,businessV3EffectiveAt,
   businessIntervalGrossV2,businessSettlementV2
 } from '../src/neon/reboot-economy-policy.js'
-import {BUSINESSES,businessUpgradeQuote} from '../src/neon/progression.js'
+import {V2_BUSINESS_ECONOMY,rebootEconomyEnabled} from '../src/neon/reboot-economy-policy.js'
+import {readFileSync} from 'node:fs'
+const progressionSource=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
+const catalogSource=progressionSource.slice(progressionSource.indexOf('export const BUSINESSES=['),progressionSource.indexOf('const MISSION_POOL='))
+const BUSINESSES=[...catalogSource.matchAll(/\\{id:'([^']+)',name:'([^']+)',price:(\\d+),profitHour:(\\d+),capacityHours:(\\d+)\\}/g)]
+  .map(([,id,name,price,profitHour,capacityHours])=>({id,name,price:Number(price),profitHour:Number(profitHour),capacityHours:Number(capacityHours)}))
+const helperSource=progressionSource.slice(
+ progressionSource.indexOf('export function businessUpgradeQuote('),
+ progressionSource.indexOf('export async function upgradeBusiness(')
+).replace(/^export /gm,'')
+const businessUpgradeQuote=new Function(
+ 'candidateBusinessCatalog','rebootEconomyEnabled','V2_BUSINESS_ECONOMY',
+ 'businessV3Enabled','BUSINESS_V3_UPGRADE_PRICE_RATES','BUSINESS_V3_LEVEL_GROWTH_PERCENT',
+ helperSource+';return businessUpgradeQuote'
+)(candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,
+ businessV3Enabled,BUSINESS_V3_UPGRADE_PRICE_RATES,BUSINESS_V3_LEVEL_GROWTH_PERCENT)
 
 const sample={
   carrinho_lanche:15000,barbearia:45000,loja_roupas:120000,restaurante:300000,
