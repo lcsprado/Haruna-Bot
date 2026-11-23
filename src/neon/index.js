@@ -776,12 +776,12 @@ if(raidFinalFlushBusy || typeof raidAutoReply!=='function' || trevoHealth.whatsa
 raidFinalFlushBusy=true
 try{
 const {rows}=await db.query(
-"SELECT key,value FROM trevo_settings WHERE key LIKE $1 ORDER BY updated_at ASC LIMIT 20",
+"SELECT key,value FROM trevo_settings WHERE key LIKE $1 AND COALESCE(value->>'deliveryAttempted','false')='false' AND value->>'chat' LIKE '%@g.us' ORDER BY updated_at ASC LIMIT 20",
 [raidFinalNoticePrefix+'%']
 )
 for(const row of rows){
 const msg=row.value||{}
-if(!msg.chat || !msg.text) continue
+if(!String(msg.chat||'').endsWith('@g.us') || !msg.text) continue
 const claimed=await db.query(
 "UPDATE trevo_settings SET value=jsonb_set(value,'{deliveryAttempted}','true'::jsonb),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1 AND value=$2::jsonb AND COALESCE(value->>'deliveryAttempted','false')='false' RETURNING key",
 [row.key,JSON.stringify(msg)]
@@ -800,12 +800,22 @@ console.warn('[Raid Final Notice] envio sem confirmação; reenvio automático b
 }catch(err){console.error('[Raid Final Notice] fila pendente',err?.message||err)}
 finally{raidFinalFlushBusy=false}
 }
-async function persistRaidFinalNotice(chat,level,reply,text){
-const key=raidFinalNoticePrefix+chat+':'+Number(level)
-const value={chat,text,createdAt:Date.now()}
+async function persistRaidFinalNotice(chat,level,raidId,reply,text){
+// Salas internas do Raidlote nao sao destinos WhatsApp: elas recebem um recibo
+// privado somente quando o pacote termina, por outra fila dedicada.
+if(!String(chat||'').endsWith('@g.us'))return false
+const sessionId=Number(raidId)
+if(!Number.isSafeInteger(sessionId)||sessionId<=0){
+ console.error('[Raid Final Notice] identificador da batalha invalido; aviso manual nao persistido')
+ return false
+}
+// Chave por batalha, nao por chat+nivel: uma nova Raid jamais sobrescreve
+// o resultado da anterior caso a rede esteja fora do ar.
+const key=raidFinalNoticePrefix+chat+':'+Number(level)+':'+sessionId
+const value={chat,text,createdAt:Date.now(),raidId:sessionId}
 try{
 await db.query(
-"INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT",
+"INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
 [key,JSON.stringify(value)]
 )
 await flushRaidFinalNotices()
@@ -972,12 +982,12 @@ if(x.gearDrop) text+=x.gearDrop.rarity==='Lendário'&&!x.gearDrop.normalPresenta
 ⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
 })
 if(raidPetHealTally.size)text+='\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals()
-void persistRaidFinalNotice(chat,level,reply,text)
+void persistRaidFinalNotice(chat,level,r.raidId,reply,text)
 return
 }
 if(r.failed){
 const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
-void persistRaidFinalNotice(chat,level,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
+void persistRaidFinalNotice(chat,level,r.raidId,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
 ❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
 ⚠️ Motivo: *${why}*.
 🔑 A chave foi consumida. Não há recompensa em caso de derrota.${raidPetHealTally.size?'\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals():''}`)
@@ -2807,7 +2817,8 @@ raidAutoWatchdog=setInterval(()=>{
 if(neonEcoMode && raidRuns.size===0 && raidAutoRetryAt.size===0)return
 void ensureActiveRaidRuns()
 },4000)
-if(!neonEcoMode)setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
+// Mesmo no modo Eco, a fila final precisa ser consultada apos reconexoes.
+setInterval(()=>{void flushRaidFinalNotices()},neonEcoMode?60000:20000).unref?.()
 raidAutoWatchdog.unref?.()
 }
 function formatEventNotice(text){
