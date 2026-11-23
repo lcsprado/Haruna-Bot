@@ -30,6 +30,7 @@ import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-comba
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
+import {recordAwakeningTrial} from './awakening-trial-store.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
@@ -3550,6 +3551,16 @@ const winXpGain=Math.round(40*xpMultiplier)
 const loseXpGain=Math.round(15*xpMultiplier)
 const winExp=await applyExp(client,winner.jid,winXpGain)
 const loseExp=await applyExp(client,loser.jid,loseXpGain)
+// A prova PvP pertence ao vencedor, ao adversario real e a esta transacao unica.
+// O log permite limitar dois resultados por adversario/dia sem mexer no PvP normal.
+if(classesOnlyRebootEnabled()&&!winner.heroId&&winner.classApplied){
+ const duelTx=(await client.query('SELECT txid_current()::text AS id')).rows[0]?.id
+ await recordAwakeningTrial(client,{
+  jid:winner.jid,source:'pvp',sourceId:'duel:'+duelTx,
+  opponentJid:loser.jid,opponentLevel:Number(loser===A?au.level:bu.level),
+  metrics:{rounds:roundCount,damage:Number(pvpMetrics[winner.jid]?.damageDealt||0)}
+ })
+}
 return {
 ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
