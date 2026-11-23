@@ -2,7 +2,7 @@ import {potionHpReceipt} from './potion-hp-receipt.js'
 import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
-import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled} from './reboot-economy-policy.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled,businessV4Enabled} from './reboot-economy-policy.js'
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT} from './business-rebalance-v3.js'
 import {claimBolsaFamiliaAlpha,activeBolsaFamiliaAlphaCandidates} from './bolsa-familia-alpha.js'
 import {createBolsaFamiliaAlphaAutoRunner} from './bolsa-familia-alpha-auto.js'
@@ -12247,7 +12247,7 @@ text+=businessV3Enabled()
  ?`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 Líquido/h ~R$ ${fmt(Math.floor(gross*.8))} • ciclo ${b.cycleHours}h • acumula 24h\n`
  :`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(gross)}/h • ⏳ ${b.capacityHours+(rebootEconomyEnabled()?0:level-1)}h\n`
 })
-if(businessV3Enabled())text+='\n🕒 Ciclo é referência de resgate; a receita acumula até 24h, inclusive offline.'
+if(businessV3Enabled())text+=businessV4Enabled()?'\n🕒 Coleta liberada após o ciclo de cada negócio; acumula até 24h mesmo offline.':'\n🕒 Ciclo é referência de resgate; a receita acumula até 24h, inclusive offline.'
 text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
 await reply(text.trim())
 } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva','missao','missão','missaostatus','missãostatus','statusmissao','statusmissão'].includes(cmd)){
@@ -12283,6 +12283,8 @@ await reply(`⚡ *VOCÊ FOI O MAIS RÁPIDO!*\n\n💰 Dinheiro: *R$ ${fmt(r.rewar
 const r=await collectBusinesses(sender)
 if(!r.total && !r.recoveryRetained) return await reply(r.cooldownRemaining
 ? '⏳ *COLETA EM ESPERA*\n\nSeus negócios continuam produzindo. Próxima coleta em *'+Math.ceil(r.cooldownRemaining/60)+' min*.'
+: r.nextCycleRemaining
+? '🏪 *PRODUÇÃO EM ANDAMENTO*\n\nPróxima liberação de receita em *'+Math.ceil(r.nextCycleRemaining/60)+' min*. O lucro continua acumulando até 24h, inclusive offline.'
 : '⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
 let text='💰 *LUCROS COLETADOS!*\n\n'
 const collectionTime=formatBusinessCollectionElapsed(r.collectionElapsedSeconds)
