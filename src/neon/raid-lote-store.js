@@ -159,6 +159,13 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
       }
       return {job:prior,quote:originalQuote,alreadyPurchased:true}
     }
+    // Exclusao mutua com Carpinar: o mesmo advisory lock e usado ao
+    // iniciar trabalho AFK; a validacao no banco impede corridas entre comandos.
+    const carpinar=(await c.query(
+      "SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+      [jid]
+    )).rows[0]
+    if(carpinar)throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
     const active=(await c.query(
       "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status=ANY($2::text[]) FOR UPDATE",
       [jid,openStatuses]
@@ -278,6 +285,13 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
         throw new Error('Confirmação repetida com parâmetros divergentes')
       return {job:old,alreadyPurchased:true,firstPrice:null}
     }
+    // Exclusao mutua com Carpinar: o mesmo advisory lock e usado ao
+    // iniciar trabalho AFK; a validacao no banco impede corridas entre comandos.
+    const carpinar=(await c.query(
+      "SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+      [jid]
+    )).rows[0]
+    if(carpinar)throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
     const active=(await c.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') FOR UPDATE",[jid])).rows[0]
     if(active)throw new Error('Já existe Raidlote em andamento')
     const busy=(await c.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]

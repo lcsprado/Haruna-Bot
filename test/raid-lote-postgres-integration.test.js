@@ -16,6 +16,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
   const request={jid,level:75,attempts:10,requestKey:'postgres-real-purchase-0001',confirmed:true}
   try{
     await db.query('CREATE TABLE users(jid TEXT PRIMARY KEY,level INTEGER NOT NULL)')
+    await db.query('CREATE TABLE player_carpinar(jid TEXT PRIMARY KEY REFERENCES users(jid),ends_at BIGINT NOT NULL)')
     await db.query('CREATE TABLE stats(jid TEXT PRIMARY KEY,hp BIGINT NOT NULL)')
     await db.query('CREATE TABLE inventories(jid TEXT NOT NULL,item_id TEXT NOT NULL,quantity INTEGER NOT NULL,PRIMARY KEY(jid,item_id))')
     await db.query('CREATE TABLE wallets(jid TEXT PRIMARY KEY,cash BIGINT NOT NULL,bank BIGINT NOT NULL)')
@@ -29,6 +30,11 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     await db.query('INSERT INTO wallets VALUES($1,2000000,4000000)',[jid])
     for(let n=0;n<3;n++)await db.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1000,'minigame','raid_75')",[jid])
 
+    // Não permitir que o Raidlote seja ativado durante Carpinar.
+    await db.query("INSERT INTO player_carpinar(jid,ends_at) VALUES($1,EXTRACT(EPOCH FROM NOW())::BIGINT+3600)",[jid])
+    await assert.rejects(purchaseRaidLote(db,request,{getCatalog:catalog}),/carpindo/)
+    assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0].cash),2000000)
+    await db.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
     const first=await purchaseRaidLote(db,request,{getCatalog:catalog})
     assert.equal(first.alreadyPurchased,false)
     assert.equal(first.quote.totalPrice,3840000)
@@ -190,6 +196,9 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       )
       const req={jid:v2Jid,level:10,durationHours:4,
         requestKey:'v2-timed-four-hours-idempotent',confirmed:true}
+      await db.query("INSERT INTO player_carpinar(jid,ends_at) VALUES($1,EXTRACT(EPOCH FROM NOW())::BIGINT+3600)",[v2Jid])
+      await assert.rejects(startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog}),/carpindo/)
+      await db.query('DELETE FROM player_carpinar WHERE jid=$1',[v2Jid])
       const plan=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
       assert.equal(plan.firstPrice.totalPrice,2200)
       assert.equal(plan.job.duration_hours,4)

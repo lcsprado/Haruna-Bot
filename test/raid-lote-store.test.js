@@ -6,7 +6,7 @@ import {
 
 const catalog=()=>[{level:75,minLevel:70,keyPrice:480000}]
 const order={jid:'test-player@s.whatsapp.net',level:75,attempts:10,requestKey:'wamsg-unique-0001',confirmed:true}
-function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3,prior=null,active=false,publicRaid=false,failOnLog=false,pass=null,usedPassPackages=0}={}){
+function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3,prior=null,active=false,carpinar=false,publicRaid=false,failOnLog=false,pass=null,usedPassPackages=0}={}){
   const statements=[],amounts={wallet:null,city:null,keys:null,service:null},events=[]
   let tx=false
   const db={connect:async()=>({
@@ -17,6 +17,7 @@ function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3
       if(sql==='COMMIT'){tx=false;events.push('COMMIT');return {rows:[]}}
       if(sql==='ROLLBACK'){tx=false;events.push('ROLLBACK');return {rows:[]}}
       if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]}
+      if(sql.includes('FROM player_carpinar'))return {rows:carpinar?[{active:1}]:[]}
       if(sql.includes('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2'))return {rows:prior?[prior]:[]}
       if(sql.includes('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE'))return {rows:pass?[{value:pass}]:[]}
        if(sql.includes('SELECT COUNT(*)::int AS n FROM raid_lote_jobs WHERE jid=$1 AND created_at>='))return {rows:[{n:usedPassPackages}]}
@@ -129,6 +130,17 @@ test('exige tres vitorias manuais; bloqueia quando jogador ja esta ocupado',asyn
   const b=dbForPurchase({publicRaid:true})
   await assert.rejects(()=>purchaseRaidLote(b.db,order,{getCatalog:catalog}),/Raid em andamento/)
 })
+test('trabalho Carpinar ativo bloqueia compra de RaidLote sem débito',async()=>{
+  const f=dbForPurchase({carpinar:true})
+  await assert.rejects(
+    purchaseRaidLote(f.db,order,{getCatalog:catalog}),
+    /carpindo/
+  )
+  assert.equal(f.amounts.wallet,null)
+  assert.ok(f.statements.some(x=>x.sql.includes('FROM player_carpinar')))
+  assert.equal(f.statements.some(x=>x.sql.includes('INSERT INTO raid_lote_jobs')),false)
+})
+
 test('nao permite compra silenciosa sem confirmacao',async()=>{
   const f=dbForPurchase()
   await assert.rejects(()=>purchaseRaidLote(f.db,{...order,confirmed:false},{getCatalog:catalog}),/confirmacao/)
@@ -204,6 +216,7 @@ test('V2: ativação cria sessão de tempo, sem débito e sem limite de tentativ
   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rows:[]}
   if(sql.includes('pg_advisory_xact_lock'))return {rows:[]}
   if(sql.includes('SELECT * FROM raid_lote_jobs'))return {rows:[]}
+  if(sql.includes('FROM player_carpinar'))return {rows:[]}
   if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:[]}
   if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:[]}
   if(sql.includes('SELECT level FROM users'))return {rows:[{level:100}]}
