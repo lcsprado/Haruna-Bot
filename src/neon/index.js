@@ -13486,6 +13486,21 @@ if(action==='status'){
   const totalCash=reports.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.cash||0),0),0)
   const {totalXp:totalExp,bonusXp:totalBoostXp}=summarizeRaidLoteXp(reports)
   const totalPetXp=reports.filter(x=>x.status==='won').reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.petXp||0),0),0)
+  // Contabilizar somente o consumo automatico comprovado nas tentativas deste pacote.
+  // A tentativa ativa ainda nao tem recibo, por isso lemos seu contador na sala.
+  const closedPotions=reports.reduce((sum,attempt)=>sum+
+    (attempt.reward_summary?.rewards||[]).reduce((n,reward)=>n+Math.max(0,Number(reward.potionUses||0)),0),0)
+  let activePotions=0
+  if(job.current_attempt_id){
+    const {rows}=await db.query(`
+      SELECT COALESCE((g.state->'players'->j.jid->>'heals')::integer,0) AS used
+      FROM raid_lote_jobs j JOIN raid_lote_attempts a ON a.id=j.current_attempt_id
+      JOIN trevo_games g ON g.chat_jid=a.raid_chat AND g.game_type=('raid:'||j.level::text)
+      WHERE j.id=$1 AND j.jid=$2 AND a.status='active' AND g.state->>'status'='active'
+    `,[job.id,target])
+    activePotions=Math.max(0,Number(rows[0]?.used||0))
+  }
+  const totalAutoPotions=closedPotions+activePotions
   const progress=await getRaidLoteCurrentProgress(db,job)
   const label=requestedMention?(await db.query('SELECT push_name FROM users WHERE jid=$1',[target])).rows[0]?.push_name:null
   const displayName=label?'\n👤 '+String(label).replace(/[\r\n*_~]/g,' ').slice(0,45):''
@@ -13499,6 +13514,7 @@ if(action==='status'){
     +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
     +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
     +'\n🐾 XP pets: +'+Math.floor(totalPetXp).toLocaleString('pt-BR')
+    +'\n🧪 Poções automáticas usadas: '+Math.floor(totalAutoPotions).toLocaleString('pt-BR')
     +(totalBoostXp>0?'\n⏳ Bônus XP: +'+Math.floor(totalBoostXp).toLocaleString('pt-BR')+' (incluso)':'')
     +formatRaidLoteMaterials(reports)
     +'\n💳 Pago antecipadamente: R$ '+Number(job.total_paid).toLocaleString('pt-BR')

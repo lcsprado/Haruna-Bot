@@ -1,5 +1,6 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout} from './raid-lote-policy.js'
+import {raidLoteAutoPotionNeeded,raidLoteAutoPotionTargetHeal} from './raid-lote-auto-potion-policy.js'
 import {raidGoUnavailableMessage,raidJoinUnavailableMessage,RAID_LOBBY_TTL_MS} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
@@ -1177,10 +1178,10 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
   return awards
 }
 
-function raidPotion(rows,maxHp){
+function raidPotion(rows,maxHp,neededHeal=maxHp){
   const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_m_bolsa_alpha:'Poção Média (Bolsa Família Alpha)',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
   const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:playerPotionHealAmount(x.item_id,maxHp)})).sort((x,y)=>x.heal-y.heal)
-  const p=a.find(x=>x.heal>=maxHp)||a[a.length-1]
+  const p=a.find(x=>x.heal>=Math.max(1,Number(neededHeal)||0))||a[a.length-1]
   return p?{...p,name:names[p.item_id]}:null
 }
 
@@ -2112,18 +2113,33 @@ export async function raidRound(chat,level){
           events.push({type:'astral_save',jid:p.jid,name:p.name,hp:p.hp})
         }
       }
-      if(p.hp<=0){
-        const chosen=raidPotion(potionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),Number(p.maxHp))
+      // O Raidlote usa uma poção do próprio inventário antes da morte,
+      // mas apenas abaixo de 40% do HP e no máximo uma vez por rodada.
+      // Raids manuais conservam a regra anterior: cura somente ao cair a zero.
+      const preventiveLoteHeal=raidLoteAutoPotionNeeded({mode:s.mode,hp:p.hp,maxHp:p.maxHp})
+      if(p.hp<=0||preventiveLoteHeal){
+        const neededHeal=preventiveLoteHeal
+          ?raidLoteAutoPotionTargetHeal({hp:p.hp,maxHp:p.maxHp})
+          :Number(p.maxHp)
+        const chosen=raidPotion(
+          potionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),
+          Number(p.maxHp),neededHeal)
         if(chosen){
           const beforePotionHeal=Math.max(0,Number(p.hp||0))
-          p.hp=Math.min(Number(p.maxHp),chosen.heal)
+          const charged=(await c.query(
+            'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity',
+            [p.jid,chosen.item_id]
+          )).rows[0]
+          if(!charged)throw new Error('Poção indisponível durante a cura automática da Raid')
+          p.hp=Math.min(Number(p.maxHp),beforePotionHeal+chosen.heal)
+          const healed=Math.max(0,Number(p.hp)-beforePotionHeal)
           p.potionHealing=Number(p.potionHealing||0)+Math.max(0,Number(p.hp)-beforePotionHeal)
           p.heals=Number(p.heals||0)+1
           const row=potionRows.find(x=>x.jid===p.jid&&x.item_id===chosen.item_id)
-          if(row) row.quantity=Number(row.quantity)-1
-          await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosen.item_id])
-          autoHeal={id:chosen.item_id,name:chosen.name}
-        }else{
+          if(row)row.quantity=Number(charged.quantity)
+          autoHeal={id:chosen.item_id,name:chosen.name,heal:healed,
+            remaining:Number(charged.quantity),preventive:preventiveLoteHeal}
+        }else if(p.hp<=0){
           // Segunda chance, sem substituir cura tradicional. Apenas 1 uso por Raid.
           const revivesUsed=Number(p.raidRevivesUsed||0)
           if(revivesUsed<1){
