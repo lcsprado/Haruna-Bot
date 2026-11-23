@@ -94,7 +94,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,formatOwnClanDonations} from './clan-donation-ranking.js'
-import {formatClanProgress,formatClanPerks} from './clan-level-bonuses.js'
+import {formatClanProgress,formatClanPerks,clanMemberParticipation,formatClanMemberParticipation} from './clan-level-bonuses.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,critResistancePercent} from './boss-crit-resistance.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
@@ -9642,7 +9642,8 @@ return true
 const leader=clan.role==='leader'
 if(input==='1'){
 clearQuickFlow(chat,sender)
-await reply(`🏴 *CLÃ ${clan.name}*\n👥 Membros: ${clan.members}\n💰 Cofre: R$ ${fmt(clan.treasury)}\n👑 Cargo: ${leader?'Líder':'Membro'}\n\n${formatClanProgress(clan.xp)}`)
+const status=await clanMemberParticipation(db,sender)
+await reply(`🏴 *CLÃ ${clan.name}*\n👥 Membros: ${clan.members}\n💰 Cofre: R$ ${fmt(clan.treasury)}\n👑 Cargo: ${leader?'Líder':'Membro'}\n\n${formatClanProgress(clan.xp)}\n\n${formatClanMemberParticipation(status)}`)
 return true
 }
 if(input==='2'){
@@ -9720,7 +9721,7 @@ return true
 }
 const r=await donateClan(sender,amount)
 clearQuickFlow(chat,sender)
-await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}`)
+await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}\n\n${formatClanMemberParticipation(await clanMemberParticipation(db,sender))}`)
 return true
 }
 if(flow.stage==='clan_donate_custom'){
@@ -9731,7 +9732,7 @@ return true
 }
 const r=await donateClan(sender,amount)
 clearQuickFlow(chat,sender)
-await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}`)
+await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}\n\n${formatClanMemberParticipation(await clanMemberParticipation(db,sender))}`)
 return true
 }
 if(flow.stage==='clan_invite_target'){
@@ -13059,7 +13060,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 } else if(['clabonus','clãbonus'].includes(cmd)){
 const c=await getClanForUser(sender)
 if(!c)return await reply('🏴 Você precisa participar de um clã. Use *!cla* para consultar.')
-await reply(`🏴 *PROGRESSÃO — ${c.name}*\n🏦 Cofre: R$ ${fmt(c.treasury)}\n\n${formatClanProgress(c.xp)}\n\n💡 Cada doação aumenta o XP histórico do clã e mantém o dinheiro no cofre. Bônus só valem para membros atuais.`)
+const status=await clanMemberParticipation(db,sender)
+await reply(`🏴 *PROGRESSÃO — ${c.name}*\n🏦 Cofre: R$ ${fmt(c.treasury)}\n\n${formatClanProgress(c.xp)}\n\n${formatClanMemberParticipation(status)}\n\n💡 O dinheiro doado continua no cofre. Bônus não se aplicam ao PvP nem ao Raidlote.`)
 } else if(['claajuda','clãajuda'].includes(cmd)){
 await reply(
 `🏴 *COMANDOS DE CLÃ*
@@ -13136,7 +13138,9 @@ await reply(
 `🏴 *DOAÇÃO AO CLÃ*
 💰 Doado: R$ ${fmt(r.amount)}
 🏦 Cofre: R$ ${fmt(r.treasury)}
-${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}`
+${r.leveledUp?'🎉 CLÃ EVOLUIU!\n':''}${formatClanProgress(r.xp)}
+
+${formatClanMemberParticipation(await clanMemberParticipation(db,sender))}`
 )
 } else if(['saircla','sairclã'].includes(cmd)){
 const r=await leaveClan(sender)
