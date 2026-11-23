@@ -1444,10 +1444,10 @@ async function finishRaidRewards(c,s,cfg,chat){
     const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
-    const expBeforeClan=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
-    const exp=!lote&&rebootEconomyEnabled()?applyClanXpBonus(expBeforeClan,p.clanPerks):expBeforeClan
+    const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
+    const finalExp=!lote&&rebootEconomyEnabled()?applyClanXpBonus(exp,p.clanPerks):exp
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
-    const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
+    const expCredit=await grantExpInTransaction(c,p.jid,finalExp,lote
       ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems,skipNightRate:true}
       :{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
@@ -1675,7 +1675,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:lote?1:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp:finalExp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:lote?1:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??finalExp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
