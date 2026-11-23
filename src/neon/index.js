@@ -2,7 +2,8 @@ import {potionHpReceipt} from './potion-hp-receipt.js'
 import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
-import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
+import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled} from './reboot-economy-policy.js'
+import {BUSINESS_V3_LEVEL_GROWTH_PERCENT} from './business-rebalance-v3.js'
 import {claimBolsaFamiliaAlpha,activeBolsaFamiliaAlphaCandidates} from './bolsa-familia-alpha.js'
 import {createBolsaFamiliaAlphaAutoRunner} from './bolsa-familia-alpha-auto.js'
 import {v2CareerRoleFactor} from './reboot-career-policy.js'
@@ -7956,8 +7957,8 @@ if(owned.some(x=>x.id===b.id)){
 await reply(`⚠️ Você já possui *${b.name}*. Escolha outro negócio.`)
 return true
 }
-setQuickFlow(chat,sender,'business_buy_confirm',{id:b.id,name:b.name,price:b.price,profitHour:b.profitHour,capacityHours:b.capacityHours},90000)
-await reply(`🏪 Comprar *${b.name}* por *R$ ${fmt(b.price)}*?\n\n💵 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+setQuickFlow(chat,sender,'business_buy_confirm',{id:b.id,name:b.name,price:b.price,profitHour:b.profitHour,capacityHours:b.capacityHours,cycleHours:b.cycleHours},90000)
+await reply(`🏪 Comprar *${b.name}* por *R$ ${fmt(b.price)}*?\n\n${businessV3Enabled()?`💵 Bruto/h: R$ ${fmt(b.profitHour)} • líquido/h aprox.: R$ ${fmt(b.netHour)}\n🕒 Ciclo de referência: ${b.cycleHours}h • acúmulo até ${b.capacityHours}h\n📊 Retorno estimado: ${b.paybackDays24} dias com 24h/dia`: `💵 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h`}\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
 return true
 }
 if(flow.stage==='business_buy_confirm'){
@@ -7972,7 +7973,7 @@ return true
 }
 const b=await buyBusiness(sender,flow.data.id)
 clearQuickFlow(chat,sender)
-await reply(`✅ *NEGÓCIO COMPRADO!*\n\n🏪 ${b.name}\n💰 Investimento: R$ ${fmt(b.price)}\n📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.\n\nUse *${prefix}coletar* para receber os lucros.`)
+await reply(`✅ *NEGÓCIO COMPRADO!*\n\n🏪 ${b.name}\n💰 Investimento: R$ ${fmt(b.price)}\n${businessV3Enabled()?`📈 Líquido/h aprox.: R$ ${fmt(b.netHour)}\n🕒 Ciclo: ${b.cycleHours}h • acumula até ${b.capacityHours}h.`:`📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.`}\n\nUse *${prefix}coletar* para receber os lucros.`)
 return true
 }
 if(flow.stage==='car_resale_select'){
