@@ -1,6 +1,5 @@
 // Despertar IV/V: exigencias V1 adaptadas para a economia e os combates V2.
 // Contadores sao calculados apenas de provas de combate auditaveis; nunca de totais historicos.
-const series=(stage,a,b)=>stage===4?a:b;
 const mission=(id,label,a,b)=>({id,label,iv:a,v:b});
 export const AWAKENING_CLASS_TRIALS=Object.freeze({
  paladin:[
@@ -115,11 +114,47 @@ export function challengeQuests({classId,stage,events=[]}={}){
  };
  for(const [id,name] of Object.entries(skillNames))
   value[id]=raids.filter(e=>qualified(e,name)>=2).length;
+ // Prova especial: um unico combate de alta exigencia, vinculado a habilidade da classe.
+ // Precisa ser real, manual e posterior ao Despertar anterior.
+ const challengeRaid=raids.filter(e=>Number(e.raid_level)>=(stage===4?60:65));
+ const finalLabels={
+  paladin:'Concluir prova de proteção heroica',
+  samurai:'Concluir duelo de elite com críticos precisos',
+  berserker:'Vencer incursão extrema em Fúria',
+  necromancer:'Amaldiçoar e vencer Boss de elite',
+  warrior:'Concluir prova de contra-ataque',
+  assassin:'Concluir prova de execução',
+  mage:'Concluir prova de explosão arcana',
+  archer:'Concluir prova de precisão extrema',
+  monk:'Concluir prova de domínio do Chi',
+  druid:'Concluir prova de sustentação cooperativa'
+ };
+ const finalDone=(()=>{
+  if(classId==='paladin')return challengeRaid.some(e=>
+   Number(e.raid_level)>=(stage===4?60:70)&&e.metrics?.coopEligible&&
+   Number(e.metrics?.alliesSaved)>=1&&Number(e.metrics?.guardEligibleDamage)>0&&
+   Number(e.metrics?.alliedProtection)/Number(e.metrics?.guardEligibleDamage)>=.15);
+  if(classId==='samurai')return pvp.some(e=>Number(e.opponent_level)>=pvpEliteMinimum(stage)&&
+    count(e.metrics?.criticalHits)>=(stage===4?2:3));
+  if(classId==='berserker')return challengeRaid.some(e=>
+    qualified(e,'Fúria de Sangue')>=(stage===4?5:8));
+  if(classId==='necromancer')return bosses.some(e=>
+    Number(e.metrics?.share)>=(stage===4?.10:.15)&&
+    count(e.metrics?.curseHits)>=(stage===4?2:4));
+  if(classId==='druid')return challengeRaid.some(e=>e.metrics?.coopEligible&&
+    Number(e.metrics?.alliedHealing)>=(stage===4?100:250));
+  const special=skillNames[{
+   warrior:'warriorSkill',assassin:'assassinSkill',mage:'mageSkill',
+   archer:'archerSkill',monk:'monkSkill'
+  }[classId]];
+  return Boolean(special&&challengeRaid.some(e=>qualified(e,special)>=(stage===4?4:6)));
+ })();
  const quests=definition.map(m=>({
   label:m.label+(m.id==='raid'||['protection','saves','combo','frenzy','drain','souls','support','coop','warriorSkill','assassinSkill','mageSkill','archerSkill','monkSkill'].includes(m.id)?' (Lv.'+minimum+'+)':''),
   target:stage===4?m.iv:m.v,
   done:Math.min(stage===4?m.iv:m.v,value[m.id]||0)
  }));
  quests.push({label:'Vencer adversários PvP diferentes',target:2,done:Math.min(2,rivals)});
+ quests.push({label:finalLabels[classId]||'Concluir prova especial da classe',target:1,done:Number(finalDone)});
  return quests;
 }
