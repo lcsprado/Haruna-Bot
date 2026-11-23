@@ -1731,7 +1731,7 @@ export async function raidRound(chat,level){
       : Math.max(0,Number(s.round||0)*8000)
     if(elapsedMs>=durationMs){
       s.status='failed';s.failReason='timeout';s.activeElapsedMs=elapsedMs;await saveGame(c,chat,gameType,s)
-      return {failed:true,reason:'timeout',config:cfg,hp:s.hp,maxHp:s.maxHp}
+      return {failed:true,reason:'timeout',config:cfg,raidId:s.startedAt,hp:s.hp,maxHp:s.maxHp}
     }
 
     s.round=Number(s.round||0)+1
@@ -1744,7 +1744,7 @@ export async function raidRound(chat,level){
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
-      return {failed:true,reason:'party_wipe',config:cfg,hp:s.hp,maxHp:s.maxHp}
+      return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,hp:s.hp,maxHp:s.maxHp}
     }
 
     for(const p of alive){
