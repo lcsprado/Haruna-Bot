@@ -7,6 +7,7 @@ on:
       - 'src/neon/games.js'
       - 'src/neon/index.js'
       - 'test/clan-level-bonuses-v2-20261123.test.mjs'
+      - 'test/clan-level-bonuses-postgres-v2-20261123.test.mjs'
       - '.github/workflows/clan-v2-bonuses-validation.yml'
   workflow_dispatch:
 
@@ -27,3 +28,32 @@ jobs:
           node --check src/neon/index.js
       - name: Clan perks and donation regression tests
         run: node --test test/clan-level-bonuses-v2-20261123.test.mjs test/clan-donation-ranking-20261107.test.mjs
+
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clantest
+          POSTGRES_PASSWORD: clantest
+          POSTGRES_DB: clantest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clantest -d clantest"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test cooperative Raid ledger and individual unlock on disposable PostgreSQL
+        env:
+          CLAN_V2_TEST_DATABASE_URL: postgres://clantest:clantest@localhost:5432/clantest
+        run: node --test test/clan-level-bonuses-postgres-v2-20261123.test.mjs
