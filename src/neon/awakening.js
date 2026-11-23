@@ -145,7 +145,7 @@ async function normalizeAwakeningStage(c,jid,row,current){
 async function progress(c,row,u,counters){
   const stage=Number(row.stage??1),tier=effectiveAwakeningTier(AWAKENING_TIERS.find(t=>t.stage===stage+1)||null)
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
-  const quests=tier?path.quests.map(([type,amount,level,label])=>{
+  let quests=tier?path.quests.map(([type,amount,level,label])=>{
     const raidMin=type==='raid'?Math.max(level,tier.raidMin??(tier.stage===2?40:60)):0
     // Ajuste individual da missão de proteção do Despertar III; não altera a regra geral.
     const personalProtection=!classesOnlyRebootEnabled()&&String(row.jid||'')==='5511948523167@s.whatsapp.net'
