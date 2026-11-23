@@ -1,4 +1,5 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
+import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY} from './reboot-economy-policy.js'
@@ -4667,11 +4668,14 @@ let text=title+'\n\n'
 filtered.forEach((i,idx)=>{
 const levelLine=['weapon','armor','boots'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n'
-text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
+const saleCount=Math.max(0,Number(i.sellable_quantity||0))
+const protectedCount=Math.max(0,Number(i.quantity||0)-saleCount)
+text+='   Vendáveis: *'+fmt(saleCount)+'* • R$ '+fmt(i.sell_unit)+' cada\n'
+if(protectedCount) text+='   🔒 Protegidas (equipadas/vinculadas): *'+fmt(protectedCount)+'*\n'
 if(Number(i.forged_level||0)>0) text+='   🌟 Forjado: pode vender a cópia não equipada.\n'
 if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Venda integral: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
 })
-text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n'
+text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender todas as unidades vendáveis de TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n🔒 Itens equipados/vinculados ficam protegidos. A venda exige confirmação.\n'
 text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
 text+='\nAo selecionar vários:\n1️⃣ vender tudo\n2️⃣ vender só repetidos\n3️⃣ descartar tudo\n'
 text+='\n99️⃣ Voltar às categorias\n0️⃣ Sair'
@@ -8523,10 +8527,11 @@ if(sellable<1){
 await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
 return true
 }
-setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all),forgedLevel:Number(item.forged_level||0)},90000)
+setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),category:flow.data.category,equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all),forgedLevel:Number(item.forged_level||0)},90000)
 const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo todas as cópias: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
 const saleRuleHint=Number(item.forged_level||0)>0?'\n🌟 Cópias forjadas livres também podem ser vendidas.':''
-await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+saleRuleHint+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+const protectedCount=Math.max(0,Number(item.quantity||0)-sellable)
+await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê possui: *'+fmt(item.quantity)+'*\nDisponíveis para venda: *'+fmt(sellable)+'*'+(protectedCount?'\n🔒 Protegidas (equipadas/vinculadas): *'+fmt(protectedCount)+'*':'')+'\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+saleRuleHint+'\n\n'+sellQuantityOptions(sellable)+'\n\n📌 A opção *4* vende somente este modelo. Para vender todos os equipamentos, use *T* na lista.')
 return true
 }
 if(flow.stage==='inventory_batch_action'){
@@ -8564,8 +8569,12 @@ await inventoryMenu()
 return true
 }
 if(flow.stage==='inventory_sell_qty'){
-if(input==='9'){
-await sellMenu()
+if(input==='9'||input==='t'){
+await sellItemsMenu(flow.data.category||'equipment')
+return true
+}
+if(input==='5'&&Number(flow.data.sellable)<=1){
+await reply('💰 Apenas 1 unidade disponível. Use *1* ou *4*.')
 return true
 }
 if(input==='5'){
@@ -8580,7 +8589,7 @@ await reply('💰 Escolha *1, 2, 3, 4 ou 5*.')
 return true
 }
 if(qty>Number(flow.data.sellable)){
-await reply('💰 Você pode vender no máximo *'+flow.data.sellable+'* unidade(s).')
+await reply('💰 Você pode vender no máximo *'+flow.data.sellable+'* unidade(s). Use *T* para voltar à venda em massa.')
 return true
 }
 if(qty>Number(flow.data.regularSellable||0) && !(flow.data.canSellAll&&qty===Number(flow.data.quantity))){
