@@ -23,8 +23,9 @@ test('10 classes possuem provas individuais IV/V, sem reduzir os numeros V1 pact
   assert.ok(roles.every(x=>x.iv>0&&x.v>x.iv),id);
   for(const stage of [4,5]){
    const q=quests(id,stage,[]);
-   assert.equal(q.length,5,id);
-   assert.equal(q.at(-1).target,2,id);
+   assert.equal(q.length,6,id);
+   assert.equal(q.at(-2).target,2,id);
+   assert.equal(q.at(-1).target,1,id);
   }
  }
  assert.equal(amount(quests('paladin',4,[]),'Vencer duelos').target,30);
@@ -93,6 +94,18 @@ test('Necromante: dreno exige cura real, Boss exige maldicao no combate',()=>{
  assert.equal(amount(q,'Vencer Raids recuperando').done,1);
  assert.equal(amount(q,'Usar Drenagem').done,1);
  assert.equal(amount(q,'Vencer Bosses').done,1);
+});
+test('cada classe exige prova final real, nao liberada pelo progresso comum',()=>{
+ const paladin=quests('paladin',4,[raid(1,60,{alliedProtection:200,guardEligibleDamage:1000,alliesSaved:1,coopEligible:true})]);
+ assert.equal(amount(paladin,'Concluir prova de proteção heroica').done,1);
+ const fake=quests('paladin',4,[raid(1,60,{alliedProtection:200,guardEligibleDamage:1000,alliesSaved:0,coopEligible:true})]);
+ assert.equal(amount(fake,'Concluir prova de proteção heroica').done,0);
+ const samurai=quests('samurai',4,[{...pvp(1,'2026-11-23T15:00:00Z','rival',60),metrics:{criticalHits:2}}]);
+ assert.equal(amount(samurai,'Concluir duelo').done,1);
+ const berserker=quests('berserker',5,[raid(1,65,{skills:{'Fúria de Sangue':8}})]);
+ assert.equal(amount(berserker,'Vencer incursão extrema').done,1);
+ const necro=quests('necromancer',5,[boss(1,{curseHits:4,share:.17})]);
+ assert.equal(amount(necro,'Amaldiçoar').done,1);
 });
 test('Despertar IV e V possuem contadores de etapas independentes; nao transferir Raidlote',()=>{
  const sample=Array.from({length:4},(_,i)=>raid(i+1,50,{skills:{'Postura Iai':5}}));
