@@ -7,6 +7,7 @@ import {equipmentCatalogPrice} from './reboot-gear-economy.js';
 import {consumableCatalogPrice} from './reboot-progression-rewards.js';
 import {V2_RAID_DIFFICULTY} from './reboot-combat-progression.js';
 import {businessV3CatalogPatch,businessV3IntervalGross} from './business-rebalance-v3.js';
+import {businessV4CatalogPatch,businessV4IntervalGross} from './business-rebalance-v4.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
   weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
@@ -206,9 +207,21 @@ export function businessV3EffectiveAt(env=process.env){
    throw Error('Ativação V3 exige ALPHA_BUSINESS_V3_EFFECTIVE_AT_UNIX em segundos UTC válidos.')
  return n
 }
-export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled(),v3=businessV3Enabled()}={}){
+export function businessV4Enabled(env=process.env){
+ return businessV3Enabled(env)&&env.ALPHA_BUSINESS_REBALANCE_V4==='on'
+}
+export function businessV4EffectiveAt(env=process.env){
+ if(!businessV4Enabled(env))return null
+ const oldCutover=businessV3EffectiveAt(env)
+ const currentCutover=Number(env.ALPHA_BUSINESS_V4_EFFECTIVE_AT_UNIX)
+ if(!Number.isSafeInteger(currentCutover)||currentCutover<oldCutover||
+    currentCutover>2200000000)throw Error('V4 exige epoch UTC >= corte V3.')
+ return currentCutover
+}
+export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled(),v3=businessV3Enabled(),v4=businessV4Enabled()}={}){
  if(!business)return business;
  if(!enabled)return business;
+ if(v4)return businessV4CatalogPatch(business);
  if(v3)return businessV3CatalogPatch(business);
  const hourly=V2_BUSINESS_ECONOMY.hourlyRates[business.id];
  if(!Number.isSafeInteger(hourly)||hourly<0)throw new Error('Negócio sem tarifa V2 aprovada.');
@@ -217,14 +230,23 @@ export function candidateBusinessCatalog(business,{enabled=rebootEconomyEnabled(
  return {...business,profitHour:Math.floor(hourly*capacity/24),capacityHours:24};
 }
 export function businessIntervalGrossV2(business,row,now){
- const legacy=candidateBusinessCatalog(business,{enabled:true,v3:false});
+ const legacy=candidateBusinessCatalog(business,{enabled:true,v3:false,v4:false});
  const hourly=legacy?.profitHour,cap=Number(legacy?.capacityHours);
  const end=Number(now),start=Number(row?.last_collected_at??end),level=Number(row?.level||1);
  if(!Number.isSafeInteger(hourly)||!Number.isFinite(cap)||cap<=0||!Number.isFinite(end)||
     !Number.isFinite(start)||!Number.isInteger(level)||level<1||level>5)
     throw new Error('Dados de coleta V2 inválidos.');
+ if(businessV4Enabled()){
+   const v3=candidateBusinessCatalog(business,{enabled:true,v3:true,v4:false})
+   const v4=candidateBusinessCatalog(business,{enabled:true,v3:true,v4:true})
+   return businessV4IntervalGross({
+     start,now:end,v3EffectiveAt:businessV3EffectiveAt(),
+     v4EffectiveAt:businessV4EffectiveAt(),baseHourV2:hourly,
+     baseHourV3:v3.profitHour,baseHourV4:v4.profitHour,level,maxHours:cap
+   })
+ }
  if(businessV3Enabled()){
-   const newRate=candidateBusinessCatalog(business,{enabled:true,v3:true});
+   const newRate=candidateBusinessCatalog(business,{enabled:true,v3:true,v4:false});
    return businessV3IntervalGross({
      start,now:end,effectiveAt:businessV3EffectiveAt(),baseHourOld:hourly,
      baseHourNew:newRate.profitHour,level,maxHours:cap,
