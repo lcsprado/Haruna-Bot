@@ -239,6 +239,18 @@ export async function initProgression(){
     CREATE INDEX IF NOT EXISTS clan_donations_by_clan_idx ON clan_donations(clan_id,created_at DESC);
     CREATE INDEX IF NOT EXISTS clan_donations_by_donor_idx ON clan_donations(donor_jid);
 
+    -- Cada vitória cooperativa manual conta uma vez por membro e por Raid.
+    -- Não transferir crédito quando o jogador mudar de clã.
+    CREATE TABLE IF NOT EXISTS clan_coop_raid_credits(
+      clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,
+      jid TEXT NOT NULL,
+      raid_key TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(clan_id,jid,raid_key)
+    );
+    CREATE INDEX IF NOT EXISTS clan_coop_raid_credits_member_idx
+      ON clan_coop_raid_credits(jid,clan_id);
+
 
     CREATE TABLE IF NOT EXISTS user_homes(
       jid TEXT PRIMARY KEY,
