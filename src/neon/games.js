@@ -16,7 +16,8 @@ import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSha
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {activeCombatPetTeam} from './reboot-pet-team.js'
-import {raidNecromancerCurse,recordRaidAuraProtection,raidRoleReport} from './raid-cooperative-roles.js'
+import {raidNecromancerCurse,recordRaidAuraProtection,raidRoleReport,raidPaladinProtection,raidDruidSupport} from './raid-cooperative-roles.js'
+import {recordAwakeningTrial} from './awakening-trial-store.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
@@ -1654,6 +1655,21 @@ async function finishRaidRewards(c,s,cfg,chat){
         }
       }
     }
+    if(rebootEconomyEnabled()&&!p.heroId){
+      const coopPlayers=ranked.filter(q=>Number(q.damage||0)>0&&Number(q.damage||0)>=total*.02)
+      await recordAwakeningTrial(c,{
+        jid:p.jid,source:'raid',sourceId:'raid:'+String(s.startedAt),
+        raidLevel:cfg.level,manual:!lote,classId:p.classId,
+        metrics:{damage:Number(p.damage||0),partySize:ranked.length,
+          alliedProtection:Number(p.alliedProtection||0),
+          guardEligibleDamage:Number(p.guardEligibleDamage||0),
+          alliesSaved:Number(p.alliesSaved||0),
+          alliedHealing:Number(p.alliedHealing||0),
+          classHealing:Number(p.classHealing||0),
+          coopEligible:coopPlayers.length>=2&&coopPlayers.some(q=>q.jid===p.jid),
+          skills:{...(p.skillActivations||{})}}
+      })
+    }
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
       ...(rebootEconomyEnabled()?raidRoleReport(p):{}),
       classHealingActivations:Number(p.classHealingActivations||0),
@@ -1742,9 +1758,25 @@ export async function raidRound(chat,level){
     const preRoundPetHeals=new Map()
     const classFinalRoundHealing=new Map()
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
+    // Um teto independente por rodada para evitar proteção ilimitada do Paladino.
+    for(const p of alive)p.guardRedirectRound=0
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
       return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,hp:s.hp,maxHp:s.maxHp}
+    }
+
+    if(rebootEconomyEnabled()){
+      // Cura real do Druida: contabiliza apenas HP efetivamente recuperado.
+      // Persiste antes da fase ofensiva, inclusive quando o Boss cai nessa rodada.
+      for(const heal of raidDruidSupport(alive,s.round)){
+        const ally=alive.find(p=>p.jid===heal.target)
+        if(ally){
+          const maxStored=Number(ally.heroPersistentMaxHp||ally.maxHp)
+          const restored=Math.max(1,Math.round(heal.healed*maxStored/Math.max(1,Number(ally.maxHp))))
+          await c.query('UPDATE stats SET hp=LEAST($1,hp+$2) WHERE jid=$3',[maxStored,restored,ally.jid])
+        }
+        events.push({type:'druid_support',jid:heal.source,target:heal.target,heal:heal.healed})
+      }
     }
 
     for(const p of alive){
@@ -1994,7 +2026,10 @@ export async function raidRound(chat,level){
       const guardianAura=!alreadyGuarded&&alive.some(ally=>ally.jid!==p.jid&&ally.alive&&
         Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
         Number(ally.awakeningStage||0)>=4)
-      const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
+      const intervention=rebootEconomyEnabled()
+        ?raidPaladinProtection(alive,p,hitDamage)
+        :{damage:hitDamage,absorbed:0,source:null}
+      const protectedDamage=guardianAura?Math.max(0,Math.round(intervention.damage*.98)):intervention.damage
       const passiveDefense=p.heroId
         ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState,gear:p.heroGear}),awakeningState:p.awakeningState}
         :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
@@ -2005,6 +2040,19 @@ export async function raidRound(chat,level){
       if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
+      if(intervention.source&&intervention.absorbed>0){
+        const guardian=alive.find(ally=>ally.jid===intervention.source)
+        if(guardian){
+          guardian.guardEligibleDamage=Number(guardian.guardEligibleDamage||0)+hitDamage
+          // Sem aproximar a proteção por vitórias: exige dano efetivamente redirecionado.
+          if(Number(p.hp)>0&&dmg<Number(p.hp)&&dmg+intervention.absorbed>=Number(p.hp))
+            guardian.alliesSaved=Number(guardian.alliesSaved||0)+1
+          const persistentMax=Number(guardian.heroPersistentMaxHp||guardian.maxHp)
+          const stored=restoreVitalPersistentHp(guardian.hp,guardian.maxHp,persistentMax)
+          await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[stored,guardian.jid])
+          events.push({type:'paladin_guard',jid:guardian.jid,target:p.jid,absorbed:intervention.absorbed})
+        }
+      }
       if(rebootEconomyEnabled()&&guardianAura){
         const guardian=alive.find(ally=>ally.jid!==p.jid&&ally.alive&&Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&Number(ally.awakeningStage||0)>=4)
         recordRaidAuraProtection(guardian,p,hitDamage,protectedDamage,passiveDefense)
@@ -3770,7 +3818,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       usePet:Boolean(usePet),
       classLastProcAttack:passiveHit.lastProcAttack,
       awakeningState:passiveHit.awakeningState,
-      heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState
+      heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState,
+      curseHits:Number(old.curseHits||0)+(!heroId&&st.class_applied&&st.class_id==='necromancer'&&awakeningStage>=2&&attackCount%7===0?1:0)
     }
     let php=Math.min(Number(heroCombatHp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null,vitalPulseEvent=null
     if(s.hp>0){
@@ -3880,6 +3929,18 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const total=contributors.reduce((sum,p)=>sum+Math.max(0,Number(p.damage||0)),0)
       const phase=String(s.phaseIndex??s.phase??0)
       const runKey='boss:'+String(s.eventId||s.mode||'common')+':'+String(s.startedAt||s.endsAt||0)+':'+phase
+      if(rebootEconomyEnabled()&&total>0){
+        for(const contributor of contributors){
+          const dealt=Math.max(0,Number(contributor.damage||0))
+          if(!contributor.jid||dealt/total<.05||Number(contributor.attacks||0)<3)continue
+          await recordAwakeningTrial(c,{
+            jid:contributor.jid,source:'boss',sourceId:runKey,
+            heroId:contributor.heroId||null,
+            metrics:{damage:dealt,share:dealt/total,attacks:Number(contributor.attacks||0),
+              curseHits:Number(contributor.curseHits||0)}
+          })
+        }
+      }
       if(total>0){
         for(const contributor of contributors){
           const dealt=Math.max(0,Number(contributor.damage||0))
