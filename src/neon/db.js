@@ -5331,6 +5331,14 @@ hours=Number(hours)
 const plan=CARPINAR_PLANS[hours]
 if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
 return transaction(async client=>{
+// Serializa com a ativacao de Raidlote e com a reserva de sua proxima tentativa.
+// O teste deve ocorrer no banco, nao apenas no menu WhatsApp, para bloquear corridas.
+await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+const activeLote=(await client.query(
+ "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",
+ [jid]
+)).rows[0]
+if(activeLote) throw new Error('⚔️ Você tem um Raidlote ativo. Espere o pacote terminar ou cancele-o antes de carpinar.')
 const now=Math.floor(Date.now()/1000)
 const sleep=(await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(sleep&&Number(sleep.ends_at)>now) throw new Error('Você está dormindo e não pode começar a carpinar agora.')
@@ -5349,7 +5357,7 @@ await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
 }
 }
 const activeRaid=await client.query(
-"SELECT 1 FROM trevo_games WHERE game_type='raid' AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",
+"SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND (state->'players') ? $1 LIMIT 1",
 [jid]
 )
 if(activeRaid.rowCount) throw new Error('Você está participando de uma Raid ativa. Espere ela terminar antes de carpinar.')
