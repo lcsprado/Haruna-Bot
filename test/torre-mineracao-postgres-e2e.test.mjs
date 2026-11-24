@@ -180,6 +180,42 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const noReward=await store.claimMiningExpedition(db,jid)
      assert.equal(noReward.status,'none')
    })
+   await t.test('comandos WhatsApp: compra, início, resgate e reparo sem sessão real',async()=>{
+     const messages=[]
+     const jidTest=jid
+     const chatTest='homolog-test@g.us'
+     const send=async(text,id)=>{
+       const [command,...args]=text.slice(1).trim().split(/\\s+/)
+       const count=messages.length
+       assert.equal(await handleMiningCommand({db,cmd:command,args,sender:jidTest,chat:chatTest,
+         messageId:id,reply:async m=>messages.push(m)}),true)
+       assert.equal(messages.length,count+1)
+       return messages.at(-1)
+     }
+     const cashBefore=await money()
+     const buy=await send('!comprarpicareta ferro','homolog-buy-ferro-001')
+     assert.match(buy,/COMPRADA/)
+     assert.equal(await money(),cashBefore-7500)
+     const buyRepeated=await send('!comprarpicareta ferro','homolog-buy-ferro-001')
+     assert.match(buyRepeated,/COMPRADA/)
+     assert.equal(await money(),cashBefore-7500)
+     const started=await send('!minerar iniciar ferro','homolog-start-ferro-001')
+     assert.match(started,/INICIADA/)
+     assert.equal(await uses('ferro'),4)
+     assert.match(await send('!minerar status','homolog-status-001'),/ANDAMENTO/)
+     assert.match(await send('!minerar resgatar','homolog-claim-early-001'),/ainda não acabou/)
+     const current=await store.getMiningStatus(db,jidTest)
+     await db.query("UPDATE mining_expeditions SET started_at=EXTRACT(EPOCH FROM NOW())::bigint-14405,ends_at=EXTRACT(EPOCH FROM NOW())::bigint-5 WHERE id=$1",[current.id])
+     const due=await send('!minerar resgatar','homolog-claim-001')
+     assert.match(due,/MINERAÇÃO CONCLUÍDA/)
+     assert.equal(await money(),cashBefore-7500+800)
+     assert.match(await send('!minerar resgatar','homolog-claim-001'),/não tem mineração pendente/)
+     assert.equal(await money(),cashBefore-7500+800)
+     const repair=await send('!repararpicareta ferro','homolog-repair-ferro-001')
+     assert.match(repair,/PICARETA REPARADA/)
+     assert.equal(await uses('ferro'),5)
+     assert.equal(await money(),cashBefore-7500+800-600)
+   })
    await t.test('WhatsApp handler testado sem parear WhatsApp real',async()=>{
      const messages=[]
      const handled=await handleMiningCommand({db,cmd:'picaretas',args:[],sender:jid,chat:'test-group',
