@@ -124,6 +124,30 @@ export async function buyMiningPickaxe(db,{jid,pickaxeId,key}){
     return saveReceipt(c,jid,key,'buy',{status:'bought',...quote},now)
   })
 }
+// Ganho de picareta exclusiva via integracao futura do evento ou Cerco.
+// Não há comando público para conceder recompensas; nenhum prêmio é disparado aqui.
+export async function grantMiningPickaxeReward(db,{jid,pickaxeId,source,key}){
+  assertMiningHomologation();requestKey(key);await ensureUser(jid)
+  const quote=miningQuote(pickaxeId)
+  if(!['cerco','evento_inaugural'].includes(source)||quote.source!==source)
+    throw new Error('Origem de prêmio inválida para essa picareta.')
+  return transaction(db,async c=>{
+    await miningActivityLock(c,jid)
+    const old=await oldReceipt(c,jid,key,'grant')
+    if(old){
+      if(old.pickaxeId!==pickaxeId||old.source!==source)throw new Error('Prêmio repetido com dados divergentes.')
+      return old
+    }
+    const owned=(await c.query('SELECT 1 FROM mining_pickaxes WHERE jid=$1 AND pickaxe_id=$2',[jid,pickaxeId])).rowCount>0
+    const now=nowSeconds()
+    if(!owned){
+      await c.query('INSERT INTO mining_pickaxes(jid,pickaxe_id,uses_remaining,acquired_at) VALUES($1,$2,$3,$4)',
+        [jid,pickaxeId,quote.maxUses,now])
+    }
+    return saveReceipt(c,jid,key,'grant',{status:owned?'already_owned':'granted',pickaxeId,source,maxUses:quote.maxUses},now)
+  })
+}
+
 export async function repairMiningPickaxe(db,{jid,pickaxeId,key}){
   assertMiningHomologation();requestKey(key);miningQuote(pickaxeId);await ensureUser(jid)
   return transaction(db,async c=>{
