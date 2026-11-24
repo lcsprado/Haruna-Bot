@@ -1,6 +1,17 @@
 name: Mining homologation - isolated PostgreSQL
 
 on:
+  pull_request:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/torre-mineracao-*'
+      - 'src/neon/torre-mineracao-4h.js'
+      - 'src/neon/db.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/index.js'
+      - 'test/torre-mineracao-*'
+      - '.github/workflows/mining-postgres-homolog.yml'
   push:
     branches:
       - feat/torre-mineracao-homolog-4h-20261124
