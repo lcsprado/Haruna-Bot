@@ -941,7 +941,7 @@ export async function getRaidStatus(chat,level=null){
   })
 }
 
-export async function createRaid(chat,host,name='Jogador',level=10){
+export async function createRaid(chat,host,name='Jogador',level=10,options={}){
   const cfg=raidEffectiveConfig(level)
   if(!cfg) throw new Error(classesOnlyRebootEnabled()
     ?'Raid indisponível na nova temporada. Consulte !raid para os níveis válidos.'
@@ -976,13 +976,13 @@ export async function createRaid(chat,host,name='Jogador',level=10){
         VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[host,cfg.keyPrice,`Compra automática — Raid Lv.${cfg.level}`])
       autoKeyPurchased=true
     }
-    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+RAID_LOBBY_TTL_MS}
+    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true,...(options.usePet===false?{usePet:false}:{})}},round:0,createdAt:Date.now(),expiresAt:Date.now()+RAID_LOBBY_TTL_MS}
     await saveGame(c,chat,gameType,state)
     return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
 }
 
-export async function joinRaid(chat,jid,name='Jogador',level=null){
+export async function joinRaid(chat,jid,name='Jogador',level=null,options={}){
   if(classesOnlyRebootEnabled()&&Number(level)===75)throw new Error('Essa Raid não existe na nova temporada.');
   await ensureUser(jid,name)
   return tx(async c=>{
@@ -1029,7 +1029,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     }
 
     if(s.status==='lobby'){
-      s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
+      s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true,...(options.usePet===false?{usePet:false}:{})}}
       await saveGame(c,chat,gameType,s)
       return {...s,lateJoin:false,autoKeyPurchased,keyPrice:cfg.keyPrice}
     }
@@ -1051,8 +1051,9 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
-    const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
-    let reservePet=await raidReservePet(c,jid)
+    const usePet=options.usePet!==false
+    const pet=usePet?((await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null):null
+    let reservePet=usePet?await raidReservePet(c,jid):null
     let combatPet=raidCombatPetState(pet,1)
     // O mesmo Pecado nunca luta como personagem e pet.
     if(heroId&&combatPet?.species===heroId)combatPet=null
@@ -1064,12 +1065,12 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       reservePet=null
     }
     const awakeningStage=heroId?0:Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
-    const teamPassives=excludeActiveHeroPet((await c.query('SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',[jid])).rows,heroId)
+    const teamPassives=usePet?excludeActiveHeroPet((await c.query('SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',[jid])).rows,heroId):[]
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
-      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(activeCombatPetTeam(teamPassives,[combatPet,reservePet])),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
+      ...(usePet?{}:{usePet:false}),pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(activeCombatPetTeam(teamPassives,[combatPet,reservePet])),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1302,7 +1303,8 @@ export async function startRaid(chat,host,level=null,options={}){
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
-      const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
+      const usePet=loteAttemptId||!(s.players[jid]?.usePet===false||(jid===host&&options.usePet===false))
+      const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=usePet?(pets.find(x=>x.jid===jid)||null):null
       const heroId=await getActivePlayableHero(c,jid)
       const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
       const heroStats=heroCombatStats(st,heroId,heroLevel)
@@ -1325,7 +1327,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id),activeStars(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
-      let reservePet=await raidReservePet(c,jid)
+      let reservePet=usePet?await raidReservePet(c,jid):null
       let combatPet=raidCombatPetState(pet,1)
       if(heroId&&combatPet?.species===heroId)combatPet=null
       if(heroId&&reservePet?.species===heroId)reservePet=null
@@ -1335,15 +1337,15 @@ export async function startRaid(chat,host,level=null,options={}){
         combatPet=reservePet
         reservePet=null
       }
-      const teamPets=excludeActiveHeroPet((await c.query(
+      const teamPets=usePet?excludeActiveHeroPet((await c.query(
         'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
         [jid]
-      )).rows,heroId)
+      )).rows,heroId):[]
       const teamSynergy=petTeamSynergy(activeCombatPetTeam(teamPets,[combatPet,reservePet]))
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,...(usePet?{}:{usePet:false}),pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       vitalRaidOpening(s.players[jid])
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
