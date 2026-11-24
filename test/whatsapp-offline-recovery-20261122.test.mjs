@@ -50,15 +50,18 @@ test('receber lote concluído impede novas solicitações; buffer continua sob c
  assert.equal(t.recovery.snapshot().completed,true)
 })
 
-test('receber mensagens interrompe recovery, não repete comandos nem força entrega',async()=>{
+test('receber mensagens parciais não interrompe backlog; terminador impede novas solicitações',async()=>{
  const t=clockFixture()
  t.recovery.onPreview()
  t.recovery.onOpen()
  t.recovery.onMessage()
  await t.tick(8)
+ assert.equal(t.sends.length,1) // lote solicitado ao servidor, não mensagem enviada a jogador
+ t.recovery.onComplete()
+ await t.tick(8)
  await t.tick(30)
- assert.equal(t.sends.length,0)
- assert.equal(t.flushed.length,0)
+ assert.equal(t.sends.length,1) // sem solicitações após terminador
+ assert.equal(t.flushed.length,1) // um único flush no terminador
  assert.equal(t.recovery.snapshot().receivedMessages,true)
 })
 
