@@ -2663,9 +2663,9 @@ const offlineRecovery=createWhatsAppOfflineRecovery({
   socket:sock,
   isOpen:()=>trevoHealth.whatsapp==='open',
   onAction:(action,count)=>{
-    if(action==='flush'){
+    if(action==='flush'||action==='flush-complete'){
       trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
-      console.warn('[WhatsApp Sync] buffer local liberado por timeout seguro')
+      console.warn('[WhatsApp Sync]',action==='flush-complete'?'buffer liberado apos fim do lote offline':'buffer local liberado por timeout seguro')
     }else if(action==='batch'){
       trevoHealth.offlineBatchRetryCount=Number(count)||0
       if(count<=2||count%10===0)console.warn('[WhatsApp Sync] lote offline solicitado',count)
