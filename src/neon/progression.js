@@ -4,7 +4,7 @@ import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
-import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
+import {businessIntervalGross,businessCollectionElapsedSeconds,businessCollectionCooldownRemainingSeconds} from './business-profit.js'
 import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
@@ -1483,7 +1483,7 @@ export async function collectBusinesses(jid){
     )
     const lastClaim=Number(latest.rows[0]?.last_claim||0)
     const collectionElapsedSeconds=businessCollectionElapsedSeconds(now,lastClaim,rows)
-    const cooldownRemaining=Math.max(0,300-Math.max(0,now-lastClaim))
+    const cooldownRemaining=businessCollectionCooldownRemainingSeconds(now,lastClaim)
     if(lastClaim>0 && cooldownRemaining>0) {
       return {total:0,gross:0,tax:0,taxRate:10,details:[],cooldownRemaining}
     }
