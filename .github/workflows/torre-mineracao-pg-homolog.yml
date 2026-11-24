@@ -1,0 +1,64 @@
+name: Torre mineracao - PostgreSQL efemero (homologacao)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/torre-mineracao-*.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'test/torre-mineracao-*.test.mjs'
+      - '.github/workflows/torre-mineracao-pg-homolog.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-mineracao:
+    # PRs: banco totalmente efêmero, sem credenciais ou serviços de produção.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: localonly
+          POSTGRES_DB: alpha_homolog_mining
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_homolog_mining"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:localonly@127.0.0.1:5432/alpha_homolog_mining
+      ALPHA_MINING_MODE: homologation
+      ALPHA_MINING_DB_CONFIRMED: test-only
+      ALPHA_REBOOT_MODE: ""
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sem scripts de deploy
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe dos modulos alterados
+        run: |
+          node --check src/neon/torre-mineracao-4h.js
+          node --check src/neon/torre-mineracao-activity.js
+          node --check src/neon/torre-mineracao-store.js
+          node --check src/neon/torre-mineracao-whatsapp.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/raid-lote-store.js
+      - name: Regras, isolamento e integracao PostgreSQL real
+        run: >-
+          node --test
+          test/torre-mineracao-4h.test.mjs
+          test/torre-mineracao-store-homolog.test.mjs
+          test/torre-mineracao-postgres-integration.test.mjs
