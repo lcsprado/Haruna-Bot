@@ -4,30 +4,30 @@ import {readFileSync} from 'node:fs'
 import {v2DailyXpStatus,v2XpCredit,reserveV2DailyXp,brazilProgressionDay,v2HourlyXpRate,V2_CLASS_GROWTH,V2_PVP_ROLES,effectiveAwakeningTier,V2_RAID_DIFFICULTY} from '../src/neon/reboot-combat-progression.js'
 import {candidateRaidConfig} from '../src/neon/reboot-economy-policy.js'
 import {raidLoteReward} from '../src/neon/raid-lote-policy.js'
-test('V2: 100% dia, 70% madrugada e XP ilimitado inclusive acima de 12 mil',()=>{
+test('V2: 100% dia, 80% madrugada e XP ilimitado inclusive acima de 12 mil',()=>{
  const day=new Date('2026-11-21T09:00:00Z') // 06h00 Brasilia
  const night=new Date('2026-11-21T03:00:00Z') // 00h00 Brasilia
  assert.equal(v2HourlyXpRate(new Date('2026-11-21T02:59:59Z')),1) // 23h59
- assert.equal(v2HourlyXpRate(night),.7)
- assert.equal(v2HourlyXpRate(new Date('2026-11-21T08:59:59Z')),.7) // 05h59
+ assert.equal(v2HourlyXpRate(night),.8)
+ assert.equal(v2HourlyXpRate(new Date('2026-11-21T08:59:59Z')),.8) // 05h59
  assert.equal(v2HourlyXpRate(day),1)
  assert.equal(v2XpCredit(0,1000,100,{now:day}).awarded,1100)
- assert.deepEqual(v2XpCredit(0,1000,100,{now:night}),{base:700,bonus:70,awarded:770,used:770,cap:null,rate:.7})
+ assert.deepEqual(v2XpCredit(0,1000,100,{now:night}),{base:800,bonus:80,awarded:880,used:880,cap:null,rate:.8})
  assert.equal(v2XpCredit(8000,4000,0,{now:day}).awarded,4000)
  assert.equal(v2XpCredit(12000,4000,1200,{now:day}).awarded,5200)
- assert.equal(v2XpCredit(12000,1000,100,{now:night}).awarded,770)
+ assert.equal(v2XpCredit(12000,1000,100,{now:night}).awarded,880)
  assert.equal(v2XpCredit(60000,1000,0,{now:day}).used,61000)
  assert.throws(()=>v2XpCredit(-1,5),/invalido/)
 })
-test('V2: RaidLote mantém 60% durante toda a madrugada, nunca 70% de 60%',()=>{
+test('V2: RaidLote mantém 60% durante toda a madrugada, nunca 80% de 60%',()=>{
  const now=new Date('2026-11-21T05:15:00Z') // 02h15 Brasilia
  const manualXp=600
  const loteXp=raidLoteReward(manualXp,'playerXp')
  assert.equal(loteXp,360)
- assert.equal(v2XpCredit(12000,manualXp,0,{now}).awarded,420)
+ assert.equal(v2XpCredit(12000,manualXp,0,{now}).awarded,480)
  assert.equal(v2XpCredit(12000,loteXp,0,{now,skipNightRate:true}).awarded,360)
  assert.equal(v2XpCredit(12000,loteXp,72,{now,skipNightRate:true}).awarded,432)
- assert.equal(v2XpCredit(12000,loteXp,0,{now}).awarded,252) // resultado incorreto se somar duas reducoes
+ assert.equal(v2XpCredit(12000,loteXp,0,{now}).awarded,288) // resultado incorreto se somar duas reducoes
  const game=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
  assert.match(game,/ignoreXpBoost:!RAID_LOTE_V1\.applyActivatedXpItems,skipNightRate:true/)
 })
@@ -91,7 +91,7 @@ test('perfil V2: sem teto, faixa horaria ao vivo, estatistica reinicia sem bloqu
  })
  assert.equal(v2DailyXpStatus({day,used:12000},{day,now}).rate,1)
  assert.equal(v2DailyXpStatus({day,used:12000},{day,now}).remaining,null)
- assert.equal(v2DailyXpStatus({day,used:12000},{day,now:new Date('2026-11-21T04:00:00Z')}).rate,.7)
+ assert.equal(v2DailyXpStatus({day,used:12000},{day,now:new Date('2026-11-21T04:00:00Z')}).rate,.8)
  assert.equal(v2DailyXpStatus({day:'2026-11-20',used:12000},{day,now}).used,0)
  assert.throws(()=>v2DailyXpStatus({day,used:-1},{day,now}),/invalido/)
 })

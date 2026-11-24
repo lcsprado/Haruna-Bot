@@ -1779,7 +1779,7 @@ ${title}${isFirst500Champion?' • '+FIRST_500_TITLE:''}${mimicTitle?' • '+mim
 ${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true,pvpHp:hpForPvpProfile}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}
 ✨ EXP: *${xp.current}/${xp.needed}* • faltam *${xp.remaining} XP* (${xp.percentage}%)
-[${xp.bar}]${p.daily_xp?'\n📊 XP hoje: *'+fmt(p.daily_xp.used)+'* • sem teto diário\n🕓 Ganho atual: *'+Math.round(p.daily_xp.rate*100)+'%* • 00h–05h59: 70% • 06h–23h59: 100%\n_RaidLote: 60%, sem redução adicional • contador reinicia à meia-noite (Brasília)._':''}
+[${xp.bar}]${p.daily_xp?'\n📊 XP hoje: *'+fmt(p.daily_xp.used)+'* • sem teto diário\n🕓 Ganho atual: *'+Math.round(p.daily_xp.rate*100)+'%* • 00h–05h59: 80% • 06h–23h59: 100%\n_RaidLote: 60%, sem redução adicional • contador reinicia à meia-noite (Brasília)._':''}
 ${heroSheet?'':`${profileHpLines({normalHp:Number(p.effective_hp||0),normalMaxHp:Number(p.effective_max_hp||0),pvpHp:hpForPvpProfile.hp,pvpMaxHp:hpForPvpProfile.maxHp})}\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
@@ -13091,7 +13091,7 @@ const bossCritPct=Math.max(0,10+gearCritPct+Number(statusPetBonus.critPct||0))
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
-✨ EXP: ${p.exp}/${p.level*100}${p.daily_xp?'\n📊 XP hoje: '+fmt(p.daily_xp.used)+' • sem teto diário\n🕓 Ganho atual: '+Math.round(p.daily_xp.rate*100)+'% (00h–05h59: 70%, 06h–23h59: 100%) • RaidLote: 60%':''}
+✨ EXP: ${p.exp}/${p.level*100}${p.daily_xp?'\n📊 XP hoje: '+fmt(p.daily_xp.used)+' • sem teto diário\n🕓 Ganho atual: '+Math.round(p.daily_xp.rate*100)+'% (00h–05h59: 80%, 06h–23h59: 100%) • RaidLote: 60%':''}
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):`🧙 Classe: ${p.class_info?.name||'Sem classe'}
 ⚜️ Passiva: ${p.class_passive?.name||'Ainda não selecionada'}${p.class_passive?' — '+p.class_passive.description:''}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}

@@ -1,0 +1,26 @@
+name: Alpha Bot - XP manual noturno 80
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/reboot-combat-progression.js'
+      - 'src/neon/index.js'
+      - 'test/reboot-xp-manual-night-80-20261124.test.mjs'
+      - '.github/workflows/xp-manual-noturno-80-20261124.yml'
+permissions:
+  contents: read
+jobs:
+  xp-manual-noite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check src/neon/reboot-combat-progression.js
+          node --check src/neon/index.js
+      - name: Validar regra real de horario e isencao do Raidlote
+        run: node --test test/reboot-xp-manual-night-80-20261124.test.mjs

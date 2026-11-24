@@ -1,10 +1,10 @@
 // V2: progresso compartilhado entre WhatsApp e Web; sem limite diario de XP.
 // No horario de Brasilia (America/Sao_Paulo), XP manual/normal:
-// 00:00–05:59:59 = 70%; 06:00–23:59:59 = 100%.
+// 00:00–05:59:59 = 80%; 06:00–23:59:59 = 100%.
 // RaidLote ja recebe 60% no motor de Raids: nunca reduzir novamente.
 // Apenas XP do jogador; XP dos pets, drops e economia permanecem intactos.
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
-export const V2_XP_NIGHT_RATE=.70
+export const V2_XP_NIGHT_RATE=.80
 export const V2_XP_DAY_RATE=1
 export function brazilProgressionDay(now=new Date()){
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now)
@@ -30,8 +30,8 @@ export function v2XpCredit(used,base,bonus=0,{now=new Date(),skipNightRate=false
  for(const v of [used,base,bonus])
   if(!Number.isSafeInteger(v)||v<0)throw Error('Saldo de XP diario invalido')
  const rate=skipNightRate?1:v2HourlyXpRate(now)
- // Inteiros exatos: evita Math.floor(360 * 0.7) retornar 251 por erro de float.
- const basisPoints=rate===V2_XP_NIGHT_RATE?7000n:10000n
+ // Inteiros exatos: evita Math.floor(360 * 0.8) retornar um inteiro incorreto por erro de float.
+ const basisPoints=rate===V2_XP_NIGHT_RATE?8000n:10000n
  const creditedBase=Number((BigInt(base)*basisPoints)/10000n)
  const creditedBonus=Number((BigInt(bonus)*basisPoints)/10000n)
  const awarded=creditedBase+creditedBonus
