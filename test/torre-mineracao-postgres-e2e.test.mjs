@@ -185,7 +185,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const jidTest=jid
      const chatTest='homolog-test@g.us'
      const send=async(text,id)=>{
-       const [command,...args]=text.slice(1).trim().split(/\\s+/)
+       const [command,...args]=text.slice(1).trim().split(/\s+/)
        const count=messages.length
        assert.equal(await handleMiningCommand({db,cmd:command,args,sender:jidTest,chat:chatTest,
          messageId:id,reply:async m=>messages.push(m)}),true)
