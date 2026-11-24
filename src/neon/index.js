@@ -1331,7 +1331,7 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 2️⃣ 💰 Economia & banco
 3️⃣ 🛒 Loja, itens & inventário
 4️⃣ ⚔️ RPG, Raids & Pets
-5️⃣ 🎮 Minigames & Boss
+5️⃣ 🎮 Minigames, corridas & Boss
 6️⃣ 📜 Contratos & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
@@ -1365,7 +1365,7 @@ Escolha a área e eu mostro só os comandos que interessam.
 2️⃣ 💰 Economia, trabalho, banco & PIX
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ ⚔️ RPG, combate, Raids & pets
-5️⃣ 🎮 Minigames, Boss & eventos
+5️⃣ 🎮 Minigames, corridas, Boss & eventos
 6️⃣ 📜 Contratos Alpha & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo, moderação & assinatura
@@ -5478,7 +5478,7 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 9️⃣ Voltar • 0️⃣ Fechar`,
-'5':`🎮 *MINIGAMES*
+'5':`🎮 *MINIGAMES, EVENTOS & CORRIDAS*
 *!games* / *!minigames* — menu de jogos
 🎟️ *BINGO & LEILÃO AGENDADOS*
 *!bingo* / *!bingov2* — comprar cartela do bingo V2, quando agendado
@@ -5641,7 +5641,7 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 2️⃣ 💰 Economia & diversão
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ 🐾 RPG, combate & PETS
-5️⃣ 🎮 Minigames
+5️⃣ 🎮 Minigames, corridas & eventos
 6️⃣ 📜 Contratos & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo & moderação
