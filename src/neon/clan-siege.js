@@ -524,14 +524,14 @@ export async function clanSiegeStatus(session){
   if(!ON()){
     const reason='Partidas reais ainda não foram ativadas no servidor.';
     if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\.us$/.test(siegeGroup())){
-      try{return {enabled:false,reason,preflight:await clanSiegePreflight(),fortress,fortressUpgradesEnabled};}
+      try{return {enabled:false,nextRulesVersion:V6_ON()?6:5,reason,preflight:await clanSiegePreflight(),fortress,fortressUpgradesEnabled};}
       catch(err){console.warn('[Cerco] Preflight indisponível:',String(err?.message||err).slice(0,130));}
     }
     return {enabled:false,nextRulesVersion:V6_ON()?6:5,reason,fortress,fortressUpgradesEnabled};
   }
   session=await authorizedSiegeSession(session);
   if(!session?.chatJid)return {
-    enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.',
+    enabled:false,nextRulesVersion:V6_ON()?6:5,reason:'Vincule o Web ao grupo AlphaBot pelo !web.',
     fortress,fortressUpgradesEnabled
   };
   const chat=group(session);
