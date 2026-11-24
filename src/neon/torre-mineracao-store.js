@@ -55,16 +55,22 @@ async function transaction(db,fn){
   }finally{c.release()}
 }
 async function assertAvailable(client,jid,now){
-  const [sleep,carpinar,lote,raid]=await Promise.all([
-    client.query('SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>$2 LIMIT 1',[jid,now]),
-    client.query('SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>$2 LIMIT 1',[jid,now]),
-    client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid]),
-    client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])
-  ])
-  if(sleep.rowCount)throw new Error('😴 Você está dormindo e não pode minerar.')
-  if(carpinar.rowCount)throw new Error('🌾 Você está carpindo e não pode minerar.')
-  if(lote.rowCount)throw new Error('⚔️ Você está no Raidlote e não pode minerar.')
-  if(raid.rowCount)throw new Error('⚔️ Você está em Raid e não pode minerar.')
+  // Uma consulta consistente e sequencial no mesmo client transacional.
+  // Evita a fila concorrente deprecated do pg e reduz viagens até o PostgreSQL.
+  const flags=(await client.query(`
+    SELECT
+      EXISTS(SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>$2) AS sleeping,
+      EXISTS(SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>$2) AS carpinar,
+      EXISTS(SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running')) AS raidlote,
+      EXISTS(SELECT 1 FROM trevo_games WHERE
+        (game_type='raid' OR game_type LIKE 'raid:%')
+        AND state->>'status' IN ('lobby','active')
+        AND COALESCE(state->'players','{}'::jsonb) ? $1) AS raid
+  `,[jid,now])).rows[0]
+  if(flags?.sleeping)throw new Error('😴 Você está dormindo e não pode minerar.')
+  if(flags?.carpinar)throw new Error('🌾 Você está carpindo e não pode minerar.')
+  if(flags?.raidlote)throw new Error('⚔️ Você está no Raidlote e não pode minerar.')
+  if(flags?.raid)throw new Error('⚔️ Você está em Raid e não pode minerar.')
 }
 function requestKey(value){
   if(typeof value!=='string'||!/^[-A-Za-z0-9_:]{8,160}$/.test(value))
