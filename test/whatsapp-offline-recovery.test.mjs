@@ -105,3 +105,24 @@ test('o fim da fila cancela requisicoes mesmo com teto expandido',async()=>{
   assert.equal(recovery.snapshot().completed,true)
   assert.equal(t.pending(),0)
 })
+
+test('terminador libera buffer que continuou preso no Baileys',async()=>{
+  const t=fakeTimers(),actions=[]
+  let buffering=true,flushes=0
+  const recovery=createWhatsAppOfflineRecovery({
+    socket:{sendNode:async()=>{},ev:{
+      isBuffering:()=>buffering,
+      flush:()=>{buffering=false;flushes++;return true}
+    }},isOpen:()=>true,
+    schedule:t.schedule,cancel:t.cancel,batchDelayMs:10,flushDelayMs:1000,
+    onAction:(...a)=>actions.push(a)
+  })
+  recovery.onOpen()
+  recovery.onPreview()
+  await t.run(25)
+  recovery.onComplete()
+  assert.equal(flushes,1)
+  assert.deepEqual(actions.filter(a=>a[0]==='flush-complete'),[['flush-complete',1]])
+  assert.equal(recovery.snapshot().completed,true)
+  assert.equal(t.pending(),0)
+})
