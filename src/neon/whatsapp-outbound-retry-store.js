@@ -22,11 +22,12 @@ export function createOutboundRetryStore({maxMessages=2000,ttlMs=2*60*60*1000,no
       while(saved.size>maxMessages)saved.delete(saved.keys().next().value)
       return true
     },
-    getMessage(key){
+    getMessage(key,{maxAgeMs=ttlMs}={}){
       const id=String(key?.id||'')
       if(!id)return undefined
       purge()
-      return saved.get(id)?.message
+      const entry=saved.get(id)
+      return entry&&now()-entry.createdAt<=Math.min(ttlMs,maxAgeMs)?entry.message:undefined
     },
     size(){purge();return saved.size}
   }
