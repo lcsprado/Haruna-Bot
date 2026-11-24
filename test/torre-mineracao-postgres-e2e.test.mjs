@@ -17,24 +17,68 @@ const safe=(()=>{
 
 test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}, async t=>{
  assert.equal(safe,true,'ABORTADO: só permite PostgreSQL local com database alpha_homolog/alpha_test e flags de teste')
- const [{db,initDatabase,ensureUser,startPlayerSleep,startPlayerCarpinar},
-   {initRaidLoteStore},{initEnchantments},
-   store,{handleMiningCommand}] = await Promise.all([
+ const [{db,ensureUser,startPlayerSleep,startPlayerCarpinar},
+   {initEnchantments},store,{handleMiningCommand}] = await Promise.all([
    import('../src/neon/db.js'),
-   import('../src/neon/raid-lote-store.js'),
    import('../src/neon/enchantments-alpha.js'),
    import('../src/neon/torre-mineracao-store.js'),
    import('../src/neon/torre-mineracao-whatsapp.js')
  ])
  const jid='mining-homolog-'+randomUUID()+'@s.whatsapp.net'
- await t.test('preparação de tabelas apenas no banco local de teste',async()=>{
-   await initDatabase()
-   await initRaidLoteStore(db)
-   await initEnchantments()
-   await store.initMiningStore(db)
-   await ensureUser(jid,'Homologação Mineração')
-   await db.query('UPDATE wallets SET cash=50000 WHERE jid=$1',[jid])
- })
+ // Esquema mínimo real do Alpha Bot, sem executar migrações históricas sobre DB vazio.
+ // O initDatabase() geral tem dependências de pet_collection anteriores a initCommunityPack().
+ // Aqui testamos as transações da mineração e seu encaixe no motor XP sem alterar esse fluxo legado.
+ await db.query(`
+ CREATE TABLE users (
+   jid TEXT PRIMARY KEY, push_name TEXT NOT NULL DEFAULT '', level INT NOT NULL DEFAULT 1,
+   exp INT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL DEFAULT 0
+ );
+ CREATE TABLE wallets(
+   jid TEXT PRIMARY KEY REFERENCES users(jid), cash BIGINT NOT NULL DEFAULT 0,
+   bank BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL DEFAULT 0
+ );
+ CREATE TABLE stats (
+   jid TEXT PRIMARY KEY REFERENCES users(jid),
+   class_id TEXT NOT NULL DEFAULT 'warrior', class_applied BOOLEAN NOT NULL DEFAULT FALSE
+ );
+ CREATE TABLE items(
+   id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+   category TEXT NOT NULL DEFAULT 'misc', price BIGINT NOT NULL DEFAULT 0,
+   rarity TEXT NOT NULL DEFAULT 'common', sellable BOOLEAN NOT NULL DEFAULT TRUE,
+   stackable BOOLEAN NOT NULL DEFAULT TRUE
+ );
+ CREATE TABLE inventories(
+   jid TEXT NOT NULL REFERENCES users(jid), item_id TEXT NOT NULL REFERENCES items(id),
+   quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity>=0), PRIMARY KEY(jid,item_id)
+ );
+ CREATE TABLE transactions (
+   id BIGSERIAL PRIMARY KEY, from_jid TEXT NOT NULL, to_jid TEXT NOT NULL,
+   amount BIGINT NOT NULL DEFAULT 0, type TEXT NOT NULL, note TEXT
+ );
+ CREATE TABLE alpha_xp_boosts (
+   jid TEXT PRIMARY KEY REFERENCES users(jid),bonus_percent INT NOT NULL,
+   bonus_remaining INT NOT NULL DEFAULT 0,expires_at BIGINT NOT NULL
+ );
+ CREATE TABLE player_class_levels (
+   jid TEXT NOT NULL REFERENCES users(jid), class_id TEXT NOT NULL,
+   level INT NOT NULL DEFAULT 1,xp INT NOT NULL DEFAULT 0,
+   PRIMARY KEY(jid,class_id)
+ );
+ CREATE TABLE player_hero_mode(jid TEXT PRIMARY KEY REFERENCES users(jid),hero_species TEXT);
+ CREATE TABLE pet_collection(jid TEXT NOT NULL REFERENCES users(jid),species TEXT NOT NULL);
+ CREATE TABLE trevo_settings(key TEXT PRIMARY KEY,value JSONB NOT NULL DEFAULT '{}'::jsonb, updated_at BIGINT NOT NULL DEFAULT 0);
+ CREATE TABLE player_sleep(jid TEXT PRIMARY KEY REFERENCES users(jid),ends_at BIGINT NOT NULL);
+ CREATE TABLE player_carpinar(jid TEXT PRIMARY KEY REFERENCES users(jid),ends_at BIGINT NOT NULL);
+ CREATE TABLE raid_lote_jobs(jid TEXT NOT NULL REFERENCES users(jid),status TEXT NOT NULL);
+ CREATE TABLE trevo_games(game_type TEXT NOT NULL,state JSONB NOT NULL DEFAULT '{}'::jsonb);
+ `)
+ await initEnchantments()
+ await store.initMiningStore(db)
+ await ensureUser(jid,'Homologação Mineração')
+ // Evita evolução de nível durante teste de idempotência de XP (o XP real é creditado).
+ await db.query('UPDATE users SET level=40,exp=0 WHERE jid=$1',[jid])
+ await db.query('UPDATE wallets SET cash=50000 WHERE jid=$1',[jid])
+
  try{
    const money=async()=>Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0].cash)
    const uses=async(id)=>Number((await db.query('SELECT uses_remaining FROM mining_pickaxes WHERE jid=$1 AND pickaxe_id=$2',[jid,id])).rows[0].uses_remaining)
