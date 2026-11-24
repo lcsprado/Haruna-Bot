@@ -5,14 +5,14 @@ export const MINING_GUARANTEED_REWARD=Object.freeze({cash:800,xp:250})
 export const MINING_PICKAXE_MAX_USES=10
 
 // Chances de uma (1) pedra por expedicao completa, NUNCA por hora.
-// Madeira, Ferro e Aco na loja; Ouro no primeiro evento; Diamante no Cerco.
+// Madeira, Ferro e Aco na loja; Ouro no Cerco; Diamante no primeiro evento.
 // Precos e condicoes de premio ainda dependem de aprovacao e nao estao ativos.
 export const MINING_PICKAXES=Object.freeze({
   madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',stoneChancePercent:3,ore:4,fullRepairCash:500}),
   ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',stoneChancePercent:6,ore:5,fullRepairCash:800}),
   aco:Object.freeze({name:'Picareta de Aço',source:'loja',stoneChancePercent:10,ore:6,fullRepairCash:1200}),
-  ouro:Object.freeze({name:'Picareta de Ouro',source:'evento_inaugural',stoneChancePercent:12,ore:7,fullRepairCash:1600}),
-  diamante:Object.freeze({name:'Picareta de Diamante',source:'cerco',stoneChancePercent:15,ore:8,fullRepairCash:2000})
+  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',stoneChancePercent:12,ore:7,fullRepairCash:1600}),
+  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',stoneChancePercent:15,ore:8,fullRepairCash:2000})
 })
 export const MINING_PICKAXE_SOURCES=Object.freeze({
   loja:'Loja de Picaretas',
