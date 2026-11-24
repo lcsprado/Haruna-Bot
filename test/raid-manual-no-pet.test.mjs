@@ -36,7 +36,7 @@ test('normal rejoin does not change pet mode; active participant cannot change m
 })
 
 test('start mode preserves default, individual selection and Raidlote',()=>{
-  const expression=games.match(/const usePet=(loteAttemptId\|\|!.*)/)?.[1]
+  const expression=games.match(/const usePet=(s\.players\[jid\]\?\.usePet!==false.*)/)?.[1]
   assert.ok(expression)
   const check=(loteAttemptId,host,jid,players,options={})=>Boolean(vm.runInNewContext(expression,{loteAttemptId,host,jid,s:{players},options}))
   assert.equal(check(null,'a','a',{a:{}}),true)
@@ -44,7 +44,8 @@ test('start mode preserves default, individual selection and Raidlote',()=>{
   assert.equal(check(null,'a','b',{b:{}},{usePet:false}),true)
   assert.equal(check(null,'a','a',{a:{}},{usePet:false}),false)
   assert.equal(check(null,'a','b',{b:{usePet:false}}),false)
-  assert.equal(check('attempt','a','a',{a:{usePet:false}},{usePet:false}),true)
+  assert.equal(check('attempt','a','a',{a:{}},{usePet:false}),true)
+  assert.equal(check('attempt','a','a',{a:{usePet:false}}),false)
 })
 
 test('WhatsApp passes individual option and both snapshots exclude reserve and passive pets',()=>{
