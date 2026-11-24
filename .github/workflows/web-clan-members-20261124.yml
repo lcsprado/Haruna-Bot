@@ -1,0 +1,23 @@
+name: Alpha Web - membros reais do cla
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/web-api.js'
+      - 'test/web-clan-members-20261124.test.mjs'
+      - '.github/workflows/web-clan-members-20261124.yml'
+permissions:
+  contents: read
+jobs:
+  clan-members:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe
+        run: node --check src/neon/web-api.js
+      - name: Validar membros, convites e sanitizacao
+        run: node --test test/web-clan-members-20261124.test.mjs
