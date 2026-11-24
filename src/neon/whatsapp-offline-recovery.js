@@ -67,6 +67,13 @@ export function createWhatsAppOfflineRecovery({
       completed=true
       clearBatch()
       clearFlush()
+      // Mesmo apos o terminador do servidor, o emitter Baileys pode continuar
+      // em modo buffering; sem flush, o socket fica 'open' e nenhum upsert sai.
+      if(socket.ev?.isBuffering?.()===true){
+        try{
+          if(socket.ev.flush()===true)onAction('flush-complete',1)
+        }catch{onAction('flush_complete_error',1)}
+      }
     },
     onMessage(){
       receivedMessages=true
