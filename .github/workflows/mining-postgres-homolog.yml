@@ -72,4 +72,4 @@ jobs:
           node --check src/neon/raid-lote-store.js
           node --check src/neon/index.js
       - name: Mining policy and PostgreSQL integration tests
-        run: node --test --test-concurrency=1 test/torre-mineracao-4h.test.mjs test/torre-mineracao-store-homolog.test.mjs test/torre-mineracao-postgres-e2e.test.mjs
+        run: node --test --test-concurrency=1 test/torre-mineracao-4h.test.mjs test/torre-mineracao-store-homolog.test.mjs test/torre-mineracao-postgres-e2e.test.mjs test/torre-mineracao-fullboot-postgres.test.mjs
