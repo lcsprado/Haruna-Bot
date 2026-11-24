@@ -62,3 +62,13 @@ export function formatBusinessCollectionElapsed(seconds){
   const minutes=totalMinutes%60
   return hours>0?`${hours}h ${minutes}min`:`${minutes}min`
 }
+
+// O unico bloqueio temporal da coleta e de 5 minutos apos o ultimo resgate pago.
+// Os ciclos de 7/12/24h no catalogo sao informativos e nao limitam o resgate.
+export function businessCollectionCooldownRemainingSeconds(now,lastClaim){
+  const current=Number(now),previous=Number(lastClaim)
+  if(!Number.isFinite(current)||!Number.isFinite(previous))
+    throw new RangeError('Tempo da coleta inválido.')
+  if(previous<=0)return 0
+  return Math.max(0,300-Math.max(0,current-previous))
+}
