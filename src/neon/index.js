@@ -12249,10 +12249,10 @@ let text='🏪 *NEGÓCIOS — RENDA PASSIVA*\n\n'
 BUSINESSES.map(b=>candidateBusinessCatalog(b)).forEach((b,i)=>{
 const has=owned.some(x=>x.id===b.id)
 text+=businessV3Enabled()
- ?`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}${has?' ✅':''}\n   💵 Líquido/h ~R$ ${fmt(b.netHour)} • ciclo ${b.cycleHours}h • acumula 24h\n   📊 Retorno ~${b.paybackDays24} dias (produção contínua)\n`
+ ?`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}${has?' ✅':''}\n   💵 Líquido/h ~R$ ${fmt(b.netHour)} • ciclo ref. ${b.cycleHours}h • acumula 24h\n   📊 Retorno ~${b.paybackDays24} dias (produção contínua)\n`
  :`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
 })
-text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
+text+=`\n🕒 *!coletar*: a cada 5 minutos, sem esperar o ciclo de referência.\n`\ntext+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
 await reply(text)
 } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
 if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
@@ -12268,7 +12268,7 @@ const level=Math.max(1,Number(b.level||1))
 const mult=1+(level-1)*(businessV3Enabled()?BUSINESS_V3_LEVEL_GROWTH_PERCENT/100:(rebootEconomyEnabled()?V2_BUSINESS_ECONOMY.levelBonus:.25))
 const gross=Math.floor(b.profitHour*mult)
 text+=businessV3Enabled()
- ?`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 Líquido/h ~R$ ${fmt(Math.floor(gross*.8))} • ciclo ${b.cycleHours}h • acumula 24h\n`
+ ?`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 Líquido/h ~R$ ${fmt(Math.floor(gross*.8))} • ciclo ref. ${b.cycleHours}h • acumula 24h\n`
  :`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(gross)}/h • ⏳ ${b.capacityHours+(rebootEconomyEnabled()?0:level-1)}h\n`
 })
 if(businessV3Enabled())text+='\n🕒 Coleta a cada 5 min, com lucro proporcional ao tempo e acúmulo até 24h, inclusive offline. Ciclos são apenas referência.'
