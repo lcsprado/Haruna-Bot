@@ -19,3 +19,13 @@ test('upgrade ainda depende de flag geral e validação transacional do líder, 
   assert.match(upgrade,/return clanFortressUpgrade\(session\.jid,stat\);/);
   assert.doesNotMatch(upgrade,/group\(session\)/);
 });
+
+// Um JID de grupo válido termina em @g.us e deve permanecer aceito no preflight.
+test('regex do grupo usa apenas um escape para o ponto de g.us',()=>{
+  const line=status.split('\n').find(x=>x.includes('session?.chatJid===siegeGroup()'));
+  assert.ok(line,'Preflight sem verificação de grupo');
+  const match=line.match(/&&\/(\^\[0-9-\].*?)\/\.test/);
+  assert.ok(match,'Regex de grupo ausente');
+  assert.ok(new RegExp(match[1]).test('12345-67890@g.us'));
+  assert.equal(new RegExp(match[1]).test('12345@gXus'),false);
+});
