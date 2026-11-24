@@ -27,7 +27,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Instalar dependencias sem scripts de inicializacao
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: npm install --no-save --package-lock=false --legacy-peer-deps --ignore-scripts --no-audit --no-fund
       - name: Validar sintaxe e rotas
         run: |
           node --check src/neon/web-api.js
