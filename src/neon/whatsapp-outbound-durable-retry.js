@@ -6,6 +6,7 @@ const MAX_ID_LENGTH=180
 const MAX_BODY_LENGTH=32000
 const MAX_PAYLOAD_BYTES=110000
 const RETENTION_HOURS=48
+const GROUP_RETRY_MAX_AGE_MINUTES=10
 const isChat=chat=>/^(?:\d{10,18}@(s\.whatsapp\.net|g\.us)|\d{10,20}@lid)$/.test(String(chat||''))
 const messageId=key=>{
   const id=String(key?.id||'')
@@ -67,14 +68,18 @@ export function createDurableOutboundRetry({db,memory,log=()=>{}}={}){
   const lookup=async key=>{
     const id=messageId(key)
     if(!id)return {message:undefined,source:'invalid'}
-    const inMemory=memory.getMessage(key)
+    const groupRetry=String(key?.remoteJid||'').endsWith('@g.us')
+    const inMemory=memory.getMessage(key,groupRetry?{maxAgeMs:GROUP_RETRY_MAX_AGE_MINUTES*60*1000}:undefined)
     if(inMemory)return {message:inMemory,source:'memory'}
     if(!ready)return {message:undefined,source:'unavailable'}
     try{
       const result=await db.query(`
         SELECT payload FROM whatsapp_outbound_retry
-        WHERE message_id=$1 AND expires_at>NOW() LIMIT 1
-      `,[id])
+        WHERE message_id=$1 AND expires_at>NOW()
+          AND (NOT $2::boolean OR
+              (chat_jid=$3 AND created_at>=NOW()-INTERVAL '10 minutes'))
+        LIMIT 1
+      `,[id,groupRetry,String(key?.remoteJid||'')])
       const original=result.rows?.[0]?.payload
       if(original&&typeof original==='object'&&!Array.isArray(original)){
         memory.remember({key:{id},message:original})
