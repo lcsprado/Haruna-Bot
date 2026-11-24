@@ -45,6 +45,7 @@ import {
   patrimonyLeaderboard, hireCltUberDriver,
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
+import {clanProgress,clanMemberParticipation} from './clan-level-bonuses.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
@@ -604,9 +605,10 @@ async function playerBootstrap(session){
                        WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null),
     getClaimedLevelRewards(jid)
   ])
+  const clanBonus=clan?{...clanProgress(clan.xp),participation:await clanMemberParticipation(db,jid)}:null
   return {
     syncedAt:now(),
-    market,clan,clans,ranks,loanCredit,carpinarPlans,
+    market,clan,clanBonus,clans,ranks,loanCredit,carpinarPlans,
     leaderboards:{
       economy:economyRank,
       combat:combatRank,
