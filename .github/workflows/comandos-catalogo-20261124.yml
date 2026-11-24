@@ -1,0 +1,31 @@
+name: Alpha Bot - catalogo de comandos
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/index.js'
+      - 'test/comandos-catalogo-20261124.test.mjs'
+      - '.github/workflows/comandos-catalogo-20261124.yml'
+  push:
+    branches: [feat/comandos-atualizados-20261124]
+    paths:
+      - 'src/neon/index.js'
+      - 'test/comandos-catalogo-20261124.test.mjs'
+      - '.github/workflows/comandos-catalogo-20261124.yml'
+permissions:
+  contents: read
+jobs:
+  catalogo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe do bot e do teste
+        run: |
+          node --check src/neon/index.js
+          node --check test/comandos-catalogo-20261124.test.mjs
+      - name: Validar paginas e comandos reais
+        run: node --test test/comandos-catalogo-20261124.test.mjs

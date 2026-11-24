@@ -1315,6 +1315,8 @@ Um bot completo para o grupo — não só RPG.
 🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
 📜 *!contratos* — missões rotativas de 4 em 4 horas
+⛏️ *!minerar* • ⚔️ *!raidlote* — expedições de 4h e Raids automáticas
+🏎️ *!gt* • 🏁 *!corridas* — corridas diárias e garagem
 💰 *Economia & patrimônio*
 Trabalho, banco, PIX, Uber, iFood, negócios, veículos e ranking.
 ⚔️ *RPG & progressão*
@@ -1329,7 +1331,7 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 2️⃣ 💰 Economia & banco
 3️⃣ 🛒 Loja, itens & inventário
 4️⃣ ⚔️ RPG, Raids & Pets
-5️⃣ 🎮 Minigames & Boss
+5️⃣ 🎮 Minigames, corridas & Boss
 6️⃣ 📜 Contratos & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
@@ -1355,11 +1357,15 @@ Escolha a área e eu mostro só os comandos que interessam.
 🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — acesso ao novo RPG visual no navegador
 📜 *!contratos* — missões de 4 em 4 horas
+⛏️ *!minerar* / *!picaretas* — mineração da Torre
+⚔️ *!raidlote* — Raids automáticas (4h, 8h e 12h)
+🏁 *!corridas* / *!gt* — garagem e corridas
+🎟️ *!bingo* / 🔨 *!leilao* — eventos agendados
 1️⃣ 👤 Perfil, conta & social
 2️⃣ 💰 Economia, trabalho, banco & PIX
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ ⚔️ RPG, combate, Raids & pets
-5️⃣ 🎮 Minigames, Boss & eventos
+5️⃣ 🎮 Minigames, corridas, Boss & eventos
 6️⃣ 📜 Contratos Alpha & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo, moderação & assinatura
@@ -5339,17 +5345,28 @@ const commandPages={
 *!centraluber* — motoristas, carros, turnos e saldo acumulado\n*!centraluber todos* — envia todos os disponíveis, pareando melhor motorista com melhor carro\n*!centraluber 1 3* — envia somente os motoristas escolhidos
 *!coletauber* — coleta todo o dinheiro da Central Uber
 🛑 Cada turno automático dura no máximo *8 horas*.
+🏍️ *CLT IFOOD — MOTOBOYS AUTOMÁTICOS*
+*!cltifood* — catálogo de motoboys (até 3)
+*!cltifood 1* — contrata motoboy pela opção
+*!centralifood* — vê motoristas, motos e saldos
+*!centralifood todos* — envia todos os motoboys livres por 8h
+*!centralifood 1 3* — inicia turnos selecionados
+*!coletaifood* — coleta o líquido acumulado
 🏪 *NEGÓCIOS*
 *!negocios* — catálogo de negócios
 *!comprarnegocio N* — compra pelo número
 *!meusnegocios* — seus negócios e upgrades
 *!coletar* — coleta a renda acumulada
 🏦 *BANCO & DINHEIRO*
+*!bolsafamilia* — benefício emergencial conforme elegibilidade
 *!saldo* — carteira, banco e total
 *!depositar valor* / *!depositar total* — deposita
 *!sacar valor* — saca
 *!pix @pessoa valor* — transfere
 *!ranking* — ranking dos mais ricos
+🚙 *VEÍCULOS & FROTAS*
+*!carros* / *!garagem* — modelos e carros próprios
+*!motos* / *!minhasmotos* — motos e garagem
 💳 *EMPRÉSTIMOS*
 *!emprestimo @pessoa valor* — oferece empréstimo
 *!aceitaremprestimo [ID]* — aceita proposta
@@ -5367,6 +5384,11 @@ const commandPages={
 *!itens* — abre o menu de itens
 *!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
+⛏️ *PICARETAS DA TORRE*
+*!picaretas* — modelos, resistência e chance de pedra
+*!comprarpicareta madeira* — compra Madeira; também ferro ou aco
+*!repararpicareta madeira* — restaura os usos faltantes; também ferro, aco, ouro ou diamante
+💡 Ouro é exclusivo do Cerco do Clã; Diamante, de evento.
 *!atalhos* — exemplos de comandos rápidos com explicações\n*!atalhos loja* — lista dos números fixos para !comprar
 *!inventario* — abre seu inventário
 *!vender* — abre a venda por categoria\n*!venderequipamentos* — armas/armaduras não equipadas\n*!venderpocoes* — poções e cura\n*!venderraid* — materiais e chaves de Raid
@@ -5409,11 +5431,29 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 ⚔️ *Raids cooperativas*
 *!raid* — lista as Raids e mostra a Raid ativa
 *!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
+*!raid 50 go* — abre e inicia imediatamente (host)
+*!raid 50 go sempet* — abre e inicia sem usar pets
+*!raid 30 sempet* — abre sala sem pets
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
+*!entrar 30 sempet* — entra sem pet nesta Raid
+*!go 30 sempet* — host inicia sem pet
 *!go NÚMERO/NÍVEL* — host inicia sua sala; ${classesOnlyRebootEnabled()?'*Raid 70 exige 3 jogadores Lv.90+ e contribuição efetiva.*':'*todas as Raids podem ser feitas solo*'}
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
+*!desistir 30* — abandona Raid ativa sem receber prêmios
+⚔️ *RAIDLOTE 2.0 — SESSÕES CONTÍNUAS*
+*!raidlote 50 4h* — prévia automática de 4 horas
+*!raidlote 50 8h* / *!raidlote 50 12h* — 8 ou 12 horas
+*!raidlote 50 8h sempet* — automático, sem pets durante todo o pacote
+*1* para confirmar / *2* para cancelar a prévia (90s)
+*!raidlote confirmar 50 8h* — confirmação direta
+*!raidlote status* / *!raidlote status @pessoa* — acompanhamento
+*!raidlote painel* — mostra pacotes de todos
+*!raidlote historico* — pacotes anteriores
+*!raidlote recibo* — comprovante ao terminar
+*!raidlote cancelar* — solicita encerramento
+💳 Cada tentativa cobra chave + taxa; sessões encerram por prazo, morte ou falta de saldo.
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
 🐾 *Pets & Time Pet*
@@ -5438,8 +5478,13 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 9️⃣ Voltar • 0️⃣ Fechar`,
-'5':`🎮 *MINIGAMES*
+'5':`🎮 *MINIGAMES, EVENTOS & CORRIDAS*
 *!games* / *!minigames* — menu de jogos
+🎟️ *BINGO & LEILÃO AGENDADOS*
+*!bingo* / *!bingov2* — comprar cartela do bingo V2, quando agendado
+*!cartela* / *!cartelav2* — conferir sua cartela
+*!leilao* / *!leilaov2* — consultar leilão ativo
+*!lance 500* / *!lancev2 500* — ofertar lance no lote ativo
 *!roleta valor cor* — roleta
 *!cara valor* / *!coroa valor* — cara ou coroa
 *!cara @pessoa valor* + *!aceitar* — duelo valendo dinheiro
@@ -5468,6 +5513,27 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 ⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
 ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e chance de Caixa da Sorte com 2% de participação. Prêmio por jogador a cada 1h, compartilhado entre grupos.':'🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã\n🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único'}
 🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
+🏎️ *GARAGEM ALPHA & CORRIDAS*
+*!corridas* — guia completo da garagem de corrida
+*!corridacarros* / *!comprarcorrida gol* — modelos e compra
+*!garagemcorrida* / *!equiparcorrida ID* — garagem e carro ativo
+*!corescarro* / *!pintarcarro ID azul* — cores e pintura
+*!oficina* / *!melhorarcarro motor* — melhorias
+*!repararcarro* — restaura condição do veículo
+*!corrida rua cidade equilibrada* — corrida solo
+*!desafiocorrida @pessoa reta* / *!aceitarcorrida tecnica* — PvP
+*!cancelarcorrida* — cancela desafio
+*!rankcorrida* / *!historicocorrida* — ranking e histórico
+🏁 *GT ALPHA — 20H30*
+*!gt* / *!gtcarro* — regras e carro participante
+*!gttabela* / *!gttabela semana* — classificação diária/semanal
+*!gtclima* / *!gtpistas* — pistas e previsão do evento
+*!gtpatrocinio* — escolher patrocínio
+🌌 *POÇO DO ABISMO (EVENTO SAZONAL)*
+*!poco* / *!poco relatorio* — consulta e relatório, quando disponível
+*!pocorank* — ranking da temporada
+*!poco iniciar* / *!poco sair* — iniciar/encerrar durante o evento
+*!poco abrir epica* / *!poco abrir lendaria* — abrir caixas obtidas
 9️⃣ Voltar • 0️⃣ Fechar`,
 '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
 📈 *PROGRESSÃO*
@@ -5475,6 +5541,13 @@ ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e c
 *!carpinar* — trabalho AFK de 1h a 12h para ganhar XP
 *!buffxp* / *!usarxp* — elixires de experiência e tomos instantâneos
 *!carpinarsair* — encerra o carpinar antes
+⛏️ *MINERAÇÃO DA TORRE — 4H*
+*!minerar* / *!minerar status* — ver expedição e tempo restante
+*!minerar iniciar madeira* — começa 4h, consome 1 uso
+*!minerar resgatar* — coleta dinheiro, XP e chance de pedra ao completar
+*!minerar cancelar* — sai antes, sem devolver o uso
+*!picaretas* — ferramentas próprias e loja; reparo em *!repararpicareta*
+🔒 Não simultânea a Raidlote, Carpinar ou Dormir.
 *!missoes* — missões diárias
 *!resgatarmissoes* — coleta recompensas concluídas
 *!conquistas* — conquistas e objetivos
@@ -5509,6 +5582,7 @@ ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e c
 *!claexpulsar @pessoa* — expulsa membro
 *!cladoar valor* — doa ao cofre
 *!rankingclas* — ranking
+*!rankdoacoes* / *!rankingdoacoes* — classificação das doações do clã
 *!saircla* — sai do clã
 9️⃣ Voltar • 0️⃣ Fechar`,
 '8':`💚 *GRUPO & MODERAÇÃO*
@@ -5547,7 +5621,7 @@ ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e c
 *!gado @pessoa* — meme
 *!burro @pessoa* — meme
 *!menu* — menu principal
-*!comandos* — este catálogo
+*!comandos* — este catálogo, navegue pelas páginas 1 a 9
 🆘 *Suporte*
 *!suporte* — abre chamado
 *!chamado CODIGO* — consulta chamado
@@ -5561,11 +5635,13 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
+⛏️ *!minerar* / *!picaretas* • ⚔️ *!raidlote* • 🏁 *!corridas* / *!gt*
+🎟️ *!bingo* / 🔨 *!leilao* — eventos agendados
 1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ 🐾 RPG, combate & PETS
-5️⃣ 🎮 Minigames
+5️⃣ 🎮 Minigames, corridas & eventos
 6️⃣ 📜 Contratos & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo & moderação
