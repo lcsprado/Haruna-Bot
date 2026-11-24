@@ -182,6 +182,27 @@ if(process.env.ALPHA_WHATSAPP_ENABLE==='0' || standbyByService){
 }else{
   await import('./index.js')
 
+  // Cerco V5/V6: fechar rodadas e abrir somente na janela semanal
+  // se a operacao habilitar o evento e identificar seu grupo real.
+  // Sem flags, nenhum job ou premiacao do Cerco e executado.
+  if(process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\\.us$/.test(String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||''))){
+    let busy=false
+    const sweep=setInterval(()=>{
+      if(busy)return
+      busy=true
+      void import('./clan-siege.js')
+        .then(({settleClanSiege,startDailyClanSiege})=>{
+          void settleClanSiege()
+            .then(()=>startDailyClanSiege())
+            .then(result=>{if(result?.started)console.info('[Cerco] Guerra semanal criada:',result.matchId)})
+            .catch(err=>console.warn('[Cerco] Agendamento indisponivel:',String(err?.message||err).slice(0,150)))
+            .finally(()=>{busy=false})
+        })
+        .catch(err=>{busy=false;console.warn('[Cerco] Scheduler indisponivel:',String(err?.message||err).slice(0,150))})
+    },15000)
+    sweep.unref?.()
+  }
+
   // Auditoria agregada uma única vez; nenhuma migração, concessão ou evento antigo.
   setTimeout(async()=>{
     try{
