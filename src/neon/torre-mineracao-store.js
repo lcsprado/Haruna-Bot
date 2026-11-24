@@ -109,7 +109,10 @@ export async function buyMiningPickaxe(db,{jid,pickaxeId,key}){
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const existing=await oldReceipt(c,jid,key,'buy')
-    if(existing)return existing
+    if(existing){
+      if(existing.pickaxeId!==pickaxeId)throw new Error('Solicitação repetida com picareta divergente.')
+      return existing
+    }
     const owned=(await c.query('SELECT 1 FROM mining_pickaxes WHERE jid=$1 AND pickaxe_id=$2',[jid,pickaxeId])).rowCount>0
     if(owned)throw new Error('Você já possui essa picareta.')
     await debitCash(c,jid,quote.priceCash)
@@ -126,11 +129,14 @@ export async function repairMiningPickaxe(db,{jid,pickaxeId,key}){
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const old=await oldReceipt(c,jid,key,'repair')
-    if(old)return old
+    if(old){
+      if(old.pickaxeId!==pickaxeId)throw new Error('Solicitação repetida com picareta divergente.')
+      return old
+    }
     const owned=(await c.query('SELECT uses_remaining FROM mining_pickaxes WHERE jid=$1 AND pickaxe_id=$2 FOR UPDATE',[jid,pickaxeId])).rows[0]
     if(!owned)throw new Error('Você não possui essa picareta.')
     const quote=miningRepairQuote(pickaxeId,Number(owned.uses_remaining))
-    if(quote.costCash===0)return {status:'full',...quote}
+    if(quote.costCash===0)return saveReceipt(c,jid,key,'repair',{status:'full',...quote},nowSeconds())
     await debitCash(c,jid,quote.costCash)
     await c.query('UPDATE mining_pickaxes SET uses_remaining=$3 WHERE jid=$1 AND pickaxe_id=$2',[jid,pickaxeId,quote.usesAfterRepair])
     await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'mining_pickaxe_repair',$3)",
