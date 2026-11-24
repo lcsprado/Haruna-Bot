@@ -68,3 +68,16 @@ jobs:
           test/torre-mineracao-4h.test.mjs
           test/torre-mineracao-store-homolog.test.mjs
           test/torre-mineracao-postgres-integration.test.mjs
+      - name: Criar segundo banco efemero para testes WhatsApp e eventos
+        run: >-
+          node --input-type=module -e
+          "import pg from 'pg'; const c=new pg.Client({connectionString:'postgresql://postgres:localonly@127.0.0.1:5432/postgres'}); await c.connect(); await c.query('CREATE DATABASE alpha_homolog_e2e'); await c.end();"
+      - name: Validar mensagens WhatsApp e eventos em banco isolado
+        env:
+          DATABASE_URL: postgresql://postgres:localonly@127.0.0.1:5432/alpha_homolog_e2e
+          ALPHA_MINING_E2E_PG: '1'
+        run: node --test --test-concurrency=1 test/torre-mineracao-postgres-e2e.test.mjs
+      - name: Validar inicializacao completa do banco em terceiro DB descartavel
+        env:
+          ALPHA_MINING_E2E_PG: '1'
+        run: node --test --test-concurrency=1 test/torre-mineracao-fullboot-postgres.test.mjs
