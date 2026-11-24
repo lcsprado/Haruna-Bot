@@ -3,12 +3,24 @@
 export const MINING_DURATION_SECONDS=4*60*60
 
 // Chances de uma (1) pedra por expedicao completa, NUNCA por hora.
+// Sao tres picaretas da loja, uma exclusiva do primeiro evento e uma do Cerco.
+// Precos e condicoes de premio ainda dependem de aprovacao e nao estao ativos.
 export const MINING_PICKAXES=Object.freeze({
-  ferro:Object.freeze({name:'Picareta de Ferro',stoneChancePercent:3,ore:4}),
-  prata:Object.freeze({name:'Picareta de Prata',stoneChancePercent:6,ore:5}),
-  ouro:Object.freeze({name:'Picareta de Ouro',stoneChancePercent:10,ore:6}),
-  abissal:Object.freeze({name:'Picareta Abissal',stoneChancePercent:15,ore:8})
+  pedra_sussurrante:Object.freeze({name:'Picareta da Pedra Sussurrante',source:'loja',stoneChancePercent:3,ore:4}),
+  veias_lunares:Object.freeze({name:'Picareta das Veias Lunares',source:'loja',stoneChancePercent:6,ore:5}),
+  nucleo_carmesim:Object.freeze({name:'Picareta do Núcleo Carmesim',source:'loja',stoneChancePercent:10,ore:6}),
+  primeira_ruptura:Object.freeze({name:'Picareta da Primeira Ruptura',source:'evento_inaugural',stoneChancePercent:12,ore:7}),
+  trono_sitiado:Object.freeze({name:'Picareta do Trono Sitiado',source:'cerco',stoneChancePercent:15,ore:8})
 })
+export const MINING_PICKAXE_SOURCES=Object.freeze({
+  loja:'Loja de Picaretas',
+  evento_inaugural:'Primeiro evento de mineração',
+  cerco:'Cerco do Clã'
+})
+export function miningPickaxesBySource(source){
+  if(!Object.hasOwn(MINING_PICKAXE_SOURCES,source))throw new Error('Origem de picareta inválida.')
+  return Object.entries(MINING_PICKAXES).filter(([,p])=>p.source===source).map(([id,p])=>Object.freeze({id,...p}))
+}
 
 // IDs das pedras ja existentes no Alpha Bot; nao cria novos buffs.
 export const MINING_STONE_TABLE=Object.freeze([
@@ -25,7 +37,7 @@ export function miningQuote(pickaxeId){
   const pickaxe=MINING_PICKAXES[pickaxeId]
   if(!pickaxe)throw new Error('Picareta inválida.')
   return Object.freeze({pickaxeId,name:pickaxe.name,durationSeconds:MINING_DURATION_SECONDS,
-    stoneChancePercent:pickaxe.stoneChancePercent,ore:pickaxe.ore})
+    stoneChancePercent:pickaxe.stoneChancePercent,ore:pickaxe.ore,source:pickaxe.source})
 }
 
 // A mesma exclusao mutua devera ser testada nos dois sentidos no banco antes da ativacao.
