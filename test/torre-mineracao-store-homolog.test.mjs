@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {miningHomologationEnabled,assertMiningHomologation,miningActivityLock,assertNoActiveMining} from '../src/neon/torre-mineracao-activity.js'
+import {miningHomologationEnabled,miningProductionApproved,miningRuntimeEnabled,assertMiningRuntime,assertMiningHomologation,miningActivityLock,assertNoActiveMining} from '../src/neon/torre-mineracao-activity.js'
 import {initMiningStore} from '../src/neon/torre-mineracao-store.js'
 
 const env=Object.freeze({
@@ -70,5 +70,31 @@ test('guard protege atividade simultânea apenas durante a expedição',async()=
      if(original[key]===undefined)delete process.env[key]
      else process.env[key]=original[key]
    }
+ }
+})
+
+test('liberação de produção recusa banco incorreto, flags incompletas e host fora de Aiven',()=>{
+ const ok={
+  ALPHA_MINING_MODE:'production-approved',
+  ALPHA_MINING_DB_CONFIRMED:'alpha-prod-v2-owner-approved',
+  ALPHA_MINING_OWNER_APPROVED:'2026-11-24-release',
+  DATABASE_URL:'postgresql://fake:fake@my-aiven.aivencloud.com:12345/alpha_prod_v2'
+ }
+ assert.equal(miningProductionApproved(ok),true)
+ assert.equal(miningRuntimeEnabled(ok),true)
+ assert.doesNotThrow(()=>assertMiningRuntime(ok))
+ assert.equal(miningHomologationEnabled(ok),false)
+ for(const overrides of [
+   {DATABASE_URL:'postgresql://fake:fake@my-aiven.aivencloud.com:12345/alpha_prod_v3'},
+   {DATABASE_URL:'postgresql://fake:fake@attacker.example/alpha_prod_v2'},
+   {DATABASE_URL:'postgresql://fake:fake@aivencloud.com.attacker.example/alpha_prod_v2'},
+   {ALPHA_MINING_OWNER_APPROVED:''},
+   {ALPHA_MINING_DB_CONFIRMED:'test-only'},
+   {ALPHA_MINING_MODE:'homologation'}
+ ]){
+   const bad={...ok,...overrides}
+   assert.equal(miningProductionApproved(bad),false)
+   assert.equal(miningRuntimeEnabled(bad),false)
+   assert.throws(()=>assertMiningRuntime(bad),/Mineração bloqueada/)
  }
 })
