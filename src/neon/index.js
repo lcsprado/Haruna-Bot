@@ -12252,7 +12252,8 @@ text+=businessV3Enabled()
  ?`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}${has?' ✅':''}\n   💵 Líquido/h ~R$ ${fmt(b.netHour)} • ciclo ref. ${b.cycleHours}h • acumula 24h\n   📊 Retorno ~${b.paybackDays24} dias (produção contínua)\n`
  :`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
 })
-text+=`\n🕒 *!coletar*: a cada 5 minutos, sem esperar o ciclo de referência.\n`\ntext+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
+text+=`\n🕒 *!coletar*: a cada 5 minutos, sem esperar o ciclo de referência.\n`
+text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.${rebootEconomyEnabled()?'\n🏭 Operação V2: outros 10% do lucro bruto.':''}\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
 await reply(text)
 } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
 if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
