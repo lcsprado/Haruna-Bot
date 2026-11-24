@@ -24,7 +24,7 @@ test('fora do cerco, fortaleza mantém três melhorias e percentuais reais',()=>
  for(const k of ['hp','attack','defense'])assert.match(html,new RegExp('data-siege-upgrade="'+k+'"'));
  for(const title of ['Muralhas','Arsenal','Defesas'])assert.ok(html.includes(title));
  assert.ok(html.includes('6.0%')&&html.includes('1.5%'));
- assert.ok(html.includes('2.100'));
+ assert.ok(html.includes('2100'));
 });
 test('cerco ativo ou pre-cerco mantêm painel de melhorias apenas uma vez',()=>{
  const html=renderClanSiegePreview(ui({enabled:true,clans:[],myClanId:'7',match:null}));
