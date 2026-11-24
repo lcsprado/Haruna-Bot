@@ -47,12 +47,15 @@ test('beta convidado: apenas no grupo oficial e com configuração exata',()=>wi
   assert.equal(await siegeBetaGuestAccess(db,{jid:'joao',chat:'120363429534634131@g.us'}),false);
   assert.equal((await siegeBetaAuthorizedSet(db)).size,3);
 }));
-test('beta convidado: sessão e troca de código verificam JID E grupo',()=>{
-  const api=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8');
-  assert.match(api,/await betaWebAccess\(row\.jid,row\.chat_jid,client\)/);
-  assert.match(api,/await betaWebAccess\(row\.jid,row\.chat_jid\)/);
-  assert.match(api,/if\(!chatJid\)return false/);
-  const siege=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
-  assert.match(siege,/const approved=await siegeBetaAuthorizedSet\(conn\)/);
-  assert.match(siege,/t\.jids\.some\(jid=>!approved\.has\(String\(jid\)\)\)/);
-});
+test('login Web atual exige senha e Cerco exige sessao autenticada; troca legada nao entra',()=>{
+  const api=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
+  assert.match(api,/const session=await authSession\(req\)/)
+  assert.match(api,/POST' && url.pathname==='\/api\/v1\/auth\/exchange'/)
+  assert.match(api,/json\(res,410,/)
+  const auth=api.indexOf('const session=await authSession(req)')
+  const siegeRoute=api.indexOf("url.pathname==='/api/v1/me/clan-siege'")
+  assert.ok(siegeRoute>auth,'consulta de Cerco apenas apos autenticar')
+  const siege=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8')
+  assert.match(siege,/const approved=await siegeBetaAuthorizedSet\(conn\)/)
+  assert.match(siege,/t\.jids\.some\(jid=>!approved\.has\(String\(jid\)\)\)/)
+})
