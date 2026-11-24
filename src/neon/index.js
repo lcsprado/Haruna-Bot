@@ -13752,13 +13752,14 @@ text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'M
 if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
 text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
 if(rooms.length) text+='👉 *Entrar:* !entrar NÚMERO ou !entrar NÍVEL\n'
-text+='\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
+text+='\n🐾 Sem pets nesta Raid: !raid 30 sempet, !entrar 30 sempet ou !go 30 sempet (host). Troque 30 pelo nível desejado.\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
 return await reply(text)
 }
-const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
+const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[1]||''))
+const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested,{usePet})
 await progressDailyMission(sender,'game')
 const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*${usePet?'':'\n🛡️ Você entrou sem pets nesta Raid.'}\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
@@ -13767,10 +13768,12 @@ const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalo
 if(raw&&!level) return await reply(classesOnlyRebootEnabled()
  ?'⚔️ Escolha uma Raid válida no menu *!raid*.'
  :'⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
-const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
+const usePet=!args.some(arg=>['sempet','sozinho'].includes(normalizeItemText(arg)))
+const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null,{usePet})
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo, mas a Raid dos Sete Pecados é difícil e recomenda equipe.`))
+const petModeLine=r.players?.[sender]?.usePet===false?'\n🛡️ Você está sem pets nesta Raid.':''
+await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.${petModeLine}`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}${petModeLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}${petModeLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo, mas a Raid dos Sete Pecados é difícil e recomenda equipe.`))
 } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
@@ -13791,9 +13794,10 @@ if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
 const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
-const r=await startRaid(chat,sender,level||null)
+const usePet=!args.some(arg=>['sempet','sozinho'].includes(normalizeItemText(arg)))
+const r=await startRaid(chat,sender,level||null,{usePet})
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
+await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas funcionam para quem participa com pets.${r.players?.[sender]?.usePet===false?'\n🛡️ Você está sem pets nesta Raid.':''}\n🏆 Recompensas serão proporcionais à colaboração.`)
 runRaidCombat(chat,Number(r.level),reply)
 } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
