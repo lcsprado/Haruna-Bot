@@ -1,5 +1,11 @@
 name: Torre mineracao - PostgreSQL efemero (homologacao)
 on:
+  push:
+    branches: [feat/torre-mineracao-homolog-4h-20261124]
+    paths:
+      - 'src/neon/torre-mineracao-*.js'
+      - 'test/torre-mineracao-*.test.mjs'
+      - '.github/workflows/torre-mineracao-pg-homolog.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [whatsapp-only]
