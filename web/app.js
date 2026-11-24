@@ -1,8 +1,8 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
-import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
+import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js?v=20261124-clan-v2';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-web-reboot-20261119-identity-v2';
+const WEB_ASSET_ID='alpha-web-reboot-20261124-clan-v2';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -2610,7 +2610,7 @@ function renderClan(){
       '<p>Não há jogadores recentes sem clã disponíveis para convite.</p>')+'</details>':'';
   return '<div class="page-head"><div><h2>Clã</h2><p>Gerencie os integrantes reais do seu clã e participe da Guerra de Clãs.</p></div></div>'+
     '<div class="card"><div class="section-title"><h3>'+esc(clan?.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+
-      renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+      renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+ (clan?renderClanBonusPanel(ex.clanBonus):'')+
     renderClanSiegePreview(ui)+
     (clan?'<div class="section"><div class="section-title"><h3>Membros do meu clã</h3><small>'+members.length+' registrado(s)</small></div>'+
       '<div class="grid three">'+(members.length?rows:'<div class="empty">Sincronizando integrantes do clã...</div>')+'</div>'+invite+'</div>':'')+
@@ -3148,6 +3148,25 @@ function renderRelationship(rel){
   }
   return '<div class="relationship-card"><div><small>PARCEIRO(A)</small><strong>💍 '+esc(rel.partner_name||'Jogador')+'</strong></div>'+
     '<div><small>STATUS</small><strong>Casados</strong></div></div>';
+}
+function renderClanBonusPanel(bonus){
+  if(!bonus?.benefits)return '<section class="notice warn section">⚠️ Bônus de clã indisponíveis: a API ainda não confirmou os percentuais e a sua elegibilidade. Nenhum bônus será presumido.</section>';
+  const fmt=v=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+  const b=bonus.benefits,member=bonus.participation||{},active=member.eligible===true;
+  const next=bonus.nextLevel
+    ? '<p>📈 Próximo nível: <strong>'+num(bonus.nextLevel)+'</strong> • Faltam <strong>'+money(bonus.remainingXp||0)+'</strong> em doações acumuladas.</p>'
+    : '<p>🏆 Nível máximo 50 alcançado.</p>';
+  return '<section class="card section" aria-label="Bônus PvE do nível do clã">'+
+    '<div class="section-title"><h3>✨ Bônus de nível do clã</h3><small>Nível '+num(bonus.level)+'/50</small></div>'+
+    '<div class="grid stats">'+
+       statCard('XP BOSS / RAID','+'+fmt(b.xpPct),'PvE manual')+
+       statCard('DANO BOSS / RAID','+'+fmt(b.damagePct),'PvE manual')+
+       statCard('REDUÇÃO DANO',fmt(b.defensePct),'PvE manual')+'</div>'+
+    '<p class="muted">'+(active?'✅ Seus bônus estão liberados.':'🔒 Esses bônus ainda não estão ativos para você.')+'</p>'+
+    '<p>🤝 Ativação individual: doar R$ 1.000 ao clã atual <strong>ou</strong> vencer 3 Raids manuais cooperativas com outro membro do mesmo clã (cada um contribui ao menos 2% do dano).</p>'+
+    '<p>💰 Sua doação acumulada: <strong>'+money(member.donated||0)+'</strong> • ⚔️ Raids cooperativas: <strong>'+num(member.coopWins||0)+'/3</strong></p>'+next+
+    '<p class="muted">Sem efeito no PvP, Raidlote automático, dinheiro, drops ou XP de pets.</p>'+
+    '</section>';
 }
 function renderClanSummary(clan){
   if(!clan) return '<div class="empty">Você ainda não faz parte de um clã.</div>';

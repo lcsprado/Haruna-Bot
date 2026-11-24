@@ -53,10 +53,10 @@ test('pets preserve original and updated portrait variants',()=>{
 test('PWA and Web update together without removing rich game modules or login',()=>{
   const app=read('web/app.js'),sw=read('web/sw.js'),html=read('web/index.html');
   const version=JSON.parse(read('web/version.json'));
-  assert.equal(version.assetVersion,'alpha-web-reboot-20261119-identity-v2');
-  assert.match(app,/WEB_ASSET_ID='alpha-web-reboot-20261119-identity-v2'/);
-  assert.match(sw,/alpha-rpg-pwa-20261119-identity-v2/);
-  assert.match(html,/app\.js\?v=20261119-identity-v2/);
+  assert.equal(version.assetVersion,'alpha-web-reboot-20261124-clan-v2');
+  assert.match(app,/WEB_ASSET_ID='alpha-web-reboot-20261124-clan-v2'/);
+  assert.match(sw,/alpha-rpg-pwa-20261124-clan-v2/);
+  assert.match(html,/app\.js\?v=20261124-clan-v2/);
   for(const keep of ["['racing','🏎️','Garagem Alpha']",
     "['character','🧙','Personagem']","['pets','🐾','Pets']",
     "['clan','🛡️','Clã']",

@@ -8,6 +8,7 @@ import {businessIntervalGross,businessCollectionElapsedSeconds,businessCollectio
 import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
 import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
+import {clanProgress,clanLevelFromXp} from './clan-level-bonuses.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
@@ -237,6 +238,18 @@ export async function initProgression(){
     CREATE INDEX IF NOT EXISTS clan_donations_by_clan_idx ON clan_donations(clan_id,created_at DESC);
     CREATE INDEX IF NOT EXISTS clan_donations_by_donor_idx ON clan_donations(donor_jid);
 
+    -- Cada vitória cooperativa manual conta uma vez por membro e por Raid.
+    -- Não transferir crédito quando o jogador mudar de clã.
+    CREATE TABLE IF NOT EXISTS clan_coop_raid_credits(
+      clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,
+      jid TEXT NOT NULL,
+      raid_key TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(clan_id,jid,raid_key)
+    );
+    CREATE INDEX IF NOT EXISTS clan_coop_raid_credits_member_idx
+      ON clan_coop_raid_credits(jid,clan_id);
+
 
     CREATE TABLE IF NOT EXISTS user_homes(
       jid TEXT PRIMARY KEY,
@@ -377,7 +390,7 @@ export async function getClanForUser(jid){
   `,[jid])
   if(!rows[0]) return null
   const c=rows[0]
-  return {...c,level:1+Math.floor(Number(c.xp||0)/25000)}
+  return {...c,...clanProgress(c.xp)}
 }
 
 export async function createClan(jid,name){
@@ -407,7 +420,7 @@ export async function createClan(jid,name){
       "INSERT INTO clan_members(jid,clan_id,role) VALUES($1,$2,'leader')",
       [jid,clan.id]
     )
-    return {...clan,role:'leader',members:1,level:1}
+    return {...clan,role:'leader',members:1,...clanProgress(0)}
   })
 }
 
@@ -544,7 +557,8 @@ export async function donateClan(jid,amount){
       amount,
       treasury:Number(row.treasury),
       xp:Number(row.xp),
-      level:1+Math.floor(Number(row.xp)/25000)
+      ...clanProgress(row.xp),
+      leveledUp:clanLevelFromXp(Number(row.xp)-amount)<clanLevelFromXp(row.xp)
     }
   })
 }
@@ -578,7 +592,7 @@ export async function listClans(limit=10){
     ORDER BY c.xp DESC,c.treasury DESC,c.created_at ASC
     LIMIT $1
   `,[limit])
-  return rows.map(r=>({...r,level:1+Math.floor(Number(r.xp||0)/25000)}))
+  return rows.map(r=>({...r,...clanProgress(r.xp)}))
 }
 
 function resolveCatalog(input,catalog){
