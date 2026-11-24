@@ -865,6 +865,11 @@ if(!activeKeys.has(key)) raidAutoRetryAt.delete(key)
 console.error('[Raid Auto] falha no watchdog',err?.message||err)
 }finally{raidAutoWatchdogBusy=false}
 }
+async function announceStartedRaid(chat,sender,r,catalog,reply){
+const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
+await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas funcionam para quem participa com pets.${r.players?.[sender]?.usePet===false?'\n🛡️ Você está sem pets nesta Raid.':''}\n🏆 Recompensas serão proporcionais à colaboração.`)
+runRaidCombat(chat,Number(r.level),reply)
+}
 async function runRaidCombat(chat,level,reply){
 const runKey=`${chat}|${Number(level)}`
 if(raidRuns.has(runKey)) return false
@@ -13711,12 +13716,20 @@ if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
 return 0
 }
 const requested=resolveRaidLevel(args[0])
+const raidOptions=args.slice(1).map(arg=>normalizeItemText(arg))
+const quickStart=cmd==='raid'&&raidOptions.includes('go')
+const usePet=!raidOptions.some(arg=>['sempet','sozinho'].includes(arg))
 if(args[0]&&!requested) return await reply(classesOnlyRebootEnabled()
  ?'⚔️ Raid inválida. Consulte *!raid* para ver os níveis disponíveis.'
  :'⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
 const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
+if(quickStart&&requestedRoom.status==='lobby'){
+if(requestedRoom.host!==sender)return await reply('⚠️ Somente o host pode iniciar esta Raid. Use !entrar '+requestedRoom.level+' para participar.')
+const r=await startRaid(chat,sender,requested,{usePet})
+return await announceStartedRaid(chat,sender,r,raidCatalog,reply)
+}
 const players=Object.values(requestedRoom.players||{})
 let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n👑 Host: *${String(requestedRoom.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,60)}*\n`
 if(requestedRoom.status==='lobby'){
@@ -13752,12 +13765,17 @@ text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'M
 if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
 text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
 if(rooms.length) text+='👉 *Entrar:* !entrar NÚMERO ou !entrar NÍVEL\n'
-text+='\n🐾 Sem pets nesta Raid: !raid 30 sempet, !entrar 30 sempet ou !go 30 sempet (host). Troque 30 pelo nível desejado.\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
+text+='\n⚡ Abrir e iniciar: !raid 50 go ou !raid 50 go sempet.\n🐾 Sem pets nesta Raid: !raid 30 sempet, !entrar 30 sempet ou !go 30 sempet (host). Troque 30 pelo nível desejado.\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
 return await reply(text)
 }
-const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[1]||''))
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested,{usePet})
 await progressDailyMission(sender,'game')
+if(quickStart){
+let started
+try{started=await startRaid(chat,sender,requested,{usePet})}
+catch(err){return await reply('⚠️ Sala aberta, mas não foi possível iniciar automaticamente. '+String(err?.message||err)+'\nA chave não foi consumida pelo início rejeitado. Use !go '+requested+' quando estiver pronto, ou !cancelarraid '+requested+'.')}
+return await announceStartedRaid(chat,sender,started,raidCatalog,reply)
+}
 const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
 await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*${usePet?'':'\n🛡️ Você entrou sem pets nesta Raid.'}\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
@@ -13796,9 +13814,7 @@ const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
 const usePet=!args.some(arg=>['sempet','sozinho'].includes(normalizeItemText(arg)))
 const r=await startRaid(chat,sender,level||null,{usePet})
-const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas funcionam para quem participa com pets.${r.players?.[sender]?.usePet===false?'\n🛡️ Você está sem pets nesta Raid.':''}\n🏆 Recompensas serão proporcionais à colaboração.`)
-runRaidCombat(chat,Number(r.level),reply)
+await announceStartedRaid(chat,sender,r,catalog,reply)
 } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 if(classesOnlyRebootEnabled())return await reply('🌘 O Imperador do Eclipse foi desativado na temporada V2. O dano legado é migrado uma única vez para o Golem semanal; não é possível reativá-lo.')
