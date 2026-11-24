@@ -1,13 +1,13 @@
-// Mineração da Torre — integração transacional, sob flag EXCLUSIVA de teste.
-// Não executa migração ou comando na importação. Não habilitar no banco de produção.
+// Mineração da Torre — integração transacional, habilitação explícita por ambiente.
+// Não executa migração ou comando na importação. Produção exige três flags e banco Aiven verificado.
 import {randomUUID,randomInt} from 'node:crypto'
 import {MINING_PICKAXES,MINING_STONE_TABLE,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,settleMiningExpedition,MINING_DURATION_SECONDS} from './torre-mineracao-4h.js'
 import {ensureUser,grantExpInTransaction} from './db.js'
-import {miningHomologationEnabled,assertMiningHomologation,miningActivityLock} from './torre-mineracao-activity.js'
+import {assertMiningRuntime,miningActivityLock} from './torre-mineracao-activity.js'
 
 const nowSeconds=()=>Math.floor(Date.now()/1000)
 export async function initMiningStore(db,env=process.env){
-  assertMiningHomologation(env)
+  assertMiningRuntime(env)
   await db.query(`
     CREATE TABLE IF NOT EXISTS mining_pickaxes (
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
@@ -98,19 +98,19 @@ async function debitCash(client,jid,amount){
   if(!paid.rowCount)throw new Error('💰 Dinheiro insuficiente na carteira. Saque do banco antes de comprar ou reparar.')
 }
 export async function getMiningPickaxes(db,jid){
-  assertMiningHomologation();await ensureUser(jid)
+  assertMiningRuntime();await ensureUser(jid)
   const rows=(await db.query('SELECT pickaxe_id,uses_remaining FROM mining_pickaxes WHERE jid=$1 ORDER BY acquired_at',[jid])).rows
   return rows.map(r=>({...miningQuote(r.pickaxe_id),usesRemaining:Number(r.uses_remaining)}))
 }
 export async function getMiningStatus(db,jid){
-  assertMiningHomologation();await ensureUser(jid)
+  assertMiningRuntime();await ensureUser(jid)
   const row=(await db.query("SELECT id,pickaxe_id,started_at,ends_at,status FROM mining_expeditions WHERE jid=$1 AND status='running' ORDER BY started_at DESC LIMIT 1",[jid])).rows[0]
   if(!row)return null
   const remainingSeconds=Math.max(0,Number(row.ends_at)-nowSeconds())
   return {...row,remainingSeconds,ready:remainingSeconds===0}
 }
 export async function buyMiningPickaxe(db,{jid,pickaxeId,key}){
-  assertMiningHomologation();const quote=miningPurchaseQuote(pickaxeId)
+  assertMiningRuntime();const quote=miningPurchaseQuote(pickaxeId)
   requestKey(key);await ensureUser(jid)
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
@@ -133,7 +133,7 @@ export async function buyMiningPickaxe(db,{jid,pickaxeId,key}){
 // Ganho de picareta exclusiva via integracao futura do evento ou Cerco.
 // Não há comando público para conceder recompensas; nenhum prêmio é disparado aqui.
 export async function grantMiningPickaxeReward(db,{jid,pickaxeId,source,key}){
-  assertMiningHomologation();requestKey(key);await ensureUser(jid)
+  assertMiningRuntime();requestKey(key);await ensureUser(jid)
   const quote=miningQuote(pickaxeId)
   if(!['cerco','evento_inaugural'].includes(source)||quote.source!==source)
     throw new Error('Origem de prêmio inválida para essa picareta.')
@@ -155,7 +155,7 @@ export async function grantMiningPickaxeReward(db,{jid,pickaxeId,source,key}){
 }
 
 export async function repairMiningPickaxe(db,{jid,pickaxeId,key}){
-  assertMiningHomologation();requestKey(key);miningQuote(pickaxeId);await ensureUser(jid)
+  assertMiningRuntime();requestKey(key);miningQuote(pickaxeId);await ensureUser(jid)
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const old=await oldReceipt(c,jid,key,'repair')
@@ -175,7 +175,7 @@ export async function repairMiningPickaxe(db,{jid,pickaxeId,key}){
   })
 }
 export async function startMiningExpedition(db,{jid,pickaxeId,key}){
-  assertMiningHomologation();requestKey(key);miningQuote(pickaxeId);await ensureUser(jid)
+  assertMiningRuntime();requestKey(key);miningQuote(pickaxeId);await ensureUser(jid)
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const prev=(await c.query('SELECT id,pickaxe_id,ends_at FROM mining_expeditions WHERE jid=$1 AND request_key=$2',[jid,key])).rows[0]
@@ -198,7 +198,7 @@ export async function startMiningExpedition(db,{jid,pickaxeId,key}){
   })
 }
 export async function cancelMiningExpedition(db,jid){
-  assertMiningHomologation();await ensureUser(jid)
+  assertMiningRuntime();await ensureUser(jid)
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const row=(await c.query("SELECT id,ends_at FROM mining_expeditions WHERE jid=$1 AND status='running' FOR UPDATE",[jid])).rows[0]
@@ -210,7 +210,7 @@ export async function cancelMiningExpedition(db,jid){
   })
 }
 export async function claimMiningExpedition(db,jid){
-  assertMiningHomologation();await ensureUser(jid)
+  assertMiningRuntime();await ensureUser(jid)
   return transaction(db,async c=>{
     await miningActivityLock(c,jid)
     const row=(await c.query("SELECT * FROM mining_expeditions WHERE jid=$1 AND status='running' FOR UPDATE",[jid])).rows[0]
