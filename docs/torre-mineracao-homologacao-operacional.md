@@ -77,3 +77,13 @@ Status: **IMPLEMENTADO NA BRANCH DE TESTE**, NÃO IMPLANTADO. PR #421 em rascunh
 7. Conceder Ouro/Diamante pela rotina interna com chave de evento e verificar bloqueio de venda.
 8. Reiniciar serviço de homologação durante mineração e confirmar persistência/reconciliação.
 9. Somente após revisão e aprovação formal considerar um plano separado para a produção.
+
+## Continuação da homologação — bootstrap e premiação
+
+- Identificado e corrigido defeito na ordem de inicialização de banco vazio: `fixLegacyPetVitals()` era chamado durante `initDatabase()`, antes de `initCommunityPack()` criar `pets` e `pet_collection`. O reparo foi movido para o final de `initCommunityPack()`, depois da criação das tabelas. A regra de correção de HP/energia foi preservada.
+- Preparado `test/torre-mineracao-fullboot-postgres.test.mjs` para executar `initDatabase()`, `initCommunityPack()`, `initEnchantments()`, `initRaidLoteStore()` e `initMiningStore()` em um database efêmero **exclusivo** `alpha_homolog_fullboot`, sem tocar na produção. A aprovação deste teste deve ser verificada no GitHub Actions antes de declarar bootstrap homologado.
+- Criado `mining_event_awards`: registro imutável por `(event_id,jid)`, `source` e `pickaxe_id`. A rotina interna `awardMiningFromFinalEvent` concede Ouro para `cerco` e Diamante para `evento_inaugural`, preserva a posse e proíbe duplicação por evento/jogador. Teste isolado da lógica passou; teste com PostgreSQL foi adicionado a `test/torre-mineracao-postgres-e2e.test.mjs`.
+- A rotina **não seleciona vencedores**: só consome identificador de evento, jogador e origem já apurados pela lógica de eventos. O código atual contém evento histórico `Cerco do Colosso` de 04/10/2026, que não equivale ao futuro Cerco do Clã; é proibido premiar no evento errado. É necessário definir regras de vitória/participação para conectar o disparo automático.
+- Novo cenário E2E simula comandos WhatsApp `!comprarpicareta ferro`, reenvio de mensagem, `!minerar iniciar ferro`, `!minerar status`, resgate prematuro, resgate único após tempo avançado só em teste, e `!repararpicareta ferro`. Nenhum número WhatsApp real é conectado.
+- O workflow `.github/workflows/torre-mineracao-pg-homolog.yml` foi estendido para executar os novos cenários sobre bases descartáveis separadas. Não contar o resultado antigo de 28/28 como validação desses novos cenários. Conferir execução mais recente antes de recomendar publicação.
+- **Pendência de requisito externo:** exercício com transporte real do WhatsApp exige uma conta/número separado de teste; não se deve parear novamente a conta de produção. Integração automática ao Cerco/Evento exige critérios de concessão.
