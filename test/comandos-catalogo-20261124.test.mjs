@@ -4,14 +4,15 @@ import {readFileSync} from 'node:fs'
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
 const index=read('src/neon/index.js')
-const menus=index.match(/const commandPages=\\{([\\s\\S]*?)\\n\\}\\nconst commandsMenu=/)
+const menus=index.match(/const commandPages=\{([\s\S]*?)\n\}\nconst commandsMenu=/)
 assert.ok(menus,'Catálogo numerado !comandos deve existir')
 const catalog=menus[1]
 function page(n){
- const re=new RegExp("'"+n+"':`([\\s\\S]*?)`(?=,\\n'|\\n\\})")
- const m=catalog.match(re)
- assert.ok(m,'Página '+n+' inexistente')
- return m[1]
+ const start=catalog.indexOf("'"+n+"':`")
+ assert.ok(start>=0,'Página '+n+' inexistente')
+ const end=n<9?catalog.indexOf("'"+(n+1)+"':`",start+4):catalog.length
+ assert.ok(end>start,'Página '+n+' sem final')
+ return catalog.slice(start,end)
 }
 
 test('nove páginas por número preservadas, cada uma abaixo do limite de 4096 caracteres',()=>{
@@ -20,8 +21,8 @@ test('nove páginas por número preservadas, cada uma abaixo do limite de 4096 c
   assert.ok(text.length<4096,'Página '+i+' excedeu 4096 caracteres: '+text.length)
   assert.match(text,/9️⃣ Voltar • 0️⃣ Fechar/)
  }
- assert.match(index,/setQuickFlow\\(chat,sender,'commands_category'/)
- assert.match(index,/setQuickFlow\\(chat,sender,'commands_main'/)
+ assert.match(index,/setQuickFlow\(chat,sender,'commands_category'/)
+ assert.match(index,/setQuickFlow\(chat,sender,'commands_main'/)
 })
 
 const cases={
@@ -70,12 +71,12 @@ test('comandos novos existem em handlers reais, não são apenas texto',()=>{
  for(const command of ['gttabela','gtpatrocinio','gtclima','gtpistas'])assert.ok(gt.includes("'"+command+"'"))
  for(const command of ['bingov2','cartelav2','leilaov2','lancev2'])assert.ok(v2.includes("'"+command+"'"))
  for(const command of ['poco','pocorank'])assert.ok(poco.includes("'"+command+"'"))
- assert.match(index,/if\\(\\['raidlote'\\]\\.includes\\(cmd\\)/)
- assert.match(index,/if\\(miningRuntimeEnabled\\(\\)\\&\\&await handleMiningCommand/)
+ assert.match(index,/if\(\['raidlote'\]\.includes\(cmd\)/)
+ assert.match(index,/if\(miningRuntimeEnabled\(\)\&\&await handleMiningCommand/)
 })
 
 test('opções especiais da Raid de abertura rápida e pet seguem rotas oficiais',()=>{
- assert.match(index,/const quickStart=cmd==='raid'\\&\\&raidOptions.includes\\('go'\\)/)
+ assert.match(index,/const quickStart=cmd==='raid'\&\&raidOptions.includes\('go'\)/)
  assert.match(index,/const usePet=!raidOptions.some/)
  assert.match(index,/!raid 50 go sempet/)
  assert.match(index,/!raidlote 50 8h sempet/)
