@@ -3,16 +3,17 @@
 // Nunca envia mensagens a jogadores, altera o banco ou fabrica eventos do servidor.
 export function createWhatsAppOfflineRecovery({
   socket,isOpen,onAction=()=>{},schedule=setTimeout,cancel=clearTimeout,
-  batchDelayMs=6000,flushDelayMs=30000,maxBatchRequests=24
+  batchDelayMs=5000,flushDelayMs=30000,maxBatchRequests=200,maxBatchRequestsLimit=600
 }){
   let started=false,previewed=false,completed=false,stopped=false
   let batchTimer=null,flushTimer=null,batches=0,receivedMessages=false
+  let batchLimit=maxBatchRequests
   const clearBatch=()=>{if(batchTimer!==null){cancel(batchTimer);batchTimer=null}}
   const clearFlush=()=>{if(flushTimer!==null){cancel(flushTimer);flushTimer=null}}
   const scheduleBatch=()=>{
     // Um upsert pode conter mensagens antigas antes do fim do backlog. Continuar
     // drenando ate o terminador offline ou ate o teto seguro de solicitacoes.
-    if(!started||!previewed||completed||stopped||batchTimer!==null||batches>=maxBatchRequests)return
+    if(!started||!previewed||completed||stopped||batchTimer!==null||batches>=batchLimit)return
     batchTimer=schedule(async()=>{
       batchTimer=null
       if(!started||completed||stopped||!isOpen())return
@@ -25,7 +26,13 @@ export function createWhatsAppOfflineRecovery({
       }catch{
         onAction('batch_error',batches)
       }
-      if(batches===maxBatchRequests && !completed)onAction('cap',batches)
+      if(batches>=batchLimit && !completed){
+        // A fila do servidor pode ter milhares de mensagens. Se ainda nao veio
+        // <ib><offline>, reiniciar sem apagar a sessao deixa o servidor retomar
+        // o restante em outra conexao, em vez de ficar surdo indefinidamente.
+        try{socket.ev?.flush?.()}catch{}
+        onAction('cap',batches)
+      }
       scheduleBatch()
     },batchDelayMs)
     batchTimer?.unref?.()
@@ -47,8 +54,12 @@ export function createWhatsAppOfflineRecovery({
       flushTimer?.unref?.()
       scheduleBatch()
     },
-    onPreview(){
+    onPreview(pendingCount=null){
       if(stopped||completed)return
+      const count=Number(pendingCount)
+      if(pendingCount!==null&&Number.isFinite(count)&&count>0){
+        batchLimit=Math.max(batchLimit,Math.min(maxBatchRequestsLimit,Math.ceil(count/50)+20))
+      }
       previewed=true
       scheduleBatch()
     },
@@ -66,6 +77,6 @@ export function createWhatsAppOfflineRecovery({
       clearBatch()
       clearFlush()
     },
-    snapshot(){return {started,previewed,completed,batches,receivedMessages}}
+    snapshot(){return {started,previewed,completed,batches,batchLimit,receivedMessages}}
   }
 }
