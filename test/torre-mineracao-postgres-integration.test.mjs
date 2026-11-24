@@ -80,7 +80,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       await db.query("INSERT INTO raid_lote_jobs(jid,status) VALUES($1,'running')",[jid])
       await assert.rejects(start('lote'),/Raidlote/)
       await db.query('DELETE FROM raid_lote_jobs WHERE jid=$1',[jid])
-      await db.query("INSERT INTO trevo_games(jid,game_type,state) VALUES($1,'raid',jsonb_build_object('status','active','players',jsonb_build_object($1,true)))",[jid])
+      await db.query("INSERT INTO trevo_games(jid,game_type,state) VALUES($1,'raid',jsonb_build_object('status','active','players',jsonb_build_object($1::text,true)))",[jid])
       await assert.rejects(start('raid'),/Raid/)
       await db.query('DELETE FROM trevo_games WHERE jid=$1',[jid])
       assert.equal(await uses('madeira'),4)
