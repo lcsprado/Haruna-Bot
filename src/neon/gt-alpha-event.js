@@ -40,6 +40,8 @@ async function eligible(c){
  return rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
   .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp),playerLevel:Number(r.player_level)}))
 }
+function gtPrizeSummary(){return gtEffectiveWeeklyPrizes().map((amount,i)=>(i+1)+'º '+money(amount)).join(', ')}
+function gtXpSummary(){return gtRaceReward(1,1).percent+'% a '+gtRaceReward(5,1).percent+'%'}
 function rankText(rows,title){
  return title+'\n\n'+(rows.length?rows.map((r,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.')+' *'+gtCleanName(r.name)+'* — *'+r.points+' pts* • '+r.wins+' vitória(s)').join('\n'):'Nenhum resultado registrado.')
 }
@@ -69,8 +71,8 @@ async function prepNotice(day){
    '🔧 Prepare agora: *!garagemcorrida* • *!oficina* • *!equiparcorrida ID* • *!repararcarro*.\n'+
    '⚙️ Quanto mais preparado o carro, maior a vantagem.\n'+
    '📊 Pontuação: 1º 10 | 2º 7 | 3º 5 | 4º 3 | demais 1.\n'+
-   '🎁 Cada prova: dinheiro, XP do piloto e XP do personagem (60% a 30% do necessário ao próximo nível, conforme posição).\n'+
-   '🏆 Prêmios semanais: 1º R$ 15M, 2º R$ 8M, 3º R$ 5M, 4º R$ 1M.\n'+
+   '🎁 Cada prova: dinheiro, XP do piloto e XP do personagem ('+gtXpSummary()+' do necessário ao próximo nível, conforme posição).\n'+
+   '🏆 Prêmios semanais: '+gtPrizeSummary()+'.\n'+
    '✅ Não precisa se inscrever. Tudo é automático.\n'+
    '📋 Use *!gttabela* e *!gttabela semana*.')
  })
@@ -676,7 +678,7 @@ export async function handleGtAlphaCommand({cmd,args=[],sender,reply,openSponsor
     '\n\n🔧 Pneus, freios e suspensão melhorados aumentam desempenho em condições difíceis.')
    return true
   }
-  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Só o carro equipado e fora da oficina participa.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🌦️ *!gtclima* • 🤝 *!gtpatrocinio*\n🏆 Semanal: 1º R$15M, 2º R$8M, 3º R$5M, 4º R$1M.');return true}
+  if(cmd==='gt'){await reply('🏎️ *GT ALPHA BOT*\n🕣 Corridas automáticas todos os dias às 20h30.\n🚘 Só o carro equipado e fora da oficina participa.\n🏁 3 provas diárias, melhorias reais, pontos por colocação.\n📊 *!gttabela* • *!gttabela semana* • *!gtcarro*\n🌦️ *!gtclima* • 🤝 *!gtpatrocinio*\n🏆 Semanal: '+gtPrizeSummary()+'.');return true}
   await reply(await getGtAlphaTable(String(args[0]||'').toLowerCase()==='semana'?'semana':'dia'))
  }catch(e){console.error('[GT] comando',e?.message||e);await reply('⚠️ GT Alpha indisponível. Tente novamente.')}
  return true
