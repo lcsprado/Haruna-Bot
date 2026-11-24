@@ -604,9 +604,30 @@ async function playerBootstrap(session){
                        WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null),
     getClaimedLevelRewards(jid)
   ])
+  // A interface do clã precisa de membros reais, nunca um placeholder vazio.
+  // O clã foi localizado pela sessão autenticada do próprio jogador.
+  const clanMembers=clan?(await db.query(
+    "SELECT cm.jid,cm.role,COALESCE(NULLIF(TRIM(u.push_name),''),'Jogador') AS push_name "+
+    "FROM clan_members cm LEFT JOIN users u ON u.jid=cm.jid "+
+    "WHERE cm.clan_id=$1 "+
+    "ORDER BY CASE WHEN cm.role='leader' THEN 0 ELSE 1 END,cm.joined_at,cm.jid LIMIT 100",
+    [clan.id]
+  )).rows:[]
+  const groupCandidates=clan?.role==='leader'&&chatJid
+    ?await weeklyActivityLeaderboard(chatJid,20):[]
+  const candidateJids=[...new Set(groupCandidates.map(row=>String(row.jid||'')).filter(value=>
+    value&&value!==jid&&(value.endsWith('@s.whatsapp.net')||value.endsWith('@lid'))
+  ))]
+  const assigned=candidateJids.length
+    ?(await db.query('SELECT jid FROM clan_members WHERE jid=ANY($1::text[])',[candidateJids])).rows
+    :[]
+  const occupied=new Set(assigned.map(row=>String(row.jid)))
+  const clanInvitable=groupCandidates.filter(row=>
+    candidateJids.includes(String(row.jid))&&!occupied.has(String(row.jid))
+  ).map(row=>({jid:row.jid,push_name:row.push_name||'Jogador'}))
   return {
     syncedAt:now(),
-    market,clan,clans,ranks,loanCredit,carpinarPlans,
+    market,clan,clans,clanMembers,clanInvitable,ranks,loanCredit,carpinarPlans,
     leaderboards:{
       economy:economyRank,
       combat:combatRank,
