@@ -1,4 +1,5 @@
-// Negocios V4: retorno financeiro maior nos investimentos caros e coleta por ciclos reais.
+// Negocios V4: retorno financeiro maior nos investimentos caros; ciclos sao referencia de producao.
+// A coleta de lucro proporcional ocorre a cada 5 minutos, mesmo durante eventos.
 // Publicacao isolada: V3 continua inalterada quando a flag V4 esta desligada.
 export const BUSINESS_V4_CATALOG=Object.freeze({
   carrinho_lanche:Object.freeze({grossHour:100,cycleHours:24}),
@@ -59,9 +60,9 @@ export function businessV4IntervalGross({
   return Math.floor(weighted/(3600*100))
 }
 
-// Os ciclos são a primeira data de liberacao do caixa, NAO a capacidade maxima.
-// Se o jogador coletar depois do ciclo, recebe todo o periodo ate 24h.
-// Dinheiro consolidado por upgrade e producao antes do corte podem ser coletados.
+// Compatibilidade historica: esta funcao descreve o antigo bloqueio por ciclo.
+// Ela NAO deve ser aplicada ao comando !coletar, que segue apenas cooldown de 5 min.
+// A producao acumulada permanece limitada a 24 horas.
 export function businessV4CycleStatus({
   lastCollectedAt,now,cycleHours,cutoverAt,accruedGross=0
 }){
