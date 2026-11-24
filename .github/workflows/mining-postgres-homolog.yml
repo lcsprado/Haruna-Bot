@@ -1,0 +1,75 @@
+name: Mining homologation - isolated PostgreSQL
+
+on:
+  pull_request:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/torre-mineracao-*'
+      - 'src/neon/torre-mineracao-4h.js'
+      - 'src/neon/db.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/index.js'
+      - 'test/torre-mineracao-*'
+      - '.github/workflows/mining-postgres-homolog.yml'
+  push:
+    branches:
+      - feat/torre-mineracao-homolog-4h-20261124
+    paths:
+      - 'src/neon/torre-mineracao-*'
+      - 'src/neon/torre-mineracao-4h.js'
+      - 'src/neon/db.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/index.js'
+      - 'test/torre-mineracao-*'
+      - '.github/workflows/mining-postgres-homolog.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-homolog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: alpha_homolog_mining
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_homolog_mining"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/alpha_homolog_mining
+      ALPHA_MINING_MODE: homologation
+      ALPHA_MINING_DB_CONFIRMED: test-only
+      ALPHA_MINING_E2E_PG: '1'
+      ALPHA_REBOOT_CLASSES_ONLY: 'false'
+      ALPHA_RUNTIME: test
+      # No Render, WhatsApp or Aiven credentials are made available.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies without application post-install scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check mining module syntax
+        run: |
+          node --check src/neon/torre-mineracao-4h.js
+          node --check src/neon/torre-mineracao-activity.js
+          node --check src/neon/torre-mineracao-store.js
+          node --check src/neon/torre-mineracao-whatsapp.js
+          node --check src/neon/db.js
+          node --check src/neon/raid-lote-store.js
+          node --check src/neon/index.js
+      - name: Mining policy and PostgreSQL integration tests
+        run: node --test --test-concurrency=1 test/torre-mineracao-4h.test.mjs test/torre-mineracao-store-homolog.test.mjs test/torre-mineracao-postgres-e2e.test.mjs

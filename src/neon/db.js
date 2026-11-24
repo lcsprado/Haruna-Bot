@@ -1,3 +1,4 @@
+import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing} from './reboot-assets-policy.js'
 import {nextScheduledSummon} from './pet-summon-schedule.js'
@@ -5212,6 +5213,8 @@ await ensureUser(jid)
 hours=Number(hours)
 if(!SLEEP_CHOICES.includes(hours)) throw new Error('Escolha 1, 4 ou 8 horas de sono.')
 return transaction(async client=>{
+await miningActivityLock(client,jid)
+await assertNoActiveMining(client,jid)
 const now=Math.floor(Date.now()/1000)
 const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(carp&&Number(carp.ends_at)>now) throw new Error('Você está carpindo e não pode dormir agora. Use !carpinarsair se quiser encerrar antes.')
@@ -5333,7 +5336,8 @@ if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
 return transaction(async client=>{
 // Serializa com a ativacao de Raidlote e com a reserva de sua proxima tentativa.
 // O teste deve ocorrer no banco, nao apenas no menu WhatsApp, para bloquear corridas.
-await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+await miningActivityLock(client,jid)
+await assertNoActiveMining(client,jid)
 const activeLote=(await client.query(
  "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",
  [jid]
