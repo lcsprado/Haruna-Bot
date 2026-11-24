@@ -5,6 +5,7 @@ import {db} from '../src/neon/db.js'
 import {initMiningStore,buyMiningPickaxe,repairMiningPickaxe,startMiningExpedition,
   claimMiningExpedition,cancelMiningExpedition,grantMiningPickaxeReward,getMiningPickaxes} from '../src/neon/torre-mineracao-store.js'
 import {assertMiningHomologation,miningActivityLock,assertNoActiveMining} from '../src/neon/torre-mineracao-activity.js'
+import {handleMiningCommand} from '../src/neon/torre-mineracao-whatsapp.js'
 
 const jid='test-player@local'
 const key=(v)=>'homolog-pg-'+v
@@ -158,5 +159,27 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       assert.equal(await uses('madeira'),2)
       assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM mining_expeditions WHERE jid=$1 AND status='running'",[jid])).rows[0].n,1)
     })
+
+    await t.test('roteador WhatsApp simulado consulta menus, status e faz compra uma vez',async()=>{
+      const sent=[]
+      const reply=async message=>sent.push(message)
+      const ctx={db,sender:jid,chat:'homolog@g.us',messageId:'msg-menu-001',reply}
+      assert.equal(await handleMiningCommand({...ctx,cmd:'picaretas'}),true)
+      assert.match(sent.at(-1),/PICARETAS DA TORRE/)
+      assert.match(sent.at(-1),/Madeira/)
+      assert.match(sent.at(-1),/Cerco/)
+      assert.equal(await handleMiningCommand({...ctx,cmd:'minerar',args:['status']}),true)
+      assert.match(sent.at(-1),/MINERAÇÃO EM ANDAMENTO/)
+      assert.equal(await handleMiningCommand({...ctx,cmd:'minerar',args:['resgatar']}),true)
+      assert.match(sent.at(-1),/ainda não acabou/)
+      const before=await getCash()
+      const buyInput={...ctx,cmd:'comprarpicareta',args:['ferro'],messageId:'msg-buy-ferro-001'}
+      assert.equal(await handleMiningCommand(buyInput),true)
+      assert.equal(await handleMiningCommand(buyInput),true)
+      assert.equal(await getCash(),before-7500)
+      assert.equal(await uses('ferro'),5)
+      assert.match(sent.at(-1),/PICARETA COMPRADA/)
+    })
+
   }finally{await db.end()}
 })
