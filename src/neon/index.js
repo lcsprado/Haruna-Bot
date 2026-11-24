@@ -2135,8 +2135,6 @@ await initPlayableHeroes()
 await initAwakening()
 await initRelics()
 await initEnchantments()
-// Somente no banco alpha_test/alpha_homolog, com flags de homologação explícitas.
-if(miningHomologationEnabled())await initMiningStore(db)
 await initHalloweenAlpha()
 await initMadrugada()
 await initRacingAlpha()
@@ -2356,7 +2354,9 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
-if(raidLoteV1Enabled)await initRaidLoteStore(db)
+// A mineração em homologação precisa das estruturas do Raidlote para verificar conflito.
+if(raidLoteV1Enabled||miningHomologationEnabled())await initRaidLoteStore(db)
+if(miningHomologationEnabled())await initMiningStore(db)
 // Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
 {
   const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
