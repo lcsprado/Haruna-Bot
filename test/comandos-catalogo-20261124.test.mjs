@@ -10,7 +10,7 @@ const catalog=menus[1]
 function page(n){
  const start=catalog.indexOf("'"+n+"':`")
  assert.ok(start>=0,'Página '+n+' inexistente')
- const end=n<9?catalog.indexOf("'"+(n+1)+"':`",start+4):catalog.length
+ const end=Number(n)<9?catalog.indexOf("'"+(Number(n)+1)+"':`",start+4):catalog.length
  assert.ok(end>start,'Página '+n+' sem final')
  return catalog.slice(start,end)
 }
