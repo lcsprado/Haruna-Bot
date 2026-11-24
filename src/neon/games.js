@@ -990,7 +990,14 @@ export async function joinRaid(chat,jid,name='Jogador',level=null,options={}){
     await assertNoActiveRaidLote(c,jid)
     const joinedHere=(await resolveRaidRoom(c,chat,null,{jid}))[0]
     if(joinedHere){
-      if(!level || Number(joinedHere.level)===Number(level)) return {already:true,lateJoin:joinedHere.status==='active',...joinedHere}
+      if(!level || Number(joinedHere.level)===Number(level)){
+        if(options.usePet===false&&joinedHere.players[jid]?.usePet!==false){
+          if(joinedHere.status!=='lobby')throw new Error('A Raid já iniciou. Escolha sempet antes de entrar ou iniciar a próxima Raid.')
+          joinedHere.players[jid].usePet=false
+          await saveGame(c,chat,joinedHere.gameType,joinedHere)
+        }
+        return {already:true,lateJoin:joinedHere.status==='active',...joinedHere}
+      }
       throw new Error(`Você já está na Raid Lv.${joinedHere.level}. Não dá para participar de duas Raids ao mesmo tempo.`)
     }
     const globalRaid=await resolveGlobalPlayerRaid(c,jid)
