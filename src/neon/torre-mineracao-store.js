@@ -40,6 +40,14 @@ export async function initMiningStore(db,env=process.env){
     );
     CREATE INDEX IF NOT EXISTS mining_expedition_player_history
       ON mining_expeditions(jid,started_at DESC);
+    CREATE TABLE IF NOT EXISTS mining_event_awards (
+      event_id TEXT NOT NULL,
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      source TEXT NOT NULL CHECK(source IN ('cerco','evento_inaugural')),
+      pickaxe_id TEXT NOT NULL,
+      awarded_at BIGINT NOT NULL,
+      PRIMARY KEY(event_id,jid)
+    );
   `)
 }
 async function transaction(db,fn){
@@ -151,6 +159,39 @@ export async function grantMiningPickaxeReward(db,{jid,pickaxeId,source,key}){
         [jid,pickaxeId,quote.maxUses,now])
     }
     return saveReceipt(c,jid,key,'grant',{status:owned?'already_owned':'granted',pickaxeId,source,maxUses:quote.maxUses},now)
+  })
+}
+
+// Atribuição proveniente de resultado FINAL de evento, somente por integração interna.
+// O contrato define o tipo da picareta; não elege vencedores nem expõe comando ao jogador.
+// Chave composta (evento, jogador) garante ausência de entrega repetida.
+export async function awardMiningFromFinalEvent(db,{eventId,source,jid}){
+  assertMiningRuntime()
+  if(!/^[a-z0-9][a-z0-9:_-]{7,95}$/.test(eventId||''))throw new Error('Identificador do evento inválido.')
+  const pickaxeId=source==='cerco'?'ouro':source==='evento_inaugural'?'diamante':null
+  if(!pickaxeId)throw new Error('Evento não é elegível para premiação de mineração.')
+  await ensureUser(jid)
+  return transaction(db,async c=>{
+    await miningActivityLock(c,jid)
+    const prev=(await c.query(
+      'SELECT source,pickaxe_id FROM mining_event_awards WHERE event_id=$1 AND jid=$2 FOR UPDATE',
+      [eventId,jid])).rows[0]
+    if(prev){
+      if(prev.source!==source||prev.pickaxe_id!==pickaxeId)
+        throw new Error('Evento já premiado com uma categoria diferente.')
+      return {status:'repeated',pickaxeId,source,eventId}
+    }
+    const now=nowSeconds()
+    const owned=(await c.query(
+      'SELECT 1 FROM mining_pickaxes WHERE jid=$1 AND pickaxe_id=$2',
+      [jid,pickaxeId])).rowCount>0
+    if(!owned)await c.query(
+      'INSERT INTO mining_pickaxes(jid,pickaxe_id,uses_remaining,acquired_at) VALUES($1,$2,$3,$4)',
+      [jid,pickaxeId,miningQuote(pickaxeId).maxUses,now])
+    await c.query(
+      'INSERT INTO mining_event_awards(event_id,jid,source,pickaxe_id,awarded_at) VALUES($1,$2,$3,$4,$5)',
+      [eventId,jid,source,pickaxeId,now])
+    return {status:owned?'registered_already_owned':'awarded',pickaxeId,source,eventId}
   })
 }
 
