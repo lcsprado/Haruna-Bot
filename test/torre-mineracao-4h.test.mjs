@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {MINING_DURATION_SECONDS,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
+import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXE_MAX_USES,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
 
 test('4 horas fixas; porcentagem depende exclusivamente da picareta',()=>{
   assert.equal(MINING_DURATION_SECONDS,14400)
@@ -12,7 +12,7 @@ test('4 horas fixas; porcentagem depende exclusivamente da picareta',()=>{
 })
 test('antes de 4h, não entrega minério nem sorteia pedra',()=>{
   assert.deepEqual(settleMiningExpedition({pickaxeId:'trono_sitiado',startedAt:100,now:100+14399}),{
-    status:'running',remainingSeconds:1,stoneId:null,ore:0
+    status:'running',remainingSeconds:1,stoneId:null,ore:0,cash:0,xp:0
   })
 })
 test('aos 4h, chance por picareta; 1 pedra máxima, não soma porcentagens por hora',()=>{
@@ -60,4 +60,40 @@ test('tres picaretas com nomes exclusivos na loja, uma no primeiro evento e uma 
   assert.ok(names.every(name=>!['Picareta de Ferro','Picareta de Prata','Picareta de Ouro','Picareta Abissal'].includes(name)))
   assert.equal(miningQuote('trono_sitiado').source,'cerco')
   assert.throws(()=>miningPickaxesBySource('outro'),/inválida/)
+})
+
+test('4 horas sempre rendem R$ 800 e 250 XP, com ou sem pedra',()=>{
+  assert.deepEqual(MINING_GUARANTEED_REWARD,{cash:800,xp:250})
+  for(const id of Object.keys(MINING_PICKAXES)){
+    const noStone=settleMiningExpedition({pickaxeId:id,startedAt:100,now:14500,stoneRoll:.99,kindRoll:.1})
+    const withStone=settleMiningExpedition({pickaxeId:id,startedAt:100,now:14500,stoneRoll:0,kindRoll:.1})
+    assert.deepEqual({cash:noStone.cash,xp:noStone.xp},{cash:800,xp:250})
+    assert.deepEqual({cash:withStone.cash,xp:withStone.xp},{cash:800,xp:250})
+    assert.equal(noStone.stoneId,null)
+    assert.ok(withStone.stoneId)
+  }
+})
+
+test('picareta dura 10 expedicoes, consome 1 por inicio e exige reparo no zero',()=>{
+  assert.equal(MINING_PICKAXE_MAX_USES,10)
+  assert.deepEqual({
+    before:miningStartQuote('primeira_ruptura',10).usesBefore,
+    after:miningStartQuote('primeira_ruptura',10).usesAfter
+  },{before:10,after:9})
+  assert.equal(miningStartQuote('trono_sitiado',1).usesAfter,0)
+  assert.throws(()=>miningStartQuote('trono_sitiado',0),/Repare/)
+  assert.throws(()=>miningStartQuote('trono_sitiado',11),/Durabilidade/)
+})
+
+test('reparo com dinheiro proporcional aos usos, sem material de reparo',()=>{
+  const expected={pedra_sussurrante:500,veias_lunares:800,nucleo_carmesim:1200,primeira_ruptura:1600,trono_sitiado:2000}
+  for(const [id,fullCost] of Object.entries(expected)){
+    const empty=miningRepairQuote(id,0)
+    assert.equal(empty.costCash,fullCost)
+    assert.equal(empty.usesAfterRepair,10)
+    assert.equal(miningRepairQuote(id,5).costCash,fullCost/2)
+    assert.equal(miningRepairQuote(id,10).costCash,0)
+    assert.equal(miningRepairQuote(id,9).costCash,fullCost/10)
+  }
+  assert.throws(()=>miningRepairQuote('pedra_sussurrante',-1),/Durabilidade/)
 })
