@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXE_MAX_USES,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
+import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
 
 test('4 horas fixas; porcentagem depende exclusivamente da picareta',()=>{
   assert.equal(MINING_DURATION_SECONDS,14400)
@@ -74,30 +74,49 @@ test('4 horas sempre rendem R$ 800 e 250 XP, com ou sem pedra',()=>{
   }
 })
 
-test('picareta dura 10 expedicoes, consome 1 por inicio e exige reparo no zero',()=>{
-  assert.equal(MINING_PICKAXE_MAX_USES,10)
-  assert.deepEqual({
-    before:miningStartQuote('ouro',10).usesBefore,
-    after:miningStartQuote('ouro',10).usesAfter
-  },{before:10,after:9})
-  assert.equal(miningStartQuote('diamante',1).usesAfter,0)
-  assert.throws(()=>miningStartQuote('diamante',0),/Repare/)
-  assert.throws(()=>miningStartQuote('diamante',11),/Durabilidade/)
+test('cada picareta tem durabilidade 4-8 e consome um uso ao iniciar a mineração',()=>{
+  const expected={madeira:4,ferro:5,aco:6,ouro:7,diamante:8}
+  for(const [id,maxUses] of Object.entries(expected)){
+    assert.equal(MINING_PICKAXES[id].maxUses,maxUses)
+    const full=miningStartQuote(id,maxUses)
+    assert.equal(full.maxUses,maxUses)
+    assert.equal(full.usesBefore,maxUses)
+    assert.equal(full.usesAfter,maxUses-1)
+    assert.equal(miningStartQuote(id,1).usesAfter,0)
+    assert.throws(()=>miningStartQuote(id,0),/Repare/)
+    assert.throws(()=>miningStartQuote(id,maxUses+1),/Durabilidade/)
+  }
 })
 
-test('reparo com dinheiro proporcional aos usos, sem material de reparo',()=>{
-  const expected={madeira:500,ferro:800,aco:1200,ouro:1600,diamante:2000}
-  for(const [id,fullCost] of Object.entries(expected)){
+test('reparo custa dinheiro proporcional aos usos especificos de cada picareta, sem item adicional',()=>{
+  const expected={madeira:{maxUses:4,fullRepairCash:1200},
+    ferro:{maxUses:5,fullRepairCash:3000},aco:{maxUses:6,fullRepairCash:6000},
+    ouro:{maxUses:7,fullRepairCash:10000},diamante:{maxUses:8,fullRepairCash:15000}}
+  for(const [id,{maxUses,fullRepairCash}] of Object.entries(expected)){
     const empty=miningRepairQuote(id,0)
-    assert.equal(empty.costCash,fullCost)
-    assert.equal(empty.usesAfterRepair,10)
-    assert.equal(miningRepairQuote(id,5).costCash,fullCost/2)
-    assert.equal(miningRepairQuote(id,10).costCash,0)
-    assert.equal(miningRepairQuote(id,9).costCash,fullCost/10)
+    assert.equal(empty.costCash,fullRepairCash)
+    assert.equal(empty.usesAfterRepair,maxUses)
+    assert.equal(empty.missingUses,maxUses)
+    assert.equal(miningRepairQuote(id,maxUses).costCash,0)
+    assert.equal(miningRepairQuote(id,maxUses-1).costCash,Math.ceil(fullRepairCash/maxUses))
+    for(let remaining=0;remaining<=maxUses;remaining++){
+      const quote=miningRepairQuote(id,remaining)
+      assert.equal(quote.costCash,Math.ceil((maxUses-remaining)*fullRepairCash/maxUses))
+      assert.equal(quote.missingUses,maxUses-remaining)
+    }
   }
+  assert.equal(miningRepairQuote('ouro',3).costCash,Math.ceil(4*10000/7))
+  assert.equal(miningRepairQuote('diamante',4).costCash,7500)
   assert.throws(()=>miningRepairQuote('madeira',-1),/Durabilidade/)
 })
 
+test('analise de saldo do ciclo: picaretas melhores podem custar mais do que a renda garantida',()=>{
+ const expected={madeira:2000,ferro:1000,aco:-1200,ouro:-4400,diamante:-8600}
+ for(const [id,net] of Object.entries(expected)){
+   const p=miningQuote(id)
+   assert.equal(p.maxUses*p.guaranteedCash-p.fullRepairCash,net)
+ }
+})
 test('precificacao segue faixas da economia real; somente 3 picaretas de loja sao vendidas',()=>{
  const expected={madeira:2000,ferro:7500,aco:20000}
  assert.deepEqual(Object.fromEntries(miningPickaxesBySource('loja').map(({id,purchaseCash})=>[id,purchaseCash])),expected)
