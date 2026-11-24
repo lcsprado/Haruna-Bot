@@ -39,7 +39,7 @@ test('opção 1 só executa com prévia em vigor, duração válida e idempotên
  assert.match(wa,/if\(decision!=='confirm'\)/)
  assert.match(wa,/!\[4,8,12\]\.includes\(hours\)/)
  assert.match(wa,/!\/\^wa:\[a-f0-9\]\{64\}\$\/\.test\(requestKey\)/)
- assert.match(wa,/startTimedRaidLoteSession\(db,\s*\{jid:sender,level,durationHours:hours,requestKey,confirmed:true\}/)
+ assert.match(wa,/startTimedRaidLoteSession\(db,\s*\{jid:sender,level,durationHours:hours,requestKey,confirmed:true,usePet:flow\.data\?\.usePet!==false\}/)
  assert.match(store,/SELECT \* FROM raid_lote_jobs WHERE jid=\$1 AND request_key=\$2 FOR UPDATE/)
  assert.match(store,/if\(old\)\{/)
 })
