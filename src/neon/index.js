@@ -33,6 +33,7 @@ import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {createWhatsAppOfflineRecovery} from './whatsapp-offline-recovery.js'
 import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
 import {lookupOutboundWithGrace} from './whatsapp-retry-lookup-grace.js'
+import {createGroupRetryStormGuard} from './whatsapp-retry-storm-guard.js'
 import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
@@ -2543,6 +2544,7 @@ const durableOutboundRetry=createDurableOutboundRetry({
 try{await durableOutboundRetry.init()}
 catch(err){console.error('[WhatsApp Retry] banco de reenvio indisponível; cache local mantido',err?.code||'init_failed')}
 const msgRetryCounterCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false})
+const groupRetryStormGuard=createGroupRetryStormGuard()
 let loadGroupMetadata
 const sock=makeWASocket({
 version,
@@ -2560,6 +2562,14 @@ mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
 // destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
 getMessage:async key=>{
+  const limit=groupRetryStormGuard.inspect(key)
+  if(!limit.allowed){
+    // Mensagens antigas de grupo nao podem ocupar indefinidamente o Signal.
+    // Preserva retries iniciais e nao limita chats privados.
+    if(limit.blockedCount===1||limit.blockedCount%100===0)
+      console.warn('[WhatsApp Retry] storm guard',JSON.stringify({reason:limit.reason,blocked:limit.blockedCount}))
+    return undefined
+  }
   const recovered=await lookupOutboundWithGrace(k=>durableOutboundRetry.lookup(k),key)
   // Diagnostico agregado; nunca imprimir mensagens, IDs, tickets ou codigos.
   console.warn('[WhatsApp Retry] lookup',JSON.stringify({
