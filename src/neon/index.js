@@ -10427,6 +10427,9 @@ await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,
 // Menus, confirmações e transações de CADA jogador continuam sequenciais.
 const enqueueIncomingByPlayer=createKeyedAsyncQueue()
 sock.ev.on('messages.upsert',({messages,type})=>{
+const diagnosis=trevoHealth.inboundDiagnostics||(trevoHealth.inboundDiagnostics={})
+const tally=name=>{diagnosis[name]=Number(diagnosis[name]||0)+1}
+for(let i=0;i<Math.max(1,messages?.length||0);i++)tally(type==='notify'?'notify':type==='append'?'append':'other')
 if(messages?.length)offlineRecovery.onMessage()
 const receivedAt=Date.now()
 trevoHealth.lastUpsertAt=receivedAt
@@ -10440,21 +10443,26 @@ async function processIncomingMessages({messages,type},receivedAt){
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
 trevoHealth.lastUpsertType=type||null
-if(type!=='notify' && type!=='append')return
+const diagnosis=trevoHealth.inboundDiagnostics||(trevoHealth.inboundDiagnostics={})
+const tally=name=>{diagnosis[name]=Number(diagnosis[name]||0)+1}
+if(type!=='notify' && type!=='append'){tally('ignoredType');return}
 for(const msg of messages){
 const ts=Number(msg?.messageTimestamp?.toNumber?.()??msg?.messageTimestamp??0)*1000
 if(type==='append'){
-if(!ts || Math.abs(receivedAt-ts)>45000)continue
+if(!ts || Math.abs(receivedAt-ts)>45000){tally('staleAppend');continue}
 }else if(ts && (receivedAt-ts>120000 || ts-receivedAt>60000)){
+tally('staleNotify')
 console.warn('[WhatsApp Sync] mensagem antiga ignorada para evitar comandos repetidos')
 continue
 }
 const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
-if(msg?.key?.id&&!acceptIncomingMessage(ident))continue
+if(msg?.key?.id&&!acceptIncomingMessage(ident)){tally('duplicate');continue}
 const messageProcessingStartedAt=Date.now()
 const timingMarks={receivedAt,start:messageProcessingStartedAt}
 try{
-if(!msg?.message || msg.key.fromMe) continue
+if(!msg?.message){tally('emptyMessage');continue}
+if(msg?.key?.fromMe){tally('selfMessage');continue}
+tally('accepted')
 trevoHealth.lastInboundAt=Date.now()
 const chat=msg.key.remoteJid
 if(!chat || chat==='status@broadcast') continue
