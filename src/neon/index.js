@@ -2668,15 +2668,21 @@ const offlineRecovery=createWhatsAppOfflineRecovery({
       console.warn('[WhatsApp Sync] buffer local liberado por timeout seguro')
     }else if(action==='batch'){
       trevoHealth.offlineBatchRetryCount=Number(count)||0
-      console.warn('[WhatsApp Sync] solicitacao limitada de lote offline',count)
+      if(count<=2||count%10===0)console.warn('[WhatsApp Sync] lote offline solicitado',count)
+    }else if(action==='cap'){
+      console.error('[WhatsApp Sync] fila offline nao encerrou apos limite de pedidos; reinicio controlado sem apagar auth',count)
+      setTimeout(()=>process.exit(1),1000).unref?.()
     }else console.warn('[WhatsApp Sync] recuperacao indisponivel',action)
   }
 })
-sock.ws?.on?.('CB:ib,,offline_preview',()=>{
+sock.ws?.on?.('CB:ib,,offline_preview',node=>{
 trevoHealth.offlinePreviewCount++
 trevoHealth.lastOfflinePreviewAt=Date.now()
-offlineRecovery.onPreview()
-console.warn('[WhatsApp Sync] preview de mensagens pendentes recebido')
+const child=Array.isArray(node?.content)?node.content.find(x=>x?.tag==='offline_preview'):null
+const advertised=Number(child?.attrs?.count??node?.attrs?.count)
+const pendingCount=Number.isSafeInteger(advertised)&&advertised>0?advertised:null
+offlineRecovery.onPreview(pendingCount)
+console.warn('[WhatsApp Sync] preview offline recebido',JSON.stringify({pendingCount,batchLimit:offlineRecovery.snapshot().batchLimit}))
 })
 sock.ws?.on?.('CB:ib,,offline',()=>{
 trevoHealth.offlineCompletionCount++
