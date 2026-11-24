@@ -72,3 +72,36 @@ test('sem preview, o recebimento normal cancela recuperacao desnecessaria',async
   assert.equal(sent.length,0)
   assert.equal(t.pending(),0)
 })
+
+test('fila offline com milhares de eventos aumenta teto sem ultrapassar limite absoluto',async()=>{
+  const t=fakeTimers(),requests=[],actions=[]
+  const recovery=createWhatsAppOfflineRecovery({
+    socket:{sendNode:async node=>requests.push(node),ev:{flush:()=>true}},isOpen:()=>true,
+    schedule:t.schedule,cancel:t.cancel,batchDelayMs:10,flushDelayMs:500,
+    maxBatchRequests:4,maxBatchRequestsLimit:12,
+    onAction:(...args)=>actions.push(args)
+  })
+  recovery.onOpen()
+  recovery.onPreview(1000)
+  assert.equal(recovery.snapshot().batchLimit,12)
+  await t.run(150)
+  assert.equal(requests.length,12)
+  assert.deepEqual(actions.filter(a=>a[0]==='cap'),[['cap',12]])
+})
+
+test('o fim da fila cancela requisicoes mesmo com teto expandido',async()=>{
+  const t=fakeTimers(),requests=[]
+  const recovery=createWhatsAppOfflineRecovery({
+    socket:{sendNode:async node=>requests.push(node)},isOpen:()=>true,
+    schedule:t.schedule,cancel:t.cancel,batchDelayMs:10,flushDelayMs:500,
+    maxBatchRequests:4,maxBatchRequestsLimit:12
+  })
+  recovery.onOpen()
+  recovery.onPreview(1000)
+  await t.run(20)
+  recovery.onComplete()
+  await t.run(200)
+  assert.equal(requests.length,2)
+  assert.equal(recovery.snapshot().completed,true)
+  assert.equal(t.pending(),0)
+})
