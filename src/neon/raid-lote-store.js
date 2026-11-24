@@ -1,3 +1,4 @@
+import {assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES,RAID_LOTE_V2_MAX_ATTEMPTS} from './raid-lote-policy.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
@@ -141,6 +142,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
   const initialQuote=raidLoteQuote(cfg.keyPrice,attempts)
   return inTransaction(db,async c=>{
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+    await assertNoActiveMining(c,jid)
     const prior=(await c.query(
       'SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2 FOR UPDATE',
       [jid,requestKey]
@@ -279,6 +281,7 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
   assertRaid70V2Start({level:cfg.level,partySize:1,mode:'lote'})
   return inTransaction(db,async c=>{
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
+    await assertNoActiveMining(c,jid)
     const old=(await c.query('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2 FOR UPDATE',[jid,requestKey])).rows[0]
     if(old){
       if(old.billing_mode!=='per_attempt'||Number(old.level)!==Number(cfg.level)||Number(old.duration_hours)!==plan.hours)
