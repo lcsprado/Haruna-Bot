@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXE_MAX_USES,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
+import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXE_MAX_USES,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
 
 test('4 horas fixas; porcentagem depende exclusivamente da picareta',()=>{
   assert.equal(MINING_DURATION_SECONDS,14400)
@@ -96,4 +96,19 @@ test('reparo com dinheiro proporcional aos usos, sem material de reparo',()=>{
     assert.equal(miningRepairQuote(id,9).costCash,fullCost/10)
   }
   assert.throws(()=>miningRepairQuote('madeira',-1),/Durabilidade/)
+})
+
+test('precificacao segue faixas da economia real; somente 3 picaretas de loja sao vendidas',()=>{
+ const expected={madeira:2000,ferro:7500,aco:20000}
+ assert.deepEqual(Object.fromEntries(miningPickaxesBySource('loja').map(({id,purchaseCash})=>[id,purchaseCash])),expected)
+ for(const [id,price] of Object.entries(expected)){
+   const quote=miningPurchaseQuote(id)
+   assert.equal(quote.priceCash,price)
+   assert.equal(quote.durationSeconds,14400)
+   assert.equal(quote.stoneChancePercent,MINING_PICKAXES[id].stoneChancePercent)
+ }
+ for(const id of ['ouro','diamante']){
+   assert.equal(miningQuote(id).purchaseCash,null)
+   assert.throws(()=>miningPurchaseQuote(id),/nao esta a venda/)
+ }
 })
