@@ -48,16 +48,23 @@ Status: **IMPLEMENTADO NA BRANCH DE TESTE**, NÃO IMPLANTADO. PR #421 em rascunh
 - Expedientes vencidos não bloqueiam ações depois de 4h, mas exigem `!minerar resgatar` antes de iniciar outra mineração.
 - Não foi feita mudança de proteção de PvP contra ataques/roubos: requisito necessita definição separada.
 
-## Evidências e próximos testes obrigatórios
+## Evidência efetivamente executada — PostgreSQL 16 (24/11/2026)
 
-- Sintaxe dos sete arquivos JS relevantes validada no parser V8 do ambiente de desenvolvimento.
-- 12 cenários do módulo de política de mineração passaram em executor JS isolado.
-- Simulação transacional em memória: compra, repetição da compra, início, repetição do início, proibição de sessão simultânea, resgate antecipado, resgate único, reparo e repetição do reparo, bloqueio do Raidlote e leitura da posse.
-- Simulação isolada do resgate: R$ 800, 250 XP, uma pedra; repetição retorna `none` sem duplicar.
-- Simulação da entrega exclusiva: `ouro` via Cerco entrega uma vez; repetição e origem errada são rejeitadas.
-- Testes automatizados no repositório: `test/torre-mineracao-4h.test.mjs` e `test/torre-mineracao-store-homolog.test.mjs`.
-- **Ainda NÃO testado**: migração e restrições em PostgreSQL de TESTE real, fluxo do WhatsApp com usuário real, envio/recebimento de mensagens após reconexão, falha no meio de transação e corrida real de sessões.
-- Homologar em banco e serviço isolados antes de considerar merge e publicação. **Não confundir os testes simulados com homologação ponta a ponta.**
+- GitHub Actions, workflow `.github/workflows/torre-mineracao-pg-homolog.yml`, execução [45456600063](https://github.com/lcsprado/Haruna-Bot/actions/runs/45456600063): **CONCLUÍDO COM SUCESSO**.
+- Resultado do log: **28 testes, 28 aprovações, 0 falhas, 0 ignorados**.
+- Banco PostgreSQL 16 efêmero do contêiner GitHub Actions, nome `alpha_homolog_mining`; nenhuma conexão com o Aiven de produção.
+- O `package-lock.json` do repositório não estava sincronizado; o workflow usa `npm install --package-lock=false --ignore-scripts` **somente no runner**, não altera o lockfile real.
+- Testes da camada de regras: 12 casos; isolamento/guard: 5 casos; suíte de integração PostgreSQL: 10 subtestes, incluindo sintaxe de SQL real, compra, bloqueios, saldo insuficiente, durabilidade, resgate de R$ 800, XP de 250, prêmios de pedras, reparo, cancelamento, concorrência, evento/Cerco e roteador WhatsApp **simulado**. O total do Node inclui o teste pai (28).
+- O teste real de expiração adianta os carimbos de tempo **somente no banco efêmero**; não espera quatro horas nem altera qualquer expedição real.
+- O teste de comandos WhatsApp chama diretamente o controlador e captura mensagens em memória; **não** abre ou registra sessão do WhatsApp.
+
+### Ainda pendente — NÃO considerar produção homologada
+
+- Testes com transporte de WhatsApp real e ambiente de TESTE autenticado, inclusive reconexão e mensagens recebidas/enviadas.
+- Teste do fluxo de Raidlote/Carpinar/Dormir ponta a ponta com a mineração em execução (o PostgreSQL validou a recusa de mineração quando os estados dessas atividades existem e o guard recíproco).
+- Interrupção abrupta durante transação e recuperação do processo com expedição persistida.
+- Integração real dos prêmios de Ouro e Diamante aos vencedores do Cerco e do primeiro evento, cujos critérios de premiação ainda não foram aprovados.
+- Revisão final de economia/raridade e autorização expressa do proprietário antes de merge/deploy.
 
 ## Checklist para homologação E2E futura
 
