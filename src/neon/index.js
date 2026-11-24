@@ -171,6 +171,9 @@ import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
 import {createRoubaRoubaEngine,ROUBA_GROUP_JID} from './rouba-rouba-alpha.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
+import {miningHomologationEnabled} from './torre-mineracao-activity.js'
+import {initMiningStore,getMiningStatus} from './torre-mineracao-store.js'
+import {handleMiningCommand} from './torre-mineracao-whatsapp.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -2132,6 +2135,8 @@ await initPlayableHeroes()
 await initAwakening()
 await initRelics()
 await initEnchantments()
+// Somente no banco alpha_test/alpha_homolog, com flags de homologação explícitas.
+if(miningHomologationEnabled())await initMiningStore(db)
 await initHalloweenAlpha()
 await initMadrugada()
 await initRacingAlpha()
@@ -10775,6 +10780,14 @@ const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
 const spacedMarketBuy=rawCmdLower==='comprar' && /^#\d+$/.test(String(args[0]||''))
 if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
+// Mineração é uma atividade AFK exclusiva; status/resgate e consultas básicas continuam.
+if(miningHomologationEnabled()){
+  const mining=await getMiningStatus(db,sender)
+  if(mining&&!mining.ready&&!new Set(['minerar','picaretas','saldo','balance','bal','perfil','profile','menu','comandos','ping','coletar']).has(cmd)){
+    await reply('⛏️ Você está minerando e não pode iniciar outra atividade. Falta '+Math.ceil(mining.remainingSeconds/60)+' min. Use !minerar status ou !minerar cancelar.')
+    continue
+  }
+}
 let ownerTarget=sender
 // A menção crua do WhatsApp pode ser @lid; nunca passar isso ao financeiro.
 if(isOwner && (['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='daritem'))){
@@ -11328,7 +11341,7 @@ if(isGroup && !isOwner){
 const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
 const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
 const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
+const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','minerar','picaretas','comprarpicareta','repararpicareta','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
 let key=null,label=null
 if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
 else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -11338,6 +11351,9 @@ if(key && !(await groupModuleEnabled(chat,key))){
 return await reply(`🔒 *${label}* foi desativado pelo administrador deste grupo.`)
 }
 }
+if(miningHomologationEnabled()&&await handleMiningCommand({
+  db,cmd,args,sender,chat,messageId:String(msg?.key?.id||''),reply
+}))continue
 if(['sticker','s','stiker','fig','figurinha'].includes(cmd)){
 const source=stickerMediaOf(msg)
 if(!source){
