@@ -6,6 +6,10 @@ on:
       - 'src/neon/progression.js'
       - 'src/neon/games.js'
       - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'web/clan-siege-ui.js'
+      - 'test/clan-v2-ui-restore-20261124.test.mjs'
       - 'test/clan-level-bonuses-v2-20261123.test.mjs'
       - 'test/clan-level-bonuses-postgres-v2-20261123.test.mjs'
       - '.github/workflows/clan-v2-bonuses-validation.yml'
@@ -26,8 +30,11 @@ jobs:
           node --check src/neon/progression.js
           node --check src/neon/games.js
           node --check src/neon/index.js
+          node --check src/neon/web-api.js
+          node --check web/app.js
+          node --check web/clan-siege-ui.js
       - name: Clan perks and donation regression tests
-        run: node --test test/clan-level-bonuses-v2-20261123.test.mjs test/clan-donation-ranking-20261107.test.mjs
+        run: node --test test/clan-level-bonuses-v2-20261123.test.mjs test/clan-donation-ranking-20261107.test.mjs test/clan-v2-ui-restore-20261124.test.mjs
 
   postgres:
     runs-on: ubuntu-latest
