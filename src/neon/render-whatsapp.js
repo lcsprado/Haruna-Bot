@@ -151,6 +151,8 @@ http.createServer((req,res)=>{
       quizNotOpen:Number(health.quizNotOpen||0),
       quizThrottled:Number(health.quizThrottled||0),
       rawMessagesSeen:Number(health.rawMessagesSeen||0),
+      lastUpsertType:health.lastUpsertType||null,
+      inboundDiagnostics:health.inboundDiagnostics||{},
       lastRawMessageAt:health.lastRawMessageAt||null,
       pendingNotificationsReceived:health.pendingNotificationsReceived??null,
       offlinePreviewCount:Number(health.offlinePreviewCount||0),
