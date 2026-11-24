@@ -24,7 +24,7 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     let output='⛏️ *PICARETAS DA TORRE*\n\n'
     for(const [id,p] of Object.entries(MINING_PICKAXES)){
       const got=owned.get(id)
-      output+=`• *${label(p)}* — chance ${p.stoneChancePercent}% • ${p.maxUses} usos\n`
+      output+=`• *${label(p)}* — chance ${p.stoneChancePercent}% • ${p.maxUses} usos${p.source==='cerco'?' • 🏰 Cerco':p.source==='evento_inaugural'?' • 🎁 Evento inaugural':''}\n`
       output+=got?`  ✅ Sua resistência: ${got.usesRemaining}/${p.maxUses} • reparo agora R$ ${money(miningRepairQuote(id,got.usesRemaining).costCash)}\n`
         :p.source==='loja'?`  🛒 R$ ${money(p.purchaseCash)} • !comprarpicareta ${id}\n`
         :`  🔒 Exclusiva: ${p.source==='cerco'?'Cerco':'primeiro evento'}\n`
