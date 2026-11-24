@@ -3,17 +3,19 @@
 // Nunca envia mensagens a jogadores, altera o banco ou fabrica eventos do servidor.
 export function createWhatsAppOfflineRecovery({
   socket,isOpen,onAction=()=>{},schedule=setTimeout,cancel=clearTimeout,
-  batchDelayMs=8000,flushDelayMs=30000,maxBatchRequests=2
+  batchDelayMs=6000,flushDelayMs=30000,maxBatchRequests=24
 }){
   let started=false,previewed=false,completed=false,stopped=false
   let batchTimer=null,flushTimer=null,batches=0,receivedMessages=false
   const clearBatch=()=>{if(batchTimer!==null){cancel(batchTimer);batchTimer=null}}
   const clearFlush=()=>{if(flushTimer!==null){cancel(flushTimer);flushTimer=null}}
   const scheduleBatch=()=>{
-    if(!started||!previewed||completed||stopped||receivedMessages||batchTimer!==null||batches>=maxBatchRequests)return
+    // Um upsert pode conter mensagens antigas antes do fim do backlog. Continuar
+    // drenando ate o terminador offline ou ate o teto seguro de solicitacoes.
+    if(!started||!previewed||completed||stopped||batchTimer!==null||batches>=maxBatchRequests)return
     batchTimer=schedule(async()=>{
       batchTimer=null
-      if(!started||completed||stopped||receivedMessages||!isOpen())return
+      if(!started||completed||stopped||!isOpen())return
       batches+=1
       try{
         await socket.sendNode({
@@ -23,6 +25,7 @@ export function createWhatsAppOfflineRecovery({
       }catch{
         onAction('batch_error',batches)
       }
+      if(batches===maxBatchRequests && !completed)onAction('cap',batches)
       scheduleBatch()
     },batchDelayMs)
     batchTimer?.unref?.()
@@ -33,7 +36,7 @@ export function createWhatsAppOfflineRecovery({
       started=true
       flushTimer=schedule(()=>{
         flushTimer=null
-        if(stopped||receivedMessages||!isOpen())return
+        if(stopped||!isOpen() || (receivedMessages && (!previewed||completed)))return
         if(socket.ev?.isBuffering?.()!==true)return
         try{
           if(socket.ev.flush()===true)onAction('flush',1)
@@ -52,11 +55,11 @@ export function createWhatsAppOfflineRecovery({
     onComplete(){
       completed=true
       clearBatch()
+      clearFlush()
     },
     onMessage(){
       receivedMessages=true
-      clearFlush()
-      clearBatch()
+      if(!previewed||completed){clearFlush();clearBatch()}
     },
     stop(){
       stopped=true
