@@ -1645,6 +1645,41 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    // Cerco V5/V6 e fortaleza permanente atendidos pela mesma sessao
+    // autenticada do WhatsApp/Web; nao utilizar o Render beta suspenso.
+    if(req.method==='GET' && url.pathname==='/api/v1/me/clan-siege'){
+      const {clanSiegeStatus}=await import('./clan-siege.js')
+      const result=await clanSiegeStatus(session)
+      res.setHeader('cache-control','private, no-store')
+      json(res,200,{ok:true,data:sanitizePrivateRefs({...result,requiredWebVersion:'alpha-siege-v5-20261108'},session)})
+      return true
+    }
+    if(req.method==='POST' && url.pathname.startsWith('/api/v1/me/clan-siege/')){
+      const command=url.pathname.slice('/api/v1/me/clan-siege/'.length)
+      const commands=new Set(['move','fortress-upgrade','challenge','accept','cancel'])
+      if(!commands.has(command)){
+        json(res,404,{ok:false,error:'Comando de guerra inexistente.'})
+        return true
+      }
+      if(command==='move'&&req.headers['x-alpha-web-version']!=='alpha-siege-v5-20261108'){
+        json(res,409,{ok:false,error:'Atualizacao obrigatoria do Alpha Web antes de jogar uma rodada.'})
+        return true
+      }
+      const body=await readJson(req,1024)
+      const siege=await import('./clan-siege.js')
+      const handlers={
+        move:()=>siege.clanSiegeMove(session,String(body.action||''),String(body.target||'castle')),
+        'fortress-upgrade':()=>siege.clanSiegeFortressUpgrade(session,String(body.stat||'')),
+        challenge:()=>siege.clanSiegeChallenge(session),
+        accept:()=>siege.clanSiegeAccept(session),
+        cancel:()=>siege.clanSiegeCancel(session)
+      }
+      const result=await handlers[command]()
+      res.setHeader('cache-control','private, no-store')
+      json(res,result.ok===false?409:200,{ok:result.ok!==false,...sanitizePrivateRefs(result,session)})
+      return true
+    }
+
     if(req.method==='GET' && url.pathname==='/api/v1/me/extras'){
       const data=await playerExtras(session)
       json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})

@@ -63,15 +63,15 @@ test('restoring richer interface does not bypass phone/password authentication',
   assert.ok(!ui.includes("ui.token=tokenFromLink"),'UI accepts bearer token via URL query');
 });
 
-test('Cerco routes to dedicated V5/V6 engine while other RPG APIs use primary backend',()=>{
+test('Cerco V5/V6 e demais APIs usam a mesma sessao Web no backend ativo',()=>{
   const config=JSON.parse(readFileSync(new URL('../web/vercel.json',import.meta.url),'utf8'))
   const paths=config.rewrites
-  assert.equal(paths[0].source,'/api/v1/me/clan-siege')
-  assert.equal(paths[0].destination,'https://alpha-web-api-beta.onrender.com/api/v1/me/clan-siege')
-  assert.equal(paths[1].source,'/api/v1/me/clan-siege/:path*')
-  assert.equal(paths[1].destination,'https://alpha-web-api-beta.onrender.com/api/v1/me/clan-siege/:path*')
-  assert.equal(paths[2].source,'/api/v1/:path*')
-  assert.equal(paths[2].destination,'https://alpha-bot-whatsapp.onrender.com/api/v1/:path*')
+  assert.equal(paths.filter(x=>x.source.includes('/api/v1/me/clan-siege')).length,0)
+  assert.equal(paths[0].source,'/api/v1/:path*')
+  assert.equal(paths[0].destination,'https://alpha-bot-whatsapp.onrender.com/api/v1/:path*')
+  assert.equal(JSON.stringify(config).includes('alpha-web-api-beta.onrender.com'),false)
+  const api=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
+  assert.ok(api.indexOf("url.pathname==='/api/v1/me/clan-siege'")>api.indexOf('const session=await authSession(req)'))
   const siegeUi=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8')
   for(const needle of ['myTurn','nextTurns','rulesVersion','fortress-upgrade','data-siege-preview','data-siege-target'])
     assert.ok(siegeUi.includes(needle),'Cerco V5/V6 interaction missing: '+needle)
