@@ -639,7 +639,7 @@ SET quantity=inventories.quantity+EXCLUDED.quantity
 await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
 await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
 })
-await fixLegacyPetVitals()
+// As tabelas de pets são criadas por initCommunityPack; reparar só depois.
 }
 const recentEnsureUsers=createRecentEnsureCache()
 export async function ensureUser(jid, pushName='') {
@@ -5044,6 +5044,8 @@ PRIMARY KEY(chat_jid,jid,day)
 );
 CREATE INDEX IF NOT EXISTS group_activity_week_idx ON group_activity(chat_jid,day DESC);
 `)
+// As tabelas pet_collection/pets e as colunas de HP já existem neste ponto.
+await fixLegacyPetVitals()
 }
 export async function getCommunitySettings(chatJid){
 const st=await getGroupSettings(chatJid)
