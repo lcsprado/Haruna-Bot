@@ -57,3 +57,47 @@ test('WhatsApp passes individual option and both snapshots exclude reserve and p
   assert.match(games,/const teamPets=usePet\?excludeActiveHeroPet/)
   assert.match(games,/baseRaidPetXp=p\.pet&&Number\(p\.pet\.turns\|\|0\)>0/)
 })
+
+const raidHandler=wa.slice(wa.indexOf("} else if(['raid','raidstatus'].includes(cmd)){")+"} else if(['raid','raidstatus'].includes(cmd)){".length,wa.indexOf("} else if(['entrar','entrarraide'].includes(cmd)){"))
+
+function quickFixture({room=null,startError=false,cmd='raid'}={}){
+  const calls=[]
+  const state={name:'Boss',level:50,status:'active',hp:100,maxHp:100,atk:5,host:'a',players:{a:{jid:'a'}}}
+  const execute=vm.runInNewContext('(async(args)=>{'+raidHandler+'})',{
+    cmd,isGroup:true,sender:'a',chat:'group',msg:{pushName:'A'},
+    getRaidCatalog:()=>[{level:50}],collabRaidNumber:Number,
+    normalizeItemText:x=>String(x).toLowerCase(),
+    getRaidStatuses:async()=>room?[room]:[],
+    createRaid:async(...args)=>{calls.push(['create',args[4].usePet]);return {...state,status:'lobby'}},
+    startRaid:async(...args)=>{calls.push(['start',args[3].usePet]);if(startError)throw Error('Nível insuficiente');return state},
+    progressDailyMission:async()=>{},
+    announceStartedRaid:async()=>calls.push(['announce']),
+    reply:async text=>calls.push(['reply',text]),
+    runRaidCombat:()=>calls.push(['runner']),
+    critResistancePercent:()=>0,raidBossCritResistance:()=>0
+  })
+  return {execute,calls}
+}
+
+test('quick start creates and starts exactly once with and without pets',async()=>{
+  for(const [args,usePet] of [[['50','go'],true],[['50','go','sempet'],false],[['50','sempet','go'],false]]){
+    const {execute,calls}=quickFixture()
+    await execute(args)
+    assert.equal(JSON.stringify(calls),JSON.stringify([['create',usePet],['start',usePet],['announce']]))
+  }
+})
+
+test('quick start uses existing own lobby, rejects another host, reports failed start',async()=>{
+  const lobby={level:50,status:'lobby',host:'a'}
+  const own=quickFixture({room:lobby})
+  await own.execute(['50','go'])
+  assert.equal(JSON.stringify(own.calls),JSON.stringify([['start',true],['announce']]))
+  const other=quickFixture({room:{...lobby,host:'b'}})
+  await other.execute(['50','go'])
+  assert.equal(other.calls.length,1)
+  assert.match(other.calls[0][1],/Somente o host/)
+  const fail=quickFixture({startError:true})
+  await fail.execute(['50','go'])
+  assert.equal(fail.calls.length,3)
+  assert.match(fail.calls[2][1],/Sala aberta, mas não foi possível iniciar/)
+})
