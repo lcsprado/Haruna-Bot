@@ -67,7 +67,7 @@ function renderTacticsGuide(version,round,repairsLeft){
     '<p>🏆 Após 6 rodadas ganha quem tiver mais HP; HP igual dá empate e a insígnia continua disponível.</p></aside>';
 }
 
-function renderFortressPanel(fortress){
+function renderFortressPanel(fortress,canInvest=false){
   if(!fortress)return '';
   const statNames={hp:'❤️ Muralhas',attack:'⚔️ Arsenal',defense:'🛡️ Defesas'};
   const levels=fortress.levels||{},offers=fortress.offers||{},stats=fortress.stats||{};
@@ -78,7 +78,8 @@ function renderFortressPanel(fortress){
   return '<section class="card section" aria-label="Evolução permanente da fortaleza">'+
     '<div class="section-title"><h3>🏰 Fortaleza do clã</h3><small>Melhorias permanentes • separadas dos personagens</small></div>'+
     '<p>💰 Tesouro: <strong>'+currency(fortress.treasury)+'</strong> • ⭐ Nível do clã: '+
-      Number(fortress.clanLevel||1)+'</p>'+
+      Number(fortress.clanLevel||1)+'</p>'+ 
+    (!canInvest?'<p class="notice warn">Investimentos da fortaleza indisponíveis nesta sessão. Níveis e bônus abaixo são apenas consulta.</p>':'')+
     '<p>❤️ HP: <b>'+Number(stats.maxHp||2000)+'</b> / 2.250 • '+
       '⚔️ Bônus ATK: <b>+'+(Number(stats.attackPct||0)*100).toFixed(1)+'%</b> • '+
       '🛡️ Redução de dano: <b>'+(Number(stats.defensePct||0)*100).toFixed(1)+'%</b></p>'+
@@ -88,8 +89,13 @@ function renderFortressPanel(fortress){
     '<div class="siege-action-grid">'+['hp','attack','defense'].map(stat=>{
       const offer=offers[stat],level=Number(levels[stat]||0),price=Number(offer?.cost||0);
       const hours=Math.round(Number(offer?.durationMs||0)/3600000);
-      const permitted=fortress.isLeader&&!active&&offer&&Number(fortress.treasury)>=price;
-      return '<div class="siege-action"><strong>'+statNames[stat]+' • Nível '+level+'/5</strong>'+
+      const permitted=canInvest&&fortress.isLeader&&!active&&offer&&price>0&&Number(fortress.treasury)>=price;
+      const actual=stat==='hp'
+        ?(stats.maxHp==null?'Indisponível':'+'+Math.max(0,Number(stats.maxHp)-2000).toLocaleString('pt-BR')+' HP')
+        :(stats[stat==='attack'?'attackPct':'defensePct']==null?'Indisponível':
+          (stat==='attack'?'+':'−')+(Number(stats[stat==='attack'?'attackPct':'defensePct'])*100).toFixed(1).replace('.',',')+'%');
+      return '<div class="siege-action"><strong>'+statNames[stat]+' • Nível '+level+'/5</strong>'+ 
+        '<small>Benefício atual no Cerco: <b>'+actual+'</b></small>'+ 
         '<small>'+(stat==='hp'?'+50 HP por nível (máximo +250)':stat==='attack'?
           '+2% de dano por nível (máximo +10%)':'+1,5% de redução por nível (máximo 7,5%)')+'</small>'+
         '<small>'+(offer?'Próximo nível: '+currency(price)+' • '+hours+'h de obra':'Nível máximo alcançado')+'</small>'+
@@ -99,6 +105,16 @@ function renderFortressPanel(fortress){
     }).join('')+'</div>'+
     '<p class="muted">A evolução é exclusiva do castelo: não aumenta HP, ATK ou DEF dos heróis. A força da fortaleza fica congelada no início de cada guerra.</p>'+
     '</section>';
+}
+
+function renderFortressSection(ui){
+  const fortress=ui.siege?.fortress;
+  if(fortress)return renderFortressPanel(fortress,ui.siege?.fortressUpgradesEnabled===true);
+  if(!ui.extras?.clan)return '';
+  // Sem payload autoritativo, não oferecer preços, níveis ou compras fictícias.
+  return '<section class="notice warn section" aria-label="Estado da fortaleza do clã">'+
+    '⚠️ Melhorias da fortaleza indisponíveis: a API do Cerco não informou os níveis, percentuais e custos do seu clã. '+
+    'Nenhum investimento foi feito. Atualize o painel ou verifique a conexão da API Web.</section>';
 }
 
 function renderCastle(clan,side){
@@ -257,7 +273,7 @@ function renderLiveSiege(ui){
           rotationActive&&!isMyTurn?'Aguarde o rodízio da sua equipe. Seus próximos turnos aparecem acima.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante o Cerco de sábado às 21h30.')+'</small>')+'</div></div>'+
-    renderFortressPanel(data.fortress)+
+    renderFortressSection(ui)+
     (latest.length?'<div class="siege-selected section"><strong>📜 '+(previous?'ÚLTIMA GUERRA — REGRA V'+Number(match.rulesVersion||1)+' (HISTÓRICO)':'Histórico das rodadas')+'</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
@@ -334,7 +350,7 @@ export function renderClanSiegePreview(ui){
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
     '<div class="siege-footer">🔒 Próximo Cerco: '+NEXT_SIEGE_LABEL+' (Brasília). A prévia não registra jogadas e não altera saldo, XP ou HP. Cada jogador precisa de sessão vinculada ao grupo e sua própria identidade.</div>'+
-  '</section>';
+  '</section>'+renderFortressSection(ui);
 }
 
 export function bindClanSiegePreview(ui,{render,submit,refresh}){
@@ -382,7 +398,7 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     const stat=button.dataset.siegeUpgrade;
     const fortress=ui.siege?.fortress;
     const offer=fortress?.offers?.[stat];
-    if(!fortress?.isLeader||fortress.pending||!offer)return;
+    if(ui.siege?.fortressUpgradesEnabled!==true||ui.siegeBusy||!fortress?.isLeader||fortress.pending||!offer||Number(fortress.treasury)<Number(offer.cost))return;
     const value=Number(offer.cost||0);
     if(!confirm('Investir R$ '+value.toLocaleString('pt-BR')+' do TESOURO do clã nesta melhoria? A obra leva '+Math.round(Number(offer.durationMs)/3600000)+'h e só valerá nas próximas guerras.'))return;
     button.disabled=true;
