@@ -2,18 +2,17 @@
 // Sem alteracao de producao, atributos, inventario ou atividades existentes.
 export const MINING_DURATION_SECONDS=4*60*60
 export const MINING_GUARANTEED_REWARD=Object.freeze({cash:800,xp:250})
-export const MINING_PICKAXE_MAX_USES=10
 
 // Chances de uma (1) pedra por expedicao completa, NUNCA por hora.
 // Madeira, Ferro e Aco na loja; Ouro no Cerco; Diamante no primeiro evento.
 // Precos de loja em estudo econômico; premios de evento/Cerco nao vendidos.
 // Sem integracao real com carteira ou loja; nenhum preco esta ativo.
 export const MINING_PICKAXES=Object.freeze({
-  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',purchaseCash:2000,stoneChancePercent:3,ore:4,fullRepairCash:500}),
-  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',purchaseCash:7500,stoneChancePercent:6,ore:5,fullRepairCash:800}),
-  aco:Object.freeze({name:'Picareta de Aço',source:'loja',purchaseCash:20000,stoneChancePercent:10,ore:6,fullRepairCash:1200}),
-  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',purchaseCash:null,stoneChancePercent:12,ore:7,fullRepairCash:1600}),
-  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',purchaseCash:null,stoneChancePercent:15,ore:8,fullRepairCash:2000})
+  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',purchaseCash:2000,stoneChancePercent:3,ore:4,maxUses:4,fullRepairCash:1200}),
+  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',purchaseCash:7500,stoneChancePercent:6,ore:5,maxUses:5,fullRepairCash:3000}),
+  aco:Object.freeze({name:'Picareta de Aço',source:'loja',purchaseCash:20000,stoneChancePercent:10,ore:6,maxUses:6,fullRepairCash:6000}),
+  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',purchaseCash:null,stoneChancePercent:12,ore:7,maxUses:7,fullRepairCash:10000}),
+  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',purchaseCash:null,stoneChancePercent:15,ore:8,maxUses:8,fullRepairCash:15000})
 })
 export const MINING_PICKAXE_SOURCES=Object.freeze({
   loja:'Loja de Picaretas',
@@ -53,7 +52,7 @@ export function miningQuote(pickaxeId){
     stoneChancePercent:pickaxe.stoneChancePercent,ore:pickaxe.ore,source:pickaxe.source,
     purchaseCash:pickaxe.purchaseCash,
     guaranteedCash:MINING_GUARANTEED_REWARD.cash,guaranteedXp:MINING_GUARANTEED_REWARD.xp,
-    maxUses:MINING_PICKAXE_MAX_USES,fullRepairCash:pickaxe.fullRepairCash})
+    maxUses:pickaxe.maxUses,fullRepairCash:pickaxe.fullRepairCash})
 }
 
 
@@ -61,12 +60,12 @@ export function miningQuote(pickaxeId){
 // devera persistir os usos por jogador/picareta e cobrar na mesma transacao.
 export function miningRepairQuote(pickaxeId,usesRemaining){
   const pickaxe=miningQuote(pickaxeId)
-  if(!Number.isSafeInteger(usesRemaining)||usesRemaining<0||usesRemaining>MINING_PICKAXE_MAX_USES)
+  if(!Number.isSafeInteger(usesRemaining)||usesRemaining<0||usesRemaining>pickaxe.maxUses)
     throw new RangeError('Durabilidade da picareta inválida.')
-  const missing=MINING_PICKAXE_MAX_USES-usesRemaining
+  const missing=pickaxe.maxUses-usesRemaining
   return Object.freeze({pickaxeId,usesRemaining,missingUses:missing,
-    costCash:Math.ceil(missing*pickaxe.fullRepairCash/MINING_PICKAXE_MAX_USES),
-    usesAfterRepair:MINING_PICKAXE_MAX_USES})
+    costCash:Math.ceil(missing*pickaxe.fullRepairCash/pickaxe.maxUses),
+    usesAfterRepair:pickaxe.maxUses})
 }
 export function miningStartQuote(pickaxeId,usesRemaining){
   const quote=miningRepairQuote(pickaxeId,usesRemaining)
