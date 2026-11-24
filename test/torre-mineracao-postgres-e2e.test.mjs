@@ -152,6 +152,21 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      assert.equal(await uses('diamante'),8)
      await assert.rejects(store.grantMiningPickaxeReward(db,{jid,pickaxeId:'diamante',source:'cerco',key:'test-event-000002'}),/Origem/)
    })
+   await t.test('resultado registrado do Cerco/Evento concede tipo certo uma vez no PostgreSQL',async()=>{
+     const eventId='cerco_cla_teste_20261124'
+     const r=await store.awardMiningFromFinalEvent(db,{eventId,source:'cerco',jid})
+     assert.equal(r.status,'registered_already_owned')
+     assert.equal(r.pickaxeId,'ouro')
+     const again=await store.awardMiningFromFinalEvent(db,{eventId,source:'cerco',jid})
+     assert.equal(again.status,'repeated')
+     const records=await db.query('SELECT COUNT(*)::int AS n FROM mining_event_awards WHERE event_id=$1 AND jid=$2',[eventId,jid])
+     assert.equal(records.rows[0].n,1)
+     await assert.rejects(store.awardMiningFromFinalEvent(db,{eventId,source:'evento_inaugural',jid}),/categoria diferente/)
+     await assert.rejects(store.awardMiningFromFinalEvent(db,{eventId:'event-invalido',source:'outro',jid}),/elegível/)
+     const diamond=await store.awardMiningFromFinalEvent(db,{eventId:'mining_inaugural_20261124',source:'evento_inaugural',jid})
+     assert.equal(diamond.pickaxeId,'diamante')
+     assert.equal(await uses('diamante'),8)
+   })
    await t.test('concorrência: duas mensagens de iniciar geram apenas uma jornada',async()=>{
      const a=store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-conc-00001'})
      const b=store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-conc-00002'})
