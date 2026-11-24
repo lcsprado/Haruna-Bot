@@ -522,7 +522,7 @@ export async function clanSiegeStatus(session){
   const fortress=session?.jid?await clanFortressStatus(session.jid):null;
   if(!ON()){
     const reason='Partidas reais ainda não foram ativadas no servidor.';
-    if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\\.us$/.test(siegeGroup())){
+    if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\.us$/.test(siegeGroup())){
       try{return {enabled:false,reason,preflight:await clanSiegePreflight(),fortress,fortressUpgradesEnabled:false};}
       catch(err){console.warn('[Cerco] Preflight indisponível:',String(err?.message||err).slice(0,130));}
     }
