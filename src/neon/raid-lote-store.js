@@ -60,12 +60,14 @@ export async function initRaidLoteStore(db){
       lease_token TEXT,
       lease_until TIMESTAMPTZ,
       auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE,
+      use_pet BOOLEAN NOT NULL DEFAULT TRUE,
       UNIQUE(jid,request_key)
     )
   `)
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_token TEXT")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS auction_pass_manual_rewards BOOLEAN NOT NULL DEFAULT FALSE")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS use_pet BOOLEAN NOT NULL DEFAULT TRUE")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS duration_hours SMALLINT CHECK (duration_hours IN (4,8,12))")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS billing_mode TEXT NOT NULL DEFAULT 'prepaid'")
@@ -267,10 +269,11 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
 
 // V2: sessões de tempo, sem compra antecipada ou quantidade fixa.
 // A primeira cobrança é feita pelo worker na reserva da primeira tentativa.
-export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requestKey,confirmed},{getCatalog}={}){
+export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requestKey,confirmed,usePet=true},{getCatalog}={}){
   if(!jid||typeof jid!=='string')throw new Error('Jogador inválido')
   validateRequestKey(requestKey)
   if(confirmed!==true)throw new Error('Ativação requer confirmação explícita')
+  if(typeof usePet!=='boolean')throw new Error('Modo de pet inválido')
   if(!classesOnlyRebootEnabled())throw new Error('Sessões contínuas exigem Alpha Bot 2.0')
   if(typeof getCatalog!=='function')throw new Error('Catálogo de Raids obrigatório')
   const plan=raidLoteDurationPlan(durationHours)
@@ -281,7 +284,7 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
     const old=(await c.query('SELECT * FROM raid_lote_jobs WHERE jid=$1 AND request_key=$2 FOR UPDATE',[jid,requestKey])).rows[0]
     if(old){
-      if(old.billing_mode!=='per_attempt'||Number(old.level)!==Number(cfg.level)||Number(old.duration_hours)!==plan.hours)
+      if(old.billing_mode!=='per_attempt'||Number(old.level)!==Number(cfg.level)||Number(old.duration_hours)!==plan.hours||(old.use_pet!==false)!==usePet)
         throw new Error('Confirmação repetida com parâmetros divergentes')
       return {job:old,alreadyPurchased:true,firstPrice:null}
     }
@@ -312,12 +315,12 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     await c.query(`
       INSERT INTO raid_lote_jobs(id,jid,request_key,level,requested,key_price,
         keys_total,fee_total,total_paid,cash_paid,bank_paid,
-        duration_hours,billing_mode,session_ends_at,next_attempt_at)
+        duration_hours,billing_mode,session_ends_at,next_attempt_at,use_pet)
       VALUES($1,$2,$3,$4,$5,$6,0,0,0,0,0,$7::smallint,'per_attempt',
-        NOW()+($7::smallint*INTERVAL '1 hour'),NOW())
-    `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours])
+        NOW()+($7::smallint*INTERVAL '1 hour'),NOW(),$8)
+    `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours,usePet])
     return {job:{id,jid,level:cfg.level,requested:RAID_LOTE_V2_MAX_ATTEMPTS,started:0,won_count:0,
-      status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours},
+      status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours,use_pet:usePet},
       firstPrice:quote,alreadyPurchased:false}
   })
 }
@@ -325,7 +328,7 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,use_pet,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -341,7 +344,7 @@ export async function getRaidLoteAttemptReports(db,jid,jobId){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,auction_pass_manual_rewards,duration_hours,next_attempt_at,billing_mode,session_ends_at,use_pet,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
