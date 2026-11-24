@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
-const runtime=readFileSync(new URL('../src/neon/render.js',import.meta.url),'utf8');
+const runtime=readFileSync(new URL('../src/neon/render-whatsapp.js',import.meta.url),'utf8');
 const pure=source.replace(/^import .*;\s*$/gm,'');
 const {siegeDailySchedule,resolveSiegeRound}=await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(pure));
 const ms=iso=>Date.parse(iso);
