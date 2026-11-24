@@ -1,0 +1,31 @@
+name: Alpha Web - restaurar fortaleza do Cerco V2
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'web/clan-siege-ui.js'
+      - 'web/app.js'
+      - 'web/index.html'
+      - 'web/sw.js'
+      - 'web/version.json'
+      - 'test/web-cerco-fortaleza-v2-20261124.test.mjs'
+      - 'test/web-rich-ui-preservation.test.mjs'
+      - 'test/alpha-web-art-integrity-20261114.test.mjs'
+      - '.github/workflows/web-cerco-fortaleza-v2-20261124.yml'
+permissions:
+  contents: read
+jobs:
+  fortaleza:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe
+        run: |
+          node --check web/clan-siege-ui.js
+          node --check web/app.js
+      - name: Visibilidade, segurança, PWA e integridade do layout
+        run: node --test test/web-cerco-fortaleza-v2-20261124.test.mjs test/web-rich-ui-preservation.test.mjs test/alpha-web-art-integrity-20261114.test.mjs
