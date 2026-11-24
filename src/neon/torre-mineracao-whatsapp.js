@@ -29,7 +29,7 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
         :p.source==='loja'?`  🛒 R$ ${money(p.purchaseCash)} • !comprarpicareta ${id}\n`
         :`  🔒 Exclusiva: ${p.source==='cerco'?'Cerco':'primeiro evento'}\n`
     }
-    output+='\n⏱️ Cada mineração dura 4h • sempre +R$ 800 e +250 XP ao concluir.\n🛠️ Use !repararpicareta [tipo] para reparar com dinheiro.'
+    output+='\n⏱️ Cada mineração dura 4h • sempre +R$ 800 e 250 XP base ao concluir (XP sujeito às regras da temporada).\n🛠️ Use !repararpicareta [tipo] para reparar com dinheiro.'
     await reply(output)
     return true
   }
@@ -75,6 +75,6 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     return true
   }
   const owned=await own()
-  await reply('⛏️ *MINERAÇÃO DA TORRE*\n⏱️ 4 horas por jornada\n💰 +R$ 800 e +250 XP garantidos\n💎 Chance de pedra conforme a picareta\n🛠️ Suas picaretas: '+(owned.length?owned.map(p=>label(p)).join(', '):'nenhuma')+'\n\nVeja *!picaretas* e comece com *!minerar iniciar madeira*.')
+  await reply('⛏️ *MINERAÇÃO DA TORRE*\n⏱️ 4 horas por jornada\n💰 +R$ 800 garantidos e 250 XP base (regras da temporada)\n💎 Chance de pedra conforme a picareta\n🛠️ Suas picaretas: '+(owned.length?owned.map(p=>label(p)).join(', '):'nenhuma')+'\n\nVeja *!picaretas* e comece com *!minerar iniciar madeira*.')
   return true
 }
