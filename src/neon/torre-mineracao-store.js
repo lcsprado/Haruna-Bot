@@ -3,18 +3,9 @@
 import {randomUUID,randomInt} from 'node:crypto'
 import {MINING_PICKAXES,MINING_STONE_TABLE,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,settleMiningExpedition,MINING_DURATION_SECONDS} from './torre-mineracao-4h.js'
 import {ensureUser,grantExpInTransaction} from './db.js'
+import {miningHomologationEnabled,assertMiningHomologation,miningActivityLock} from './torre-mineracao-activity.js'
 
 const nowSeconds=()=>Math.floor(Date.now()/1000)
-export function miningHomologationEnabled(env=process.env){
-  if(env.ALPHA_MINING_MODE!=='homologation'||env.ALPHA_MINING_DB_CONFIRMED!=='test-only')return false
-  try {
-    const dbName=decodeURIComponent(new URL(env.DATABASE_URL||'').pathname.slice(1))
-    return /^(alpha_test|alpha_homolog)(?:_[a-z0-9_]+)?$/.test(dbName)
-  } catch {return false}
-}
-export function assertMiningHomologation(env=process.env){
-  if(!miningHomologationEnabled(env))throw new Error('Mineração em homologação: banco isolado alpha_test/alpha_homolog e flags de teste obrigatórios.')
-}
 export async function initMiningStore(db,env=process.env){
   assertMiningHomologation(env)
   await db.query(`
@@ -62,18 +53,6 @@ async function transaction(db,fn){
     await c.query('ROLLBACK').catch(()=>{})
     throw err
   }finally{c.release()}
-}
-// Lock compartilhado com Raidlote e Carpinar; sempre antes de ler outra atividade.
-export async function miningActivityLock(client,jid){
-  await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
-}
-export async function assertNoActiveMining(client,jid,now=nowSeconds()){
-  if(!miningHomologationEnabled())return
-  const current=(await client.query(
-    "SELECT ends_at FROM mining_expeditions WHERE jid=$1 AND status='running' AND ends_at>$2 LIMIT 1",
-    [jid,now]
-  )).rows[0]
-  if(current)throw new Error('⛏️ Você está minerando. Aguarde a expedição terminar ou use !minerar cancelar.')
 }
 async function assertAvailable(client,jid,now){
   const [sleep,carpinar,lote,raid]=await Promise.all([
