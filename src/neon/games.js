@@ -1235,7 +1235,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const row=(await c.query(`
         SELECT a.id,a.job_id,a.seq,a.status AS attempt_status,a.raid_chat,a.level,
                j.jid,j.status AS job_status,j.current_attempt_id,
-               j.auction_pass_manual_rewards
+               j.auction_pass_manual_rewards,j.use_pet
         FROM raid_lote_attempts a JOIN raid_lote_jobs j ON j.id=a.job_id
         WHERE a.id=$1 FOR UPDATE OF a
       `,[loteAttemptId])).rows[0]
@@ -1259,7 +1259,7 @@ export async function startRaid(chat,host,level=null,options={}){
       s={gameType,status:'lobby',mode:'lote',loteAttemptId,loteJobId:row.job_id,
          auctionPassManualRewards:row.auction_pass_manual_rewards===true,
         level:Number(level),name:raidConfig(level)?.name||'Raid',host,hostName:'Jogador',
-        hp:0,maxHp:0,atk:0,players:{[host]:{jid:host,name:'Jogador',damage:0,alive:true}},
+        hp:0,maxHp:0,atk:0,players:{[host]:{jid:host,name:'Jogador',damage:0,alive:true,...(row.use_pet===false?{usePet:false}:{})}},
         round:0,createdAt:now,expiresAt:now+5*60*1000}
     }else{
       const rooms=await resolveRaidRoom(c,chat,level||null,{host,lobbyOnly:true})
@@ -1310,7 +1310,7 @@ export async function startRaid(chat,host,level=null,options={}){
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
-      const usePet=loteAttemptId||!(s.players[jid]?.usePet===false||(jid===host&&options.usePet===false))
+      const usePet=s.players[jid]?.usePet!==false&&(Boolean(loteAttemptId)||jid!==host||options.usePet!==false)
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=usePet?(pets.find(x=>x.jid===jid)||null):null
       const heroId=await getActivePlayableHero(c,jid)
       const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
