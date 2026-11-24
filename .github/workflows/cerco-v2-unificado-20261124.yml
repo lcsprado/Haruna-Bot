@@ -1,0 +1,40 @@
+name: Cerco V2 - API unificada e fortaleza
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/clan-*.js'
+      - 'src/neon/web-api.js'
+      - 'web/vercel.json'
+      - 'test/clan-*.test.mjs'
+      - 'test/cerco-v2-unified-backend-20261124.test.mjs'
+      - '.github/workflows/cerco-v2-unificado-20261124.yml'
+permissions:
+  contents: read
+jobs:
+  cerco:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/alpha_reboot_test
+      ALPHA_REBOOT_MODE: classes_only
+      ALPHA_REBOOT_DB_CONFIRMED: isolated-v2
+      ALPHA_CLAN_SIEGE_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sem scripts de inicializacao
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxe e rotas
+        run: |
+          node --check src/neon/web-api.js
+          node --check src/neon/clan-fortress.js
+          node --check src/neon/clan-siege.js
+          node --check src/neon/clan-siege-v4.js
+          node --check src/neon/clan-siege-v6-roster.js
+          node -e "JSON.parse(require('fs').readFileSync('web/vercel.json','utf8'))"
+      - name: Rodar testes historicos e de seguranca
+        run: node --test test/cerco-v2-unified-backend-20261124.test.mjs test/clan-fortress-economy-20261103.test.mjs test/clan-siege-daily-20h-20261103.test.mjs test/clan-siege-event-rewards-20261104.test.mjs test/clan-siege-fronts-v4-20261103.test.mjs test/clan-siege-rules-20261102.test.mjs test/clan-siege-shield-reward-20261114.test.mjs test/clan-siege-single-guest-20261102.test.mjs test/clan-siege-tactics-v2-20261103.test.mjs test/clan-siege-v4-balance-audit-20261103.test.mjs test/clan-siege-v6-roster-20261109.test.mjs test/clan-siege-weekly-xp-20261107.test.mjs
