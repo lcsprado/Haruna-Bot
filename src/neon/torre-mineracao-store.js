@@ -202,6 +202,6 @@ export async function claimMiningExpedition(db,jid){
     await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'mining_reward',$3)",
       [jid,outcome.cash,'mining:'+row.id])
     await c.query("UPDATE mining_expeditions SET status='claimed',stone_id=$2,claimed_at=$3 WHERE id=$1",[row.id,outcome.stoneId,now])
-    return {status:'claimed',pickaxeId:row.pickaxe_id,...outcome,awardedXp:Number(exp?.awardedGain??outcome.xp),id:row.id}
+    return {...outcome,status:'claimed',pickaxeId:row.pickaxe_id,awardedXp:Number(exp?.awardedGain??outcome.xp),id:row.id}
   })
 }
