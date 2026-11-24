@@ -6,19 +6,30 @@ export const MINING_PICKAXE_MAX_USES=10
 
 // Chances de uma (1) pedra por expedicao completa, NUNCA por hora.
 // Madeira, Ferro e Aco na loja; Ouro no Cerco; Diamante no primeiro evento.
-// Precos e condicoes de premio ainda dependem de aprovacao e nao estao ativos.
+// Precos de loja em estudo econômico; premios de evento/Cerco nao vendidos.
+// Sem integracao real com carteira ou loja; nenhum preco esta ativo.
 export const MINING_PICKAXES=Object.freeze({
-  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',stoneChancePercent:3,ore:4,fullRepairCash:500}),
-  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',stoneChancePercent:6,ore:5,fullRepairCash:800}),
-  aco:Object.freeze({name:'Picareta de Aço',source:'loja',stoneChancePercent:10,ore:6,fullRepairCash:1200}),
-  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',stoneChancePercent:12,ore:7,fullRepairCash:1600}),
-  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',stoneChancePercent:15,ore:8,fullRepairCash:2000})
+  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',purchaseCash:2000,stoneChancePercent:3,ore:4,fullRepairCash:500}),
+  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',purchaseCash:7500,stoneChancePercent:6,ore:5,fullRepairCash:800}),
+  aco:Object.freeze({name:'Picareta de Aço',source:'loja',purchaseCash:20000,stoneChancePercent:10,ore:6,fullRepairCash:1200}),
+  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',purchaseCash:null,stoneChancePercent:12,ore:7,fullRepairCash:1600}),
+  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',purchaseCash:null,stoneChancePercent:15,ore:8,fullRepairCash:2000})
 })
 export const MINING_PICKAXE_SOURCES=Object.freeze({
   loja:'Loja de Picaretas',
   evento_inaugural:'Primeiro evento de mineração',
   cerco:'Cerco do Clã'
 })
+// Cotacao de compra somente para as tres picaretas de loja.
+// Nunca aplicar valores de mercado a picaretas exclusivas de premio.
+export function miningPurchaseQuote(pickaxeId){
+  const quote=miningQuote(pickaxeId)
+  if(quote.source!=='loja'||!Number.isSafeInteger(quote.purchaseCash)||quote.purchaseCash<=0)
+    throw new Error('Essa picareta e exclusiva de evento ou Cerco e nao esta a venda.')
+  return Object.freeze({pickaxeId,name:quote.name,priceCash:quote.purchaseCash,
+    stoneChancePercent:quote.stoneChancePercent,durationSeconds:quote.durationSeconds})
+}
+
 export function miningPickaxesBySource(source){
   if(!Object.hasOwn(MINING_PICKAXE_SOURCES,source))throw new Error('Origem de picareta inválida.')
   return Object.entries(MINING_PICKAXES).filter(([,p])=>p.source===source).map(([id,p])=>Object.freeze({id,...p}))
@@ -40,6 +51,7 @@ export function miningQuote(pickaxeId){
   if(!pickaxe)throw new Error('Picareta inválida.')
   return Object.freeze({pickaxeId,name:pickaxe.name,durationSeconds:MINING_DURATION_SECONDS,
     stoneChancePercent:pickaxe.stoneChancePercent,ore:pickaxe.ore,source:pickaxe.source,
+    purchaseCash:pickaxe.purchaseCash,
     guaranteedCash:MINING_GUARANTEED_REWARD.cash,guaranteedXp:MINING_GUARANTEED_REWARD.xp,
     maxUses:MINING_PICKAXE_MAX_USES,fullRepairCash:pickaxe.fullRepairCash})
 }
