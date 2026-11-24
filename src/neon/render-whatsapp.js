@@ -185,7 +185,7 @@ if(process.env.ALPHA_WHATSAPP_ENABLE==='0' || standbyByService){
   // Cerco V5/V6: fechar rodadas e abrir somente na janela semanal
   // se a operacao habilitar o evento e identificar seu grupo real.
   // Sem flags, nenhum job ou premiacao do Cerco e executado.
-  if(process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\\.us$/.test(String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||''))){
+  if(process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g[.]us$/.test(String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||''))){
     let busy=false
     const sweep=setInterval(()=>{
       if(busy)return
