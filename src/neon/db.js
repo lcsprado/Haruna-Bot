@@ -3478,6 +3478,7 @@ log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJi
 actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,
 petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
   ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
+  ...(!from.heroId&&attack.techniques?.length?{classTechniques:attack.techniques,classSkillBonusPct:attack.skillBonusPct,classShieldCreated:attack.shieldCreated}:{}),
   ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
 if(heartEvent)log.push(heartEvent)
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
