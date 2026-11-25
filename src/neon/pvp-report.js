@@ -89,7 +89,15 @@ export function formatPvpBattleReport(r){
       lines.push(`${prefix}${name(e.from)} → ${name(e.to)}: *${fmt(e.dmg)} dano* — ❤️ ${fmt(e.hp)}`)
       if(e.heroTechnique)lines.push(`✨ Técnica: *${name(e.heroTechnique)}* — ${name(e.from)}`)
     }
-    if(e.defenseTechnique)lines.push(`🛡️ ${name(e.to)} ativou *${name(e.defenseTechnique)}* • mitigação defensiva total no golpe: ${fmt(e.defenseBlocked)} dano`)
+    const classSkills=Array.isArray(e.classTechniques)&&e.classTechniques.length?e.classTechniques:e.classTechnique?[e.classTechnique]:[]
+    if(classSkills.length){
+      const effects=[]
+      if(Number(e.classSkillBonusPct)>0&&!e.dodged)effects.push('+'+percent(e.classSkillBonusPct)+' de bônus da técnica')
+      if(Number(e.classShieldCreated)>0)effects.push('+'+fmt(e.classShieldCreated)+' de escudo criado')
+      if(e.dodged)effects.push('golpe esquivado')
+      lines.push(`⚜️ ${name(e.from)}: *${classSkills.map(name).join(' / ')}*${effects.length?' • '+effects.join(' • '):''}`)
+    }
+    if(e.defenseTechnique)lines.push(`🛡️ ${name(e.to)} ativou *${name(e.defenseTechnique)}*${Number(e.defenseBlocked)>0?' • mitigação total no golpe: '+fmt(e.defenseBlocked)+' dano':''}${Number(e.shieldAbsorbed)>0?' • escudo absorveu '+fmt(e.shieldAbsorbed):''}`)
   }
   for(const p of [attacker,defender].filter(Boolean)){
     if(p.heroId==='pecado_ban'){
