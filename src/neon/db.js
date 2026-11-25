@@ -1649,7 +1649,7 @@ equipped:Boolean(r.equipped),
 upgrade_distribution:(()=>{
 const paid=Array.isArray(r.upgraded_copies)?r.upgraded_copies.map(c=>({level:Number(c.level),quantity:Number(c.quantity)})):[]
 const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0)-(r.forged_level?1:0))
-return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{level:r.forged_level,quantity:1,stars:r.equipment_stars}]:[])].sort((a,b)=>b.level-a.level)
+return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{level:r.forged_level,quantity:1,stars:r.equipment_stars}]:[])].sort((a,b)=>b.level-a.level).map(t=>({...t,stats:equipmentStatsAtLevel(r.item_id,t.level,t.stars||1)}))
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
