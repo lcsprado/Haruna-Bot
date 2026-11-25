@@ -139,3 +139,20 @@ test('Inventário Web mostra níveis individuais e envia a origem exata do upgra
   assert.ok(ui.includes('sourceKind:x.dataset.sourceKind'));
   assert.ok(backend.includes("body.sourceKind==='star'?'star':'normal'"));
 });
+
+test('Inventário exibe atributos reais de cada cópia sem confundir o nível base',()=>{
+  const source=ui.slice(ui.indexOf('function inventoryEquipmentCopies('),ui.indexOf('function inventoryCard('));
+  const split=new Function(source+';return inventoryEquipmentCopies')();
+  const item={item_id:'garras_vazio',category:'weapon',quantity:3,equipped:true,equipment_level:10,upgrade_distribution:[{level:10,quantity:2,stats:{level:10,stars:1,atk:128}},{level:5,quantity:1,stats:{level:5,stars:1,atk:78}}]};
+  const copies=split(item);
+  assert.equal(copies.equipped[0].equipment_stats.atk,128);
+  assert.equal(copies.available.find(c=>c.equipment_level===10).equipment_stats.atk,128);
+  assert.equal(copies.available.find(c=>c.equipment_level===5).equipment_stats.atk,78);
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  assert.ok(db.includes('stats:equipmentStatsAtLevel(r.item_id,t.level,t.stars||1)'));
+  assert.ok(ui.includes('Atributos-base (Lv.1)'));
+  const markupSource=ui.slice(ui.indexOf('function inventoryLeveledStatsMarkup('),ui.indexOf('function inventorySaleLimit('));
+  const markup=new Function('num',markupSource+';return inventoryLeveledStatsMarkup')(String);
+  assert.match(markup(copies.equipped[0],true),/Lv\.10.*128 ATK/);
+  assert.match(markup(copies.available.find(c=>c.equipment_level===5)),/Lv\.5.*78 ATK/);
+});
