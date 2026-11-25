@@ -7,12 +7,12 @@ const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const wa=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const joinSource=games.slice(games.indexOf('export async function joinRaid('),games.indexOf('export async function cancelRaid(')).replace('export async','async')
 
-function joinedFixture(status='lobby'){
+function joinedFixture(status='lobby',mining=false){
   const room={status,level:30,gameType:'raid:30',players:{a:{jid:'a'},b:{jid:'b'}}}
   const writes=[]
   const join=vm.runInNewContext(joinSource+'\njoinRaid',{
     classesOnlyRebootEnabled:()=>false,ensureUser:async()=>{},
-    tx:async fn=>fn({query:async()=>({rows:[]})}),assertNoActiveRaidLote:async()=>{},
+    tx:async fn=>fn({query:async()=>({rows:[]})}),assertNoActiveRaidLote:async()=>{},assertNoActiveMining:async()=>{if(mining)throw Error('Você está minerando.')},
     resolveRaidRoom:async()=>[room],
     saveGame:async(...args)=>writes.push(args)
   })
@@ -101,4 +101,11 @@ test('quick start uses existing own lobby, rejects another host, reports failed 
   await fail.execute(['50','go'])
   assert.equal(fail.calls.length,3)
   assert.match(fail.calls[2][1],/Sala aberta, mas não foi possível iniciar/)
+})
+
+test('joining a raid during mining is rejected before any change',async()=>{
+ const {join,room,writes}=joinedFixture('lobby',true)
+ await assert.rejects(join('group','a','A',30,{usePet:false}),/minerando/)
+ assert.equal(writes.length,0)
+ assert.equal(room.players.a.usePet,undefined)
 })
