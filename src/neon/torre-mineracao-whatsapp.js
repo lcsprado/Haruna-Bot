@@ -1,4 +1,5 @@
 // Comandos em homologação isolada; nunca ativar na produção sem nova aprovação.
+import {STONES,MINING_RARITY_WEIGHTS} from './enchantment-stones-catalog.js'
 import {createHash} from 'node:crypto'
 import {MINING_PICKAXES,miningPickaxesBySource,miningQuote,miningRepairQuote} from './torre-mineracao-4h.js'
 import {getMiningPickaxes,getMiningStatus,buyMiningPickaxe,repairMiningPickaxe,startMiningExpedition,cancelMiningExpedition,claimMiningExpedition} from './torre-mineracao-store.js'
@@ -25,6 +26,7 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     for(const [id,p] of Object.entries(MINING_PICKAXES)){
       const got=owned.get(id)
       output+=`• *${label(p)}* — chance ${p.stoneChancePercent}% • ${p.maxUses} usos${p.source==='cerco'?' • 🏰 Cerco':p.source==='evento_inaugural'?' • 🎁 Evento inaugural':''}\n`
+      output+='  💎 Se cair pedra: '+MINING_RARITY_WEIGHTS[id].map((n,i)=>['Comum','Rara','Épica','Lendária'][i]+' '+n+'%').join(' • ')+'\n'
       output+=got?`  ✅ Sua resistência: ${got.usesRemaining}/${p.maxUses} • reparo agora R$ ${money(miningRepairQuote(id,got.usesRemaining).costCash)}\n`
         :p.source==='loja'?`  🛒 R$ ${money(p.purchaseCash)} • !comprarpicareta ${id}\n`
         :`  🔒 Exclusiva: ${p.source==='cerco'?'Cerco':'primeiro evento'}\n`
@@ -51,7 +53,7 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     const r=await claimMiningExpedition(db,sender)
     if(r.status==='none'){await reply('⛏️ Você não tem mineração pendente para resgatar.');return true}
     if(r.status==='running'){await reply('⏳ A mineração ainda não acabou. Falta '+time(r.remainingSeconds)+'.');return true}
-    const stone=r.stoneId?'💎 *Pedra encontrada:* '+(r.stoneId.replace(/^pedra_/,'').replace(/_alpha$/,'').replace(/_/g,' ')):'🪨 Nenhuma pedra encontrada nesta expedição.'
+    const stone=r.stoneId?'💎 *Pedra encontrada:* '+(STONES[r.stoneId]?.name||r.stoneId)+' — '+(STONES[r.stoneId]?.label||''):'🪨 Nenhuma pedra encontrada nesta expedição.'
     await reply(`⛏️ *MINERAÇÃO CONCLUÍDA!*\n💰 Dinheiro: +R$ ${money(r.cash)}\n✨ XP: +${money(r.awardedXp)}\n${stone}\n✅ Recompensa creditada uma vez.`)
     return true
   }
