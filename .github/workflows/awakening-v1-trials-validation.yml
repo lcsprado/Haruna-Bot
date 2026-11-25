@@ -1,0 +1,31 @@
+name: Despertar IV-V - provas por classe
+on:
+  pull_request:
+    paths:
+      - 'src/neon/awakening*.js'
+      - 'src/neon/raid-cooperative-roles.js'
+      - 'src/neon/games.js'
+      - 'src/neon/db.js'
+      - 'test/awakening-v1-class-challenges-20261123.test.mjs'
+      - '.github/workflows/awakening-v1-trials-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax (no database access)
+        run: |
+          node --check src/neon/awakening.js
+          node --check src/neon/awakening-trial-store.js
+          node --check src/neon/awakening-v1-challenges.js
+          node --check src/neon/raid-cooperative-roles.js
+          node --check src/neon/games.js
+          node --check src/neon/db.js
+      - name: Unit tests (no production connection)
+        run: node --test test/awakening-v1-class-challenges-20261123.test.mjs test/raid-cooperative-roles.test.mjs

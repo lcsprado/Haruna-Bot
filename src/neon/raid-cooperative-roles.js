@@ -31,7 +31,7 @@ export function raidDruidSupport(players,round){
 export function raidPaladinProtection(players,target,incoming){
   const amount=Math.max(0,Math.floor(Number(incoming)||0))
   if(!target||amount<2||!target.alive)return {damage:amount,absorbed:0,source:null}
-  const guardians=(players||[]).filter(p=>p.jid!==target.jid&&isAwakened(p,'paladin',4)&&Number(p.hp)>1)
+  const guardians=(players||[]).filter(p=>p.jid!==target.jid&&isAwakened(p,'paladin',3)&&Number(p.hp)>1)
     .sort((a,b)=>Number(b.hp)-Number(a.hp))
   const guardian=guardians[0]
   if(!guardian)return {damage:amount,absorbed:0,source:null}
@@ -46,7 +46,7 @@ export function raidPaladinProtection(players,target,incoming){
 
 export function raidNecromancerCurse(players,attacker,damage,remainingHp=Infinity){
   const amount=Math.max(0,Math.floor(Number(damage)||0))
-  const source=(players||[]).find(p=>isAwakened(p,'necromancer',4))
+  const source=(players||[]).find(p=>isAwakened(p,'necromancer',3))
   if(!source||!attacker||attacker.jid===source.jid)return {damage:amount,bonus:0,source:null}
   const bonus=Math.max(0,Math.min(Math.round(amount*RAID_ROLE_RULES.necromancerCurse),Math.floor(Number(remainingHp))-amount))
   source.curseTeamDamage=Number(source.curseTeamDamage||0)+bonus

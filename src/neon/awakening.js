@@ -2,6 +2,7 @@ import { db, ensureUser } from './db.js'
 import { getPlayerClass } from './game-catalog.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {effectiveAwakeningTier} from './reboot-combat-progression.js'
+import {initAwakeningTrialStore,awakeningTrialQuests} from './awakening-trial-store.js'
 
 // Progressão por missões; dinheiro somente ao concluir um despertar.
 // Valores pactuados I–V. Nenhuma passiva ou dano é alterado nesta etapa.
@@ -75,6 +76,7 @@ export async function initAwakening(){
       }
     }
   })
+  await initAwakeningTrialStore(db)
   console.log('[Despertar] progressão I–V (etapas II/III/IV/V nos níveis '+AWAKENING_TIERS.map(t=>effectiveAwakeningTier(t).level).join('/')+'); estágio inicial I')
 }
 async function getMetrics(c,jid){
@@ -123,7 +125,7 @@ function since(start,now,type,minRaid){
 }
 // baseline pertence ao estágio atual, não à jornada inteira.
 function checkpoint(metrics,stage){
-  return {...metrics,__stage:stage}
+  return {...metrics,__stage:stage,__challenge_since:Math.floor(Date.now()/1000)}
 }
 async function normalizeAwakeningStage(c,jid,row,current){
   const stage=Number(row.stage||0)
@@ -140,10 +142,10 @@ async function normalizeAwakeningStage(c,jid,row,current){
   }
   return row
 }
-function progress(row,u,counters){
+async function progress(c,row,u,counters){
   const stage=Number(row.stage??1),tier=effectiveAwakeningTier(AWAKENING_TIERS.find(t=>t.stage===stage+1)||null)
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
-  const quests=tier?path.quests.map(([type,amount,level,label])=>{
+  let quests=tier?path.quests.map(([type,amount,level,label])=>{
     const raidMin=type==='raid'?Math.max(level,tier.raidMin??(tier.stage===2?40:60)):0
     // Ajuste individual da missão de proteção do Despertar III; não altera a regra geral.
     const personalProtection=!classesOnlyRebootEnabled()&&String(row.jid||'')==='5511948523167@s.whatsapp.net'
@@ -160,7 +162,11 @@ function progress(row,u,counters){
     const done=Math.min(target,earned+recovered+(personalProtection?34:0))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
   }):[]
-  if(tier?.stage===5)quests.push({
+  if(classesOnlyRebootEnabled()&&tier?.stage>=4){
+    // Missões V1-inspired: apenas evidências auditáveis da etapa e classe correntes.
+    quests=await awakeningTrialQuests(c,{jid:row.jid,stage:tier.stage,classId,baseline:row.baseline})
+  }
+  if(tier?.stage===5&&!classesOnlyRebootEnabled())quests.push({
     label:'Vencer Raids cooperativas (Lv.60+, 2 jogadores com 2%+ do dano)',
     target:10,
     done:Math.min(10,since(row.baseline,counters,'coop',0))
@@ -184,7 +190,7 @@ export async function getAwakeningStatus(jid){
       row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     }
     row=await normalizeAwakeningStage(c,jid,row,current)
-    return progress(row,u,current)
+    return await progress(c,row,u,current)
   })
 }
 export async function awakenCharacter(jid){
@@ -196,7 +202,7 @@ export async function awakenCharacter(jid){
     if(!row)throw new Error('Inicie suas missões com !despertar.')
     const current=await getMetrics(c,jid)
     row=await normalizeAwakeningStage(c,jid,row,current)
-    const s=progress(row,u,current),tier=s.tier
+    const s=await progress(c,row,u,current),tier=s.tier
     if(!tier)throw new Error('Despertar V já concluído; estágio máximo.')
     if(s.level<tier.level)throw new Error(`Despertar ${tier.roman} exige nível ${tier.level}.`)
     if(s.quests.some(q=>q.done<q.target))throw new Error('Missões pendentes: '+s.quests.filter(q=>q.done<q.target).map(q=>`${q.label}: ${q.done}/${q.target}`).join(' • '))
