@@ -1,3 +1,4 @@
+import {listAppliedStoneUpgrades,upgradeAppliedStone} from './enchantments-alpha.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
@@ -516,13 +517,14 @@ async function groupSnapshot(chatJid){
 async function playerBootstrap(session){
   const jid=session.jid
   const [
-    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,appliedStoneUpgrades,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions,heroes
   ]=await Promise.all([
     getProfile(jid),
     getCombatProfile(jid),
     getInventory(jid),
+    listAppliedStoneUpgrades(jid),
     listPets(jid),
     getPetTeam(jid),
     getPetExpeditions(jid),
@@ -570,7 +572,7 @@ async function playerBootstrap(session){
     syncedAt:now(),
     rebootV2:classesOnlyRebootEnabled(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,activeHeroCombat,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,activeHeroCombat,inventory,appliedStoneUpgrades,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
@@ -1291,6 +1293,7 @@ async function runAction(session,name,body={}){
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
+    case 'stone.upgrade': return upgradeAppliedStone(jid,body)
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10),body.sourceLevel==null?null:positiveInt(body.sourceLevel,'Nível de origem',9),body.sourceKind==='star'?'star':'normal')
     case 'item.forge.list': return listStarForgeWeapons(jid)
     case 'item.forge': return forgeWeaponStar(jid,String(body.itemId||''),positiveInt(body.expectedStars,'Estrelas esperadas',4))
