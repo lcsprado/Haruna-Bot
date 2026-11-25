@@ -8,6 +8,7 @@ import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.
 import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
+import {stoneRowValue} from './stone-upgrade-policy.js'
 import {STONE_EFFECTS} from './enchantment-stones-catalog.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {planShopForge5} from './shop-forge5-plan.js'
@@ -2552,7 +2553,7 @@ const item=(await c.query(`SELECT inv.quantity,i.name,i.category FROM inventorie
 if(!item||Number(item.quantity)<(collab?1:2))throw new Error(collab?'Você precisa possuir o equipamento da colaboração.':'Faltam cópias idênticas.')
 const sf=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
 // Captura os encantamentos da arma antes da forja. Estrelas/nível não podem apagá-los.
-const enchantmentsBefore=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id FOR UPDATE',[jid,itemId])).rows
+const enchantmentsBefore=(await c.query("SELECT stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=$2 ORDER BY stone_id FOR UPDATE",[jid,itemId])).rows
 const stars=Number(sf?.stars||1),level=Number(sf?.level||10)
 if(expectedStars!==null&&Number(expectedStars)!==stars)throw new Error('Estrelas alteradas; reabra !forjar.')
 if(stars>=5)throw new Error('Máximo de cinco estrelas.')
@@ -2598,7 +2599,7 @@ if(!units.rowCount||!fragments.rowCount)throw new Error('Reserva de materiais/c�
 if(shieldForge)await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[fee,jid])
 await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,$3,1,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,level=1,updated_at=EXCLUDED.updated_at`,[jid,itemId,stars+1])
 await syncEffectiveGear(c,jid,itemId)
-const enchantments=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id',[jid,itemId])).rows
+const enchantments=(await c.query("SELECT stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=$2 ORDER BY stone_id",[jid,itemId])).rows
 if(JSON.stringify(enchantments)!==JSON.stringify(enchantmentsBefore))throw new Error('Encantamentos divergentes; forja cancelada sem consumir recursos.')
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',$3,$4,$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; ${collab?'0 cópias consumidas':'-1 cópia'}; ${shieldForge?'R$ '+fee:'-'+required+' '+origin.materialId}`,fee,shieldForge?'equipment_star_forge_shield':collab?'equipment_star_forge_collab_fragments':'equipment_star_forge'])
 return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
@@ -2927,7 +2928,7 @@ await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) 
 await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
 await syncEffectiveGear(c,jid,itemId)
 // Melhorar o nível não remove os encantamentos permanentes do modelo.
-const enchantments=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id',[jid,itemId])).rows
+const enchantments=(await c.query("SELECT stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=$2 ORDER BY stone_id",[jid,itemId])).rows
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,$3,$4)`,
 [jid,cost,'equipment_upgrade',
 `${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
@@ -3141,16 +3142,16 @@ const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||
 const shield=p.shield_id?equipmentStatsAtLevel(p.shield_id,levels[p.shield_id]||1,stars[p.shield_id]||1):null
 const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
 const enchantRows=(await db.query(`
-SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
+SELECT stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])
 UNION ALL
-SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity
+SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity,'[]'::jsonb AS upgrade_levels
 FROM inventories WHERE jid=$1 AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
 `,[jid,enchantedIds])).rows
 const enchantMap={...STONE_EFFECTS,selo_poder_5pct_alpha_20261019:['attackPct',.05]}
 const ench={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
 for(const row of enchantRows){
 const data=enchantMap[row.stone_id]
-if(data)ench[data[0]]+=data[1]*Math.min(3,Math.max(0,Number(row.quantity)||0))
+if(data)ench[data[0]]+=stoneRowValue(data[1],row)
 }
 const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
@@ -3310,9 +3311,9 @@ const levelRows=(await client.query(
 [[attackerJid,defenderJid]]
 )).rows
 const enchantRows=(await client.query(`
-SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])
+SELECT jid,item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=ANY($1::text[])
 UNION ALL
-SELECT jid,NULL::text,'selo_poder_5pct_alpha_20261019'::text,1::integer
+SELECT jid,NULL::text,'selo_poder_5pct_alpha_20261019'::text,1::integer,'[]'::jsonb
 FROM inventories WHERE jid=ANY($1::text[]) AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
 `,[[attackerJid,defenderJid]])).rows
 const eqEnch=(jid,ids)=>{
@@ -3320,7 +3321,7 @@ const stats={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
 const map={...STONE_EFFECTS,selo_poder_5pct_alpha_20261019:['attackPct',.05]}
 for(const e of enchantRows){
 const st=map[e.stone_id]
-if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
+if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=stoneRowValue(st[1],e)
 }
 return stats
 }
