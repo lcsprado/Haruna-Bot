@@ -27,11 +27,11 @@ test('nove páginas por número preservadas, cada uma abaixo do limite de 4096 c
 
 const cases={
   2:['!cltifood','!centralifood','!coletaifood','!bolsafamilia','!motos','!garagem'],
-  3:['!picaretas','!comprarpicareta madeira','!repararpicareta madeira','Ouro','Diamante'],
+  3:['!encantamentos','!encantar','!uparencanto','!encantamentos upar','!picaretas','!comprarpicareta madeira','!repararpicareta madeira','Ouro','Diamante'],
   4:['!raid 50 go','!raid 50 go sempet','!raid 30 sempet','!entrar 30 sempet','!go 30 sempet','!desistir 30',
      '!raidlote 50 4h','!raidlote 50 8h','!raidlote 50 12h','!raidlote 50 8h sempet',
      '!raidlote confirmar','!raidlote status','!raidlote painel','!raidlote recibo','!raidlote cancelar','!raidlote historico'],
-  5:['!bingov2','!bingo','!cartelav2','!cartela','!leilao','!leilaov2','!lancev2',
+  5:['!atacar sempet','!pararatacar','!bingov2','!bingo','!cartelav2','!cartela','!leilao','!leilaov2','!lancev2',
      '!corridas','!comprarcorrida','!equiparcorrida','!oficina','!corrida','!desafiocorrida',
      '!rankcorrida','!historicocorrida','!gttabela','!gtclima','!gtpatrocinio','!poco','!pocorank'],
   6:['!minerar','!minerar status','!minerar iniciar madeira','!minerar resgatar','!minerar cancelar'],
@@ -43,21 +43,19 @@ for(const [number,expected] of Object.entries(cases)){
  })
 }
 
-test('duas entradas da central mostram novidades e a navegação',()=>{
- const heads=[
- index.slice(index.indexOf('async function showCommandsMainMenu('),index.indexOf('function textOf(msg)')),
- index.slice(index.indexOf('const commandsMenu=async()=>{'),index.indexOf('const commandCategory=async('))
- ]
- for(const head of heads){
-  assert.match(head,/!minerar/)
-  assert.match(head,/!raidlote/)
-  assert.match(head,/!corridas/)
-  assert.match(head,/!gt/)
-  assert.match(head,/!bingo/)
-  assert.match(head,/!leilao/)
-  assert.match(head,/1️⃣/)
-  assert.match(head,/9️⃣/)
+test('entrada e retorno das categorias usam a mesma central atualizada',()=>{
+ const head=index.slice(index.indexOf('async function showCommandsMainMenu('),index.indexOf('function textOf(msg)'))
+ for(const command of ['!minerar','!raidlote','!corridas','!gt','!bingo','!leilao','!encantamentos','!encantar','!uparencanto']){
+  assert.ok(head.includes(command),command)
  }
+ assert.match(head,/1️⃣/)
+ assert.match(head,/9️⃣/)
+ assert.match(index,/const commandsMenu=async\(\)=>showCommandsMainMenu\(chat,sender,reply\)/)
+ assert.equal((index.match(/ALPHA BOT — CENTRAL DE COMANDOS/g)||[]).length,1)
+ assert.match(index,/await commandsMenu\(\)/)
+ const enchant=read('src/neon/enchantments-alpha.js')
+ assert.match(enchant,/cmd==='uparencanto'/)
+ assert.match(enchant,/cmd==='encantamentos'&&args\[0\]==='upar'/)
 })
 
 test('comandos novos existem em handlers reais, não são apenas texto',()=>{

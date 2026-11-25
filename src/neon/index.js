@@ -1315,6 +1315,7 @@ await reply(
 Um bot completo para o grupo — não só RPG.
 🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
+💎 *!encantamentos* / *!encantar*${classesOnlyRebootEnabled()?' / *!uparencanto*':''} — pedras e aprimoramento
 📜 *!contratos* — missões rotativas de 4 em 4 horas
 ⛏️ *!minerar* • ⚔️ *!raidlote* — expedições de 4h e Raids automáticas
 🏎️ *!gt* • 🏁 *!corridas* — corridas diárias e garagem
@@ -1353,26 +1354,32 @@ async function showCommandsMainMenu(chat,sender,reply){
 setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
 await reply(
 `📚 *ALPHA BOT — CENTRAL DE COMANDOS*
-O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
-Escolha a área e eu mostro só os comandos que interessam.
-🚀 *NOVIDADES ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
-🌐 *!web* — acesso ao novo RPG visual no navegador
+━━━━━━━━━━━━━━━━
+🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
+
+💎 *ENCANTAMENTOS*
+*!encantamentos* — consultar pedras e bônus
+*!encantar* — aplicar pedra ao equipamento
+${classesOnlyRebootEnabled()?'*!uparencanto* — aprimorar pedras até Lv.10\n':''}
+⚡ *ATALHOS*
+🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões de 4 em 4 horas
-⛏️ *!minerar* / *!picaretas* — mineração da Torre
+⛏️ *!minerar* / *!picaretas* — mineração da Torre${miningRuntimeEnabled()?'':' (indisponível neste ambiente)'}
 ⚔️ *!raidlote* — Raids automáticas (4h, 8h e 12h)
 🏁 *!corridas* / *!gt* — garagem e corridas
-🎟️ *!bingo* / 🔨 *!leilao* — eventos agendados
-1️⃣ 👤 Perfil, conta & social
-2️⃣ 💰 Economia, trabalho, banco & PIX
-3️⃣ 🛒 Loja, inventário & mercado
-4️⃣ ⚔️ RPG, combate, Raids & pets
-5️⃣ 🎮 Minigames, corridas, Boss & eventos
-6️⃣ 📜 Contratos Alpha & Progressão
+🎟️ *!bingo* / 🔨 *!leilao* — eventos
+
+📂 *CATEGORIAS*
+1️⃣ 👤 Perfil & social
+2️⃣ 💰 Economia, trabalho & banco
+3️⃣ 💎 Equipamentos, encantamentos & loja
+4️⃣ ⚔️ RPG, Raids & pets
+5️⃣ 🎮 Jogos, Boss, corridas & eventos
+6️⃣ 📜 Missões, mineração & progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo, moderação & assinatura
 9️⃣ 🧰 Futebol, utilidades & suporte
-💡 Dica: use *!menu* para navegar sem decorar comandos.
-🎁 Teste do grupo: *3 dias grátis*.
+
 👉 Responda só com o número.
 0️⃣ Fechar`
 )
@@ -5385,7 +5392,12 @@ const commandPages={
 *!escolher A | B* • *!ship @pessoa @pessoa*
 *!verdade* • *!desafio*
 9️⃣ Voltar • 0️⃣ Fechar`,
-'3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
+'3':`💎 *EQUIPAMENTOS, ENCANTAMENTOS & LOJA*
+💎 *ENCANTAMENTOS*
+*!encantamentos* — consulta pedras e níveis aplicados
+*!encantar* — aplica uma pedra em um equipamento
+${classesOnlyRebootEnabled()?'*!uparencanto* — aprimora pedras aplicadas do Lv.1 ao Lv.10\n*!encantamentos upar* — atalho de aprimoramento\n⚠️ Falha cobra dinheiro; quebra destrói apenas a pedra. Confirme com 1 ou cancele com 2.\n':''}
+🛒 *LOJA & INVENTÁRIO*
 *!itens* — abre o menu de itens
 *!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
@@ -5511,7 +5523,9 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
 *!boss* — inicia/mostra o Boss disponível${classesOnlyRebootEnabled()?'':'; Boss de Evento tem prioridade'}
-*!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
+*!atacar* — inicia ataque automático ao Boss
+*!atacar sempet* — ataca sem consumir energia do pet
+${classesOnlyRebootEnabled()?'*!atacar 1 sempet* / *!atacar 2 sempet* — escolhe o alvo sem pet, quando listado\n':''}*!pararatacar* — encerra o ataque automático
 👹 *Boss comum:* 9–12 mil HP
 🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • ${classesOnlyRebootEnabled()?'150 mil HP • ATK 45 • fundo R$ 40 mil':'8–9,5 milhões HP • ATK 200'} • 1 Boss global por fim de semana
 💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
@@ -5587,6 +5601,7 @@ ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e c
 *!claexpulsar @pessoa* — expulsa membro
 *!cladoar valor* — doa ao cofre
 *!rankingclas* — ranking
+🌐 Cerco e melhorias do clã: consulte o RPG Web em *!web*.
 *!rankdoacoes* / *!rankingdoacoes* — classificação das doações do clã
 *!saircla* — sai do clã
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -5632,29 +5647,7 @@ ${classesOnlyRebootEnabled()?'🎁 *Boss comum:* fundo até R$ 2.500, 120 XP e c
 *!chamado CODIGO* — consulta chamado
 9️⃣ Voltar • 0️⃣ Fechar`
 }
-const commandsMenu=async()=>{
-setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
-await reply(
-`📚 *COMANDOS DO ALPHA*
-Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
-🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
-🌐 *!web* — RPG no navegador
-📜 *!contratos* — missões por nível, renovadas a cada 4h
-💎 *!uparencanto* — evoluir pedras aplicadas até Lv.10.\n⛏️ *!minerar* / *!picaretas* • ⚔️ *!raidlote* • 🏁 *!corridas* / *!gt*
-🎟️ *!bingo* / 🔨 *!leilao* — eventos agendados
-1️⃣ 👤 Perfil, conta, casamento & social
-2️⃣ 💰 Economia & diversão
-3️⃣ 🛒 Loja, inventário & mercado
-4️⃣ 🐾 RPG, combate & PETS
-5️⃣ 🎮 Minigames, corridas & eventos
-6️⃣ 📜 Contratos & Progressão
-7️⃣ 🏴 Clãs
-8️⃣ 🛡️ Grupo & moderação
-9️⃣ ⚽ Futebol, utilidades & suporte
-👉 Responda só com o número.
-0️⃣ Fechar`
-)
-}
+const commandsMenu=async()=>showCommandsMainMenu(chat,sender,reply)
 const commandCategory=async(input)=>{
 const page=commandPages[input]
 if(!page) return false
