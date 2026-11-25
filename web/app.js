@@ -2126,18 +2126,25 @@ function sellInventoryItem(itemId,qty){
 }
 // Each equipment tier represents distinct physical copies; the effective copy is protected.
 function inventoryEquipmentCopies(i){
-  if(!['weapon','armor','boots','helmet'].includes(i.category)) return {equipped:i.equipped?[{...i,quantity:1}]:[],available:Number(i.quantity||0)-(i.equipped?1:0)>0?[{...i,quantity:Number(i.quantity||0)-(i.equipped?1:0)}]:[]};
+  if(!['weapon','armor','boots','helmet'].includes(i.category)) return {equipped:i.equipped?[{...i,quantity:1}]:[],available:[{...i,quantity:Math.max(0,Number(i.quantity||0)-(i.equipped?1:0))}].filter(c=>c.quantity>0)};
   const scale=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50];
   const tiers=(Array.isArray(i.upgrade_distribution)&&i.upgrade_distribution.length?i.upgrade_distribution:[{level:i.equipment_level||1,quantity:i.quantity}])
     .map(t=>({level:Number(t.level),quantity:Number(t.quantity),stars:Number(t.stars||1),kind:t.stars!=null?'star':'normal'}))
     .filter(t=>t.quantity>0);
   const strength=t=>(scale[t.level-1]||1)*(1+.04*(t.stars-1));
-  tiers.sort((a,b)=>strength(b)-strength(a)||(a.kind==='normal'?-1:1));
+  tiers.sort((a,b)=>strength(b)-strength(a)||Number(a.kind==='star')-Number(b.kind==='star'));
   const best=tiers[0];
   const card=(t,quantity)=>({...i,quantity,equipment_level:t.level,equipment_stars:t.stars,forged_level:t.kind==='star'?t.level:0,sourceKind:t.kind,
     equipment_stats:Number(i.equipment_stats?.level||i.equipment_level)===t.level&&t===best?i.equipment_stats:null});
   const equipped=i.equipped&&best?[card(best,1)]:[];
   const available=tiers.map((t,n)=>card(t,t.quantity-(i.equipped&&n===0?1:0))).filter(t=>t.quantity>0);
+  // Sale API is model-based and consumes basic/lowest normal tiers before forge.
+  // Offer model sales only from the first tier that the API can actually consume.
+  const saleOrder=[...available].sort((a,b)=>Number(a.sourceKind==='star')-Number(b.sourceKind==='star')||a.equipment_level-b.equipment_level);
+  for(const copy of available) if(copy!==saleOrder[0]) copy.sellable_quantity=0;
+  // Legacy sale policy preserves a forge even when a normal copy has stronger stats.
+  // Avoid offering a misleading per-copy sale for this unusual combination.
+  if(i.equipped&&best?.kind==='normal'&&tiers.some(t=>t.kind==='star')) for(const copy of available) copy.sellable_quantity=0;
   return {equipped,available};
 }
 function inventoryCard(i,options={}){
