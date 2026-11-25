@@ -1,5 +1,6 @@
 // Torre Infinita — prototipo isolado de mineracao, nao ligado a comandos ou ao banco.
 // Sem alteracao de producao, atributos, inventario ou atividades existentes.
+import {miningStoneVariant,MINING_RARITY_WEIGHTS} from './enchantment-stones-catalog.js'
 export const MINING_DURATION_SECONDS=4*60*60
 export const MINING_GUARANTEED_REWARD=Object.freeze({cash:800,xp:250})
 
@@ -49,7 +50,7 @@ export function miningQuote(pickaxeId){
   const pickaxe=MINING_PICKAXES[pickaxeId]
   if(!pickaxe)throw new Error('Picareta inválida.')
   return Object.freeze({pickaxeId,name:pickaxe.name,durationSeconds:MINING_DURATION_SECONDS,
-    stoneChancePercent:pickaxe.stoneChancePercent,ore:pickaxe.ore,source:pickaxe.source,
+    stoneChancePercent:pickaxe.stoneChancePercent,rarityWeights:MINING_RARITY_WEIGHTS[pickaxeId],ore:pickaxe.ore,source:pickaxe.source,
     purchaseCash:pickaxe.purchaseCash,
     guaranteedCash:MINING_GUARANTEED_REWARD.cash,guaranteedXp:MINING_GUARANTEED_REWARD.xp,
     maxUses:pickaxe.maxUses,fullRepairCash:pickaxe.fullRepairCash})
@@ -95,7 +96,7 @@ export function settleMiningExpedition({pickaxeId,startedAt,now,stoneRoll,kindRo
   let sum=0
   for(const stone of MINING_STONE_TABLE){
     sum+=stone.weight
-    if(roll<sum)return {status:'done',ore:quote.ore,stoneId:stone.id,cash:quote.guaranteedCash,xp:quote.guaranteedXp}
+    if(roll<sum)return {status:'done',ore:quote.ore,stoneId:miningStoneVariant(stone.id,pickaxeId,stoneRoll/(quote.stoneChancePercent/100)),cash:quote.guaranteedCash,xp:quote.guaranteedXp}
   }
   throw new Error('Tabela de pedras inválida.')
 }

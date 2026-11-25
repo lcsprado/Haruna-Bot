@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {STONES} from '../src/neon/enchantment-stones-catalog.js'
 
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
@@ -29,6 +30,7 @@ test('WhatsApp forging and upgrading show saved enchantments and their actual ef
   assert.match(index,/STONES\[row\.stone_id\]\.label/)
   assert.match(index,/enchantmentsReceipt\(result\.enchantments\)/)
   assert.match(index,/enchantmentsReceipt\(r\.enchantments\)/)
-  assert.match(enchant,/pedra_precisao_alpha:\{name:'Pedra da Precisão',stat:'crit',value:\.01/)
+  assert.equal(STONES.pedra_precisao_alpha.value,.01)
+  assert.equal(STONES.pedra_precisao_alpha.stat,'crit')
   assert.match(enchant,/PRIMARY KEY\(jid,item_id,stone_id\)/)
 })

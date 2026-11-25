@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import {STONES,MINING_RARITY_WEIGHTS,planStoneApplication,miningStoneVariant} from '../src/neon/enchantment-stones-catalog.js'
 import {MINING_DURATION_SECONDS,MINING_GUARANTEED_REWARD,MINING_PICKAXES,MINING_PICKAXE_SOURCES,MINING_STONE_TABLE,miningPickaxesBySource,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,miningActivityGuard,settleMiningExpedition} from '../src/neon/torre-mineracao-4h.js'
 
 test('4 horas fixas; porcentagem depende exclusivamente da picareta',()=>{
@@ -24,7 +25,7 @@ test('aos 4h, chance por picareta; 1 pedra máxima, não soma porcentagens por h
     assert.equal(settleMiningExpedition({pickaxeId:id,startedAt:start,now:start+14400,stoneRoll:above,kindRoll:0}).stoneId,null)
   }
 })
-test('somente pedras já existentes, tabela soma 100%, no máximo uma pedra',()=>{
+test('cinco famílias de pedras, tabela soma 100%, no máximo uma pedra',()=>{
   assert.equal(MINING_STONE_TABLE.reduce((n,x)=>n+x.weight,0),100)
   assert.deepEqual(MINING_STONE_TABLE.map(x=>x.id),[
     'pedra_forca_alpha','pedra_fortaleza_alpha','pedra_agilidade_alpha','pedra_precisao_alpha','pedra_furia_alpha'
@@ -130,4 +131,66 @@ test('precificacao segue faixas da economia real; somente 3 picaretas de loja sa
    assert.equal(miningQuote(id).purchaseCash,null)
    assert.throws(()=>miningPurchaseQuote(id),/nao esta a venda/)
  }
+})
+
+test('20 pedras: raridade condicional, bônus e compatibilidade preservados',()=>{
+ assert.equal(Object.keys(STONES).length,20)
+ assert.equal(STONES.pedra_forca_alpha.value,5)
+ assert.equal(STONES.pedra_forca_lendaria_alpha.value,35)
+ assert.equal(STONES.pedra_furia_lendaria_alpha.value,.10)
+ assert.equal(STONES.pedra_precisao_lendaria_alpha.value,.05)
+ for(const [id,weights] of Object.entries(MINING_RARITY_WEIGHTS)){
+  assert.equal(weights.reduce((a,b)=>a+b,0),100)
+  let start=0
+  for(let rank=0;rank<4;rank++){
+   if(weights[rank]>0){
+    const roll=(start+weights[rank]/2)/100
+    assert.equal(STONES[miningStoneVariant('pedra_forca_alpha',id,roll)].rank,rank)
+    const outcome=settleMiningExpedition({pickaxeId:id,startedAt:100,now:14500,stoneRoll:roll*MINING_PICKAXES[id].stoneChancePercent/100,kindRoll:0})
+    assert.equal(STONES[outcome.stoneId].rank,rank)
+   }
+   start+=weights[rank]
+  }
+ }
+})
+test('substituição superior preserva três espaços, dois percentuais e impede downgrade',()=>{
+ const rows=[{stone_id:'pedra_forca_alpha',quantity:2},{stone_id:'pedra_furia_alpha',quantity:1}]
+ assert.deepEqual(planStoneApplication(rows,'pedra_forca_lendaria_alpha'),{replaceId:'pedra_forca_alpha',totalAfter:3})
+ assert.equal(planStoneApplication(rows,'pedra_forca_alpha'),null)
+ assert.equal(planStoneApplication(rows,'pedra_precisao_lendaria_alpha'),null)
+ const pct=[{stone_id:'pedra_furia_alpha',quantity:2}]
+ assert.deepEqual(planStoneApplication(pct,'pedra_furia_rara_alpha'),{replaceId:'pedra_furia_alpha',totalAfter:2})
+ assert.deepEqual(planStoneApplication([],'pedra_furia_rara_alpha'),{replaceId:null,totalAfter:1})
+})
+
+import {miningSessionQuote,miningSessionOutcome,parseMiningDuration,MINING_HOURLY} from '../src/neon/mining-session-v2.js'
+test('nova mineração escolhe tempo e consome usos, com lucro após reparo',()=>{
+ assert.equal(parseMiningDuration('30m'),1800)
+ assert.equal(parseMiningDuration('8h'),28800)
+ assert.throws(()=>parseMiningDuration('9h'),/Escolha/)
+ for(const [id,p] of Object.entries(MINING_PICKAXES)){
+  for(const duration of [1800,3600,7200]){
+   const q=miningSessionQuote(id,p.maxUses,duration)
+   assert.equal(q.usesCost,Math.ceil(duration/3600))
+   assert.equal(q.usesAfter,p.maxUses-q.usesCost)
+   assert.ok(q.cash>miningRepairQuote(id,q.usesAfter).costCash)
+  }
+ }
+ assert.throws(()=>miningSessionQuote('madeira',1,7200),/Resistência/)
+})
+test('sorteios por cinco minutos são cumulativos, reproduzíveis e não excedem tempo contratado',()=>{
+ const row={pickaxe_id:'diamante',started_at:100,ends_at:29800-900,roll_seed:'ab'.repeat(32)}
+ row.ends_at=row.started_at+28800
+ const a=miningSessionOutcome(row,1900)
+ assert.equal(a.ticks,6)
+ assert.equal(a.cash,2500)
+ assert.equal(a.xp,250)
+ assert.deepEqual(a,miningSessionOutcome(row,1900))
+ const b=miningSessionOutcome(row,row.ends_at)
+ assert.deepEqual(b,miningSessionOutcome(row,row.ends_at+99999))
+ assert.equal(b.ticks,96)
+ assert.equal(b.cash,40000)
+ for(const [id,n] of Object.entries(a.stones))assert.ok(b.stones[id]>=n)
+ assert.ok(Object.values(b.stones).reduce((n,x)=>n+x,0)>1)
+ assert.equal(miningSessionOutcome(row,399).cash,0)
 })

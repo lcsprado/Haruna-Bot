@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {planStoneApplication} from '../src/neon/enchantment-stones-catalog.js'
 import {equipmentCatalogPrice,equipmentUpgradeBase,equipmentUpgradeRefund,effectiveShieldForgeFee,effectiveShopForge5Fee,effectiveAutoForgeFee} from '../src/neon/reboot-gear-economy.js'
 import {candidateShopCatalogItem} from '../src/neon/reboot-economy-policy.js'
 import {rebootResaleUnit} from '../src/neon/reboot-sale-policy.js'
@@ -61,9 +62,13 @@ test('runtime compartilha base de custos e mantém encantamento com uma pedra, s
  assert.match(db,/upgradeBase:equipmentUpgradeBase\(inv.rarity\)/)
  assert.match(db,/upgradeBase:equipmentUpgradeBase\(item.rarity\)/)
  const e=readFileSync(new URL('../src/neon/enchantments-alpha.js',import.meta.url),'utf8')
- assert.match(e,/async function applyStone\(jid,stoneId,itemId\)\{\s*assertRebootItemAllowed\(itemId\)/)
- assert.match(e,/if\(total>=3\)/)
- assert.match(e,/percentage>=2/)
+ assert.match(e,/async function applyStone\(jid,stoneId,itemId,expectedReplaceId=null\)\{\s*assertRebootItemAllowed\(itemId\)/)
+ assert.match(e,/const plan=planStoneApplication\(current,stoneId\)/)
+ assert.match(e,/if\(!plan\)throw Error/)
+ assert.equal(planStoneApplication([{stone_id:'pedra_forca_alpha',quantity:3}],'pedra_forca_alpha'),null)
+ assert.equal(planStoneApplication([{stone_id:'pedra_furia_alpha',quantity:2}],'pedra_precisao_alpha'),null)
+ assert.deepEqual(planStoneApplication([{stone_id:'pedra_forca_alpha',quantity:3}],'pedra_forca_rara_alpha'),{replaceId:'pedra_forca_alpha',totalAfter:3})
+ assert.doesNotMatch(e.slice(e.indexOf('async function applyStone('),e.indexOf('const ENCHANT_FLOW_MINUTES')),/UPDATE wallets|debitCash/)
  assert.match(e,/UPDATE inventories SET quantity=quantity-1/)
  assert.match(e,/Não há cobrança em dinheiro/)
 })
