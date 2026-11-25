@@ -75,8 +75,8 @@ test('4 horas sempre rendem R$ 800 e 250 XP, com ou sem pedra',()=>{
   }
 })
 
-test('cada picareta tem durabilidade 4-8 e consome um uso ao iniciar a mineração',()=>{
-  const expected={madeira:4,ferro:5,aco:6,ouro:7,diamante:8}
+test('cada picareta tem durabilidade 12-16 e consome um uso ao iniciar a mineração',()=>{
+  const expected={madeira:12,ferro:13,aco:14,ouro:15,diamante:16}
   for(const [id,maxUses] of Object.entries(expected)){
     assert.equal(MINING_PICKAXES[id].maxUses,maxUses)
     const full=miningStartQuote(id,maxUses)
@@ -90,9 +90,9 @@ test('cada picareta tem durabilidade 4-8 e consome um uso ao iniciar a mineraç�
 })
 
 test('reparo custa dinheiro proporcional aos usos especificos de cada picareta, sem item adicional',()=>{
-  const expected={madeira:{maxUses:4,fullRepairCash:1200},
-    ferro:{maxUses:5,fullRepairCash:3000},aco:{maxUses:6,fullRepairCash:6000},
-    ouro:{maxUses:7,fullRepairCash:10000},diamante:{maxUses:8,fullRepairCash:15000}}
+  const expected={madeira:{maxUses:12,fullRepairCash:3600},
+    ferro:{maxUses:13,fullRepairCash:7800},aco:{maxUses:14,fullRepairCash:14000},
+    ouro:{maxUses:15,fullRepairCash:21429},diamante:{maxUses:16,fullRepairCash:30000}}
   for(const [id,{maxUses,fullRepairCash}] of Object.entries(expected)){
     const empty=miningRepairQuote(id,0)
     assert.equal(empty.costCash,fullRepairCash)
@@ -106,13 +106,13 @@ test('reparo custa dinheiro proporcional aos usos especificos de cada picareta, 
       assert.equal(quote.missingUses,maxUses-remaining)
     }
   }
-  assert.equal(miningRepairQuote('ouro',3).costCash,Math.ceil(4*10000/7))
-  assert.equal(miningRepairQuote('diamante',4).costCash,7500)
+  assert.equal(miningRepairQuote('ouro',3).costCash,Math.ceil(12*21429/15))
+  assert.equal(miningRepairQuote('diamante',4).costCash,22500)
   assert.throws(()=>miningRepairQuote('madeira',-1),/Durabilidade/)
 })
 
 test('analise de saldo do ciclo: picaretas melhores podem custar mais do que a renda garantida',()=>{
- const expected={madeira:2000,ferro:1000,aco:-1200,ouro:-4400,diamante:-8600}
+ const expected={madeira:6000,ferro:2600,aco:-2800,ouro:-9429,diamante:-17200}
  for(const [id,net] of Object.entries(expected)){
    const p=miningQuote(id)
    assert.equal(p.maxUses*p.guaranteedCash-p.fullRepairCash,net)
@@ -163,11 +163,12 @@ test('substituição superior preserva três espaços, dois percentuais e impede
  assert.deepEqual(planStoneApplication([],'pedra_furia_rara_alpha'),{replaceId:null,totalAfter:1})
 })
 
-import {miningSessionQuote,miningSessionOutcome,parseMiningDuration,MINING_HOURLY} from '../src/neon/mining-session-v2.js'
+import {miningSessionQuote,miningSessionOutcome,parseMiningDuration,MINING_HOURLY,miningDurationOptions} from '../src/neon/mining-session-v2.js'
 test('nova mineração escolhe tempo e consome usos, com lucro após reparo',()=>{
  assert.equal(parseMiningDuration('30m'),1800)
  assert.equal(parseMiningDuration('8h'),28800)
- assert.throws(()=>parseMiningDuration('9h'),/Escolha/)
+ assert.equal(parseMiningDuration('12h'),43200)
+ assert.throws(()=>parseMiningDuration('13h'),/Escolha/)
  for(const [id,p] of Object.entries(MINING_PICKAXES)){
   for(const duration of [1800,3600,7200]){
    const q=miningSessionQuote(id,p.maxUses,duration)
@@ -193,4 +194,16 @@ test('sorteios por cinco minutos são cumulativos, reproduzíveis e não excedem
  for(const [id,n] of Object.entries(a.stones))assert.ok(b.stones[id]>=n)
  assert.ok(Object.values(b.stones).reduce((n,x)=>n+x,0)>1)
  assert.equal(miningSessionOutcome(row,399).cash,0)
+})
+
+test('12h disponíveis com resistência e opções limitadas ao saldo',()=>{
+ assert.equal(miningDurationOptions(14).length,13)
+ assert.deepEqual(miningDurationOptions(2),[1800,3600,7200])
+ assert.deepEqual(miningDurationOptions(0),[])
+ const q=miningSessionQuote('aco',14,43200)
+ assert.equal(q.usesAfter,2)
+ assert.equal(q.cash,36000)
+ const r=miningSessionOutcome({pickaxe_id:'aco',started_at:100,ends_at:43300,roll_seed:'ab'.repeat(32)},43300)
+ assert.equal(r.ticks,144)
+ assert.equal(r.cash,36000)
 })

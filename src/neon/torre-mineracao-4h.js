@@ -9,11 +9,11 @@ export const MINING_GUARANTEED_REWARD=Object.freeze({cash:800,xp:250})
 // Precos de loja em estudo econômico; premios de evento/Cerco nao vendidos.
 // Sem integracao real com carteira ou loja; nenhum preco esta ativo.
 export const MINING_PICKAXES=Object.freeze({
-  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',purchaseCash:2000,stoneChancePercent:3,ore:4,maxUses:4,fullRepairCash:1200}),
-  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',purchaseCash:7500,stoneChancePercent:6,ore:5,maxUses:5,fullRepairCash:3000}),
-  aco:Object.freeze({name:'Picareta de Aço',source:'loja',purchaseCash:20000,stoneChancePercent:10,ore:6,maxUses:6,fullRepairCash:6000}),
-  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',purchaseCash:null,stoneChancePercent:12,ore:7,maxUses:7,fullRepairCash:10000}),
-  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',purchaseCash:null,stoneChancePercent:15,ore:8,maxUses:8,fullRepairCash:15000})
+  madeira:Object.freeze({name:'Picareta de Madeira',source:'loja',purchaseCash:2000,stoneChancePercent:3,ore:4,maxUses:12,fullRepairCash:3600}),
+  ferro:Object.freeze({name:'Picareta de Ferro',source:'loja',purchaseCash:7500,stoneChancePercent:6,ore:5,maxUses:13,fullRepairCash:7800}),
+  aco:Object.freeze({name:'Picareta de Aço',source:'loja',purchaseCash:20000,stoneChancePercent:10,ore:6,maxUses:14,fullRepairCash:14000}),
+  ouro:Object.freeze({name:'Picareta de Ouro',source:'cerco',purchaseCash:null,stoneChancePercent:12,ore:7,maxUses:15,fullRepairCash:21429}),
+  diamante:Object.freeze({name:'Picareta de Diamante',source:'evento_inaugural',purchaseCash:null,stoneChancePercent:15,ore:8,maxUses:16,fullRepairCash:30000})
 })
 export const MINING_PICKAXE_SOURCES=Object.freeze({
   loja:'Loja de Picaretas',

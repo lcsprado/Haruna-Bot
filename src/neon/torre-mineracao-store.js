@@ -13,10 +13,16 @@ export async function initMiningStore(db,env=process.env){
     CREATE TABLE IF NOT EXISTS mining_pickaxes (
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
       pickaxe_id TEXT NOT NULL,
-      uses_remaining SMALLINT NOT NULL CHECK (uses_remaining>=0 AND uses_remaining<=8),
+      uses_remaining SMALLINT NOT NULL CHECK (uses_remaining>=0 AND uses_remaining<=16),
+      capacity_version SMALLINT NOT NULL DEFAULT 2,
       acquired_at BIGINT NOT NULL,
       PRIMARY KEY(jid,pickaxe_id)
     );
+    ALTER TABLE mining_pickaxes ADD COLUMN IF NOT EXISTS capacity_version SMALLINT NOT NULL DEFAULT 1;
+    ALTER TABLE mining_pickaxes DROP CONSTRAINT IF EXISTS mining_pickaxes_uses_remaining_check;
+    ALTER TABLE mining_pickaxes ADD CONSTRAINT mining_pickaxes_uses_remaining_check CHECK(uses_remaining>=0 AND uses_remaining<=16);
+    UPDATE mining_pickaxes SET uses_remaining=uses_remaining+8,capacity_version=2 WHERE capacity_version=1;
+    ALTER TABLE mining_pickaxes ALTER COLUMN capacity_version SET DEFAULT 2;
     CREATE TABLE IF NOT EXISTS mining_expeditions (
       id UUID PRIMARY KEY,
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,

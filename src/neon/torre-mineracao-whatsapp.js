@@ -1,6 +1,6 @@
 // Comandos em homologação isolada; nunca ativar na produção sem nova aprovação.
 import {STONES,MINING_RARITY_WEIGHTS} from './enchantment-stones-catalog.js'
-import {MINING_HOURLY,parseMiningDuration,miningSessionQuote} from './mining-session-v2.js'
+import {MINING_HOURLY,parseMiningDuration,miningSessionQuote,miningDurationOptions} from './mining-session-v2.js'
 import {createHash} from 'node:crypto'
 import {MINING_PICKAXES,miningPickaxesBySource,miningQuote,miningRepairQuote} from './torre-mineracao-4h.js'
 import {getMiningPickaxes,getMiningStatus,buyMiningPickaxe,repairMiningPickaxe,startMiningExpedition,cancelMiningExpedition,claimMiningExpedition} from './torre-mineracao-store.js'
@@ -20,7 +20,22 @@ function pickaxeId(raw){
   if(!Object.hasOwn(MINING_PICKAXES,id))throw new Error('Picareta inválida. Use !picaretas.')
   return id
 }
-export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,reply}){
+async function startAndReply({db,sender,id,durationSeconds,requestKey,reply}){
+ const r=await startMiningExpedition(db,{jid:sender,pickaxeId:id,durationSeconds,key:requestKey})
+ await reply(`⛏️ *MINERAÇÃO INICIADA!*\n🛠️ ${miningQuote(id).name}\n⏳ Duração: ${time(durationSeconds)}\n💎 Chance de pedra: ${miningQuote(id).stoneChancePercent}% a cada 5min\n❤️ Usos reservados: ${Math.ceil(durationSeconds/3600)}\n❤️ Resistência restante: ${r.usesAfter ?? 'já debitada'}\n🔒 Raidlote, Carpinar e Dormir indisponíveis durante a expedição.\n✅ No fim, use *!minerar resgatar*. Para encerrar antes e receber ciclos completos: *!minerar cancelar* (resistência reservada não devolvida).`)
+}
+export async function handleMiningDurationFlow({db,data,input,sender,reply,clearFlow}){
+ if(!/^\d+$/.test(String(input))||!data?.durations?.[Number(input)-1]){
+  await reply('⛏️ Responda com um número da lista ou 0 para cancelar.');return true
+ }
+ const id=pickaxeId(data.pickaxeId),durationSeconds=data.durations[Number(input)-1]
+ if(!/^[a-f0-9]{40}$/.test(data.requestKey||''))throw Error('Menu expirado. Abra novamente.')
+ try{await startAndReply({db,sender,id,durationSeconds,requestKey:data.requestKey,reply})}
+ catch(err){await reply('⛏️ '+String(err.message||err))}
+ finally{clearFlow()}
+ return true
+}
+export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,reply,setFlow,clearFlow}){
   if(!commands.has(cmd))return false
   const own=()=>getMiningPickaxes(db,sender)
   if(cmd==='picaretas'){
@@ -35,14 +50,14 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
         :p.source==='loja'?`  🛒 R$ ${money(p.purchaseCash)} • !comprarpicareta ${id}\n`
         :`  🔒 Exclusiva: ${p.source==='cerco'?'Cerco':'primeiro evento'}\n`
     }
-    output+='\n⏱️ Escolha 30min ou 1h a 8h, conforme resistência. 30min/1h = 1 uso; cada hora adicional = 1 uso. XP sujeito às regras da temporada.\n🛠️ Use !repararpicareta [tipo] para reparar com dinheiro.'
+    output+='\n⏱️ Escolha 30min ou 1h a 12h, conforme resistência. 30min/1h = 1 uso; cada hora adicional = 1 uso. XP sujeito às regras da temporada.\n🛠️ Use !repararpicareta [tipo] para reparar com dinheiro.'
     await reply(output)
     return true
   }
   if(cmd==='comprarpicareta'){
     const id=pickaxeId(args[0])
     const r=await buyMiningPickaxe(db,{jid:sender,pickaxeId:id,key:keyFor({sender,chat,messageId,cmd})})
-    await reply(`🛒 *PICARETA COMPRADA*\n⛏️ ${r.name}\n💰 R$ ${money(r.priceCash)}\n🛠️ Use !minerar iniciar ${id} 30m para começar uma expedição de 30 minutos.`)
+    await reply(`🛒 *PICARETA COMPRADA*\n⛏️ ${r.name}\n💰 R$ ${money(r.priceCash)}\n🛠️ Use !minerar iniciar ${id} para escolher a duração.`)
     return true
   }
   if(cmd==='repararpicareta'){
@@ -67,10 +82,21 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
   }
   if(action==='iniciar'){
     const id=pickaxeId(args[1])
-    if(!args[2]){const p=(await own()).find(x=>x.pickaxeId===id);if(!p)throw Error('Você não possui essa picareta.');const options=[1800,...Array.from({length:p.usesRemaining},(_,i)=>(i+1)*3600)].filter(d=>Math.ceil(d/3600)<=p.usesRemaining).map(d=>{const q=miningSessionQuote(id,p.usesRemaining,d);return `• ${time(d)} — ${q.usesCost} uso(s) • R$ ${money(q.cash)} • ${money(q.xp)} XP — !minerar iniciar ${id} ${d===1800?'30m':d/3600+'h'}`});await reply('⛏️ *ESCOLHA A DURAÇÃO*\n'+(options.join('\n')||'Sem resistência. Repare a picareta.'));return true}
-    const durationSeconds=parseMiningDuration(args[2]);
-    const r=await startMiningExpedition(db,{jid:sender,pickaxeId:id,durationSeconds,key:keyFor({sender,chat,messageId,cmd})})
-    await reply(`⛏️ *MINERAÇÃO INICIADA!*\n🛠️ ${miningQuote(id).name}\n⏳ Duração: ${time(durationSeconds)}\n💎 Chance de pedra: ${miningQuote(id).stoneChancePercent}% a cada 5min\n❤️ Usos reservados: ${Math.ceil(durationSeconds/3600)}\n❤️ Resistência restante: ${r.usesAfter ?? 'já debitada'}\n🔒 Raidlote, Carpinar e Dormir indisponíveis durante a expedição.\n✅ No fim, use *!minerar resgatar*. Para encerrar antes e receber ciclos completos: *!minerar cancelar* (resistência reservada não devolvida).`)
+    if(!args[2]){
+      const p=(await own()).find(x=>x.pickaxeId===id)
+      if(!p)throw Error('Você não possui essa picareta.')
+      const durations=miningDurationOptions(p.usesRemaining)
+      if(!durations.length){await reply('🛠️ Sem resistência. Repare a picareta.');return true}
+      if(!setFlow)throw Error('Menu indisponível. Informe a duração diretamente, ex.: !minerar iniciar '+id+' 30m.')
+      const requestKey=keyFor({sender,chat,messageId,cmd})
+      const options=durations.map((d,i)=>{const q=miningSessionQuote(id,p.usesRemaining,d);return (i+1)+'. *'+(d===1800?'30 minutos':d/3600+'h')+'* — '+q.usesCost+' uso(s) • R$ '+money(q.cash)+' • '+money(q.xp)+' XP'})
+      setFlow('mining_duration',{pickaxeId:id,durations,requestKey},5*60*1000)
+      await reply('⛏️ *ESCOLHA A DURAÇÃO*\n🛠️ '+p.name+' • '+p.usesRemaining+'/'+p.maxUses+' usos\n\n'+options.join('\n')+'\n\n👉 Responda somente com o número da opção.\n0 — Cancelar')
+      return true
+    }
+    const durationSeconds=parseMiningDuration(args[2])
+    await startAndReply({db,sender,id,durationSeconds,requestKey:keyFor({sender,chat,messageId,cmd}),reply})
+    clearFlow?.()
     return true
   }
   if(action&&action!=='status'&&action!=='ajuda'){await reply('⛏️ Use !minerar iniciar [madeira|ferro|aco|ouro|diamante], !minerar resgatar ou !minerar cancelar.');return true}
@@ -81,6 +107,6 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     return true
   }
   const owned=await own()
-  await reply('⛏️ *MINERAÇÃO DA TORRE*\n⏱️ 30min ou 1h a 8h conforme resistência\n💰 R$ 1.500 a 5.000/h conforme picareta, mais XP base\n💎 Sorteio a cada 5min, sem limite de pedras por jornada\n🛠️ Suas picaretas: '+(owned.length?owned.map(p=>label(p)).join(', '):'nenhuma')+'\n\nVeja *!picaretas* e comece com *!minerar iniciar madeira*.')
+  await reply('⛏️ *MINERAÇÃO DA TORRE*\n⏱️ 30min ou 1h a 12h conforme resistência\n💰 R$ 1.500 a 5.000/h conforme picareta, mais XP base\n💎 Sorteio a cada 5min, sem limite de pedras por jornada\n🛠️ Suas picaretas: '+(owned.length?owned.map(p=>label(p)).join(', '):'nenhuma')+'\n\nVeja *!picaretas* e comece com *!minerar iniciar madeira*.')
   return true
 }

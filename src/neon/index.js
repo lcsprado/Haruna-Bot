@@ -173,7 +173,7 @@ import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antis
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {miningRuntimeEnabled} from './torre-mineracao-activity.js'
 import {initMiningStore,getMiningStatus} from './torre-mineracao-store.js'
-import {handleMiningCommand} from './torre-mineracao-whatsapp.js'
+import {handleMiningCommand,handleMiningDurationFlow} from './torre-mineracao-whatsapp.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -4904,6 +4904,10 @@ if(flow.stage==='gt_sponsor_choose'){
 if(String(flow.stage||'').startsWith('voucher_')){
   return handleRaidPetVoucherFlow({flow,input,sender,reply,
     ...voucherPetFlowTools(chat,sender),...voucherPetFlowDeps()})
+}
+if(flow.stage==='mining_duration'){
+if(!miningRuntimeEnabled()){clearQuickFlow(chat,sender);return true}
+return await handleMiningDurationFlow({db,data:flow.data,input,sender,reply,clearFlow:()=>clearQuickFlow(chat,sender)})
 }
 if(String(flow.stage||'').startsWith('enchant_')){
 return await handleEnchantFlow({stage:flow.stage,data:flow.data,input,sender,reply,
@@ -11434,7 +11438,8 @@ return await reply(`🔒 *${label}* foi desativado pelo administrador deste grup
 }
 }
 if(miningRuntimeEnabled()&&await handleMiningCommand({
-  db,cmd,args,sender,chat,messageId:String(msg?.key?.id||''),reply
+  db,cmd,args,sender,chat,messageId:String(msg?.key?.id||''),reply,
+  setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),clearFlow:()=>clearQuickFlow(chat,sender)
 }))continue
 if(['sticker','s','stiker','fig','figurinha'].includes(cmd)){
 const source=stickerMediaOf(msg)

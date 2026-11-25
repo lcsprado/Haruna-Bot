@@ -18,7 +18,7 @@ const safe=(()=>{
 test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}, async t=>{
  assert.equal(safe,true,'ABORTADO: só permite PostgreSQL local com database alpha_homolog/alpha_test e flags de teste')
  const [{db,ensureUser,startPlayerSleep,startPlayerCarpinar},
-   {initEnchantments},store,{handleMiningCommand}] = await Promise.all([
+   {initEnchantments},store,{handleMiningCommand,handleMiningDurationFlow}] = await Promise.all([
    import('../src/neon/db.js'),
    import('../src/neon/enchantments-alpha.js'),
    import('../src/neon/torre-mineracao-store.js'),
@@ -87,7 +87,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const first=await store.buyMiningPickaxe(db,data)
      assert.equal(first.priceCash,2000)
      assert.equal(await money(),48000)
-     assert.equal(await uses('madeira'),4)
+     assert.equal(await uses('madeira'),12)
      const repeat=await store.buyMiningPickaxe(db,data)
      assert.equal(repeat.repeated,true)
      assert.equal(await money(),48000)
@@ -97,7 +97,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
    await t.test('Raidade, Carpinar, Dormir não podem coexistir com mineração',async()=>{
      const started=await store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-00000001'})
      assert.ok(started.id)
-     assert.equal(await uses('madeira'),3)
+     assert.equal(await uses('madeira'),11)
      const status=await store.getMiningStatus(db,jid)
      assert.equal(status.ready,false)
      await assert.rejects(startPlayerSleep(jid,1),/minerando/)
@@ -105,7 +105,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      await assert.rejects(store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-00000002'}),/expedição anterior/)
      const replay=await store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-00000001'})
      assert.equal(replay.repeated,true)
-     assert.equal(await uses('madeira'),3)
+     assert.equal(await uses('madeira'),11)
    })
    await t.test('resgate antecipado não paga, 1h completada pagam uma única vez',async()=>{
      const early=await store.claimMiningExpedition(db,jid)
@@ -137,7 +137,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const r=await store.repairMiningPickaxe(db,data)
      assert.equal(r.costCash,300)
      assert.equal(await money(),49200)
-     assert.equal(await uses('madeira'),4)
+     assert.equal(await uses('madeira'),12)
      const retry=await store.repairMiningPickaxe(db,data)
      assert.equal(retry.repeated,true)
      assert.equal(await money(),49200)
@@ -149,7 +149,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      assert.equal(again.repeated,true)
      const diamond=await store.grantMiningPickaxeReward(db,{jid,pickaxeId:'diamante',source:'evento_inaugural',key:'test-event-000001'})
      assert.equal(diamond.status,'granted')
-     assert.equal(await uses('diamante'),8)
+     assert.equal(await uses('diamante'),16)
      await assert.rejects(store.grantMiningPickaxeReward(db,{jid,pickaxeId:'diamante',source:'cerco',key:'test-event-000002'}),/Origem/)
    })
    await t.test('resultado registrado do Cerco/Evento concede tipo certo uma vez no PostgreSQL',async()=>{
@@ -165,7 +165,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      await assert.rejects(store.awardMiningFromFinalEvent(db,{eventId:'event-invalido',source:'outro',jid}),/elegível/)
      const diamond=await store.awardMiningFromFinalEvent(db,{eventId:'mining_inaugural_20261124',source:'evento_inaugural',jid})
      assert.equal(diamond.pickaxeId,'diamante')
-     assert.equal(await uses('diamante'),8)
+     assert.equal(await uses('diamante'),16)
    })
    await t.test('concorrência: duas mensagens de iniciar geram apenas uma jornada',async()=>{
      const a=store.startMiningExpedition(db,{jid,pickaxeId:'madeira',key:'test-start-conc-00001'})
@@ -173,10 +173,10 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const results=await Promise.allSettled([a,b])
      assert.equal(results.filter(x=>x.status==='fulfilled').length,1)
      assert.equal(results.filter(x=>x.status==='rejected').length,1)
-     assert.equal(await uses('madeira'),3)
+     assert.equal(await uses('madeira'),11)
      const cancelled=await store.cancelMiningExpedition(db,jid)
      assert.equal(cancelled.status,'cancelled')
-     assert.equal(await uses('madeira'),3)
+     assert.equal(await uses('madeira'),11)
      const noReward=await store.claimMiningExpedition(db,jid)
      assert.equal(noReward.status,'none')
    })
@@ -199,9 +199,17 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      const buyRepeated=await send('!comprarpicareta ferro','homolog-buy-ferro-001')
      assert.match(buyRepeated,/COMPRADA/)
      assert.equal(await money(),cashBefore-7500)
-     const started=await send('!minerar iniciar ferro 1h','homolog-start-ferro-001')
+     let flow=null
+     const menu=await handleMiningCommand({db,cmd:'minerar',args:['iniciar','ferro'],sender:jidTest,chat:chatTest,messageId:'homolog-menu-ferro-001',reply:async m=>messages.push(m),setFlow:(stage,data)=>{flow={stage,data}}})
+     assert.equal(menu,true)
+     assert.equal(flow.stage,'mining_duration')
+     assert.match(messages.at(-1),/13\. \*12h\*/)
+     assert.equal(await uses('ferro'),13)
+     await handleMiningDurationFlow({db,data:flow.data,input:'2',sender:jidTest,reply:async m=>messages.push(m),clearFlow:()=>{flow=null}})
+     assert.equal(flow,null)
+     const started=messages.at(-1)
      assert.match(started,/INICIADA/)
-     assert.equal(await uses('ferro'),4)
+     assert.equal(await uses('ferro'),12)
      assert.match(await send('!minerar status','homolog-status-001'),/ANDAMENTO/)
      assert.match(await send('!minerar resgatar','homolog-claim-early-001'),/ainda não acabou/)
      const current=await store.getMiningStatus(db,jidTest)
@@ -213,7 +221,7 @@ test('mineração: PostgreSQL REAL em banco efêmero e privado', {skip:!enabled}
      assert.equal(await money(),cashBefore-7500+2000)
      const repair=await send('!repararpicareta ferro','homolog-repair-ferro-001')
      assert.match(repair,/PICARETA REPARADA/)
-     assert.equal(await uses('ferro'),5)
+     assert.equal(await uses('ferro'),13)
      assert.equal(await money(),cashBefore-7500+2000-600)
    })
    await t.test('WhatsApp handler testado sem parear WhatsApp real',async()=>{
