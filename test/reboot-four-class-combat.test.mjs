@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 // Imports dinâmicos: PVP_AWAKENING_ROLES é selecionado no carregamento do módulo.
 const previous=process.env.ALPHA_REBOOT_MODE;
 process.env.ALPHA_REBOOT_MODE='classes_only';
-const {auditFourClasses,buildClassFighter}=await import('../scripts/reboot-four-class-combat.mjs');
+const {auditFourClasses,buildClassFighter,compileClassDuel}=await import('../scripts/reboot-four-class-combat.mjs');
 const source=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
 test('auditoria V2 usa quatro classes, quinze cenários e lado alternado',()=>{
  const r=auditFourClasses(source,{duelsPerOrder:20});
@@ -47,3 +47,39 @@ test('proteção simétrica e ajuste exclusivo de dano V2 sem alterar V1 ou Desp
  const start=source.indexOf('export async function battle(');
  assert.ok(source.indexOf('assertV2PvpAccess(au',start)<source.indexOf('claimCooldown(client',start));
 });
+
+test('política de counters V2 é moderada, direcional e não afeta V1 ou heróis',async()=>{
+ const {pvpDefenseCoefficient,v2PvpMatchupAdjustment}=await import('../src/neon/pvp-equipment-counter-policy.js')
+ const f=(classId,awakeningStage=3)=>({classId,awakeningStage,classApplied:true})
+ assert.equal(pvpDefenseCoefficient(true),.50)
+ assert.equal(pvpDefenseCoefficient(false),.45)
+ assert.equal(pvpDefenseCoefficient(true,f('paladin',2),f('samurai',2)),.475)
+ assert.equal(pvpDefenseCoefficient(true,f('paladin'),f('samurai')),.50)
+ assert.ok(Math.abs(v2PvpMatchupAdjustment(f('paladin',2),f('samurai',2),true)-.0175)<1e-9)
+ assert.equal(v2PvpMatchupAdjustment(f('paladin'),f('samurai'),true),.025)
+ assert.equal(v2PvpMatchupAdjustment(f('berserker'),f('paladin',5),true),.09)
+ assert.equal(v2PvpMatchupAdjustment(f('berserker'),f('paladin',4),true),0)
+ assert.equal(v2PvpMatchupAdjustment(f('paladin'),f('necromancer'),true),0)
+ assert.equal(v2PvpMatchupAdjustment(f('paladin'),f('samurai'),false),0)
+ assert.equal(v2PvpMatchupAdjustment({...f('paladin'),heroId:'hero'},f('samurai'),true),0)
+ assert.equal(v2PvpMatchupAdjustment({...f('paladin'),classApplied:false},f('samurai'),true),0)
+})
+test('equipamento 25% superior prevalece contra os counters; quatro classes sem dominância',()=>{
+ const duel=compileClassDuel(source),ids=['paladin','samurai','necromancer','berserker']
+ function randomFor(seed){let x=seed>>>0;return ()=>{x=(x+0x6d2b79f5)>>>0;let y=Math.imul(x^(x>>>15),1|x);y^=y+Math.imul(y^(y>>>7),61|y);return ((y^(y>>>14))>>>0)/4294967296}}
+ for(const [level,stage] of [[21,0],[25,1],[50,3],[75,4],[100,3],[100,5]]){
+  const wins=Object.fromEntries(ids.map(id=>[id,0]))
+  let betterWins=0,totalBetter=0
+  for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
+   const a=ids[i],b=ids[j];let winsA=0
+   for(let n=0;n<400;n++){
+    const seed=991000+n,run=(ga,gb)=>duel(buildClassFighter(a,level,stage,'gear',ga),buildClassFighter(b,level,stage,'gear',gb),randomFor(seed)).winner
+    const winner=run(1,1);wins[winner]++;winsA+=Number(winner===a)
+    betterWins+=Number(run(1.25,1)===a)+Number(run(1,1.25)===b);totalBetter+=2
+   }
+   assert.ok(winsA/400>=.28&&winsA/400<=.72,`Confronto desequilibrado: ${level}/${stage} ${a}/${b} ${winsA/400}`)
+  }
+  assert.ok(betterWins/totalBetter>=.75,`Equipamento não prevalece: ${level}/${stage} ${betterWins/totalBetter}`)
+  for(const id of ids)assert.ok(wins[id]/1200>=.35&&wins[id]/1200<=.65,`Classe desequilibrada: ${level}/${stage} ${id}`)
+ }
+})

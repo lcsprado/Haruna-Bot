@@ -1,3 +1,4 @@
+import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from './pvp-equipment-counter-policy.js'
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing} from './reboot-assets-policy.js'
@@ -3416,8 +3417,8 @@ const crit=critRoll<effectiveShieldedCritChance(Math.max(0,Number(from.crit||.10
 const petCrit=crit&&critRoll>=critWithoutPet
 const critMultiplier=shieldedCriticalMultiplier(1.6,to.shieldCritGuard)
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
-const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
+const raw=Math.max(1,Math.round((from.atk-(to.def*pvpDefenseCoefficient(undefined,from,to)))*variance))
+const damageWithoutPet=1+v2PvpMatchupAdjustment(from,to)+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
 const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))))
 const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet))
 const classRoll=Math.random()

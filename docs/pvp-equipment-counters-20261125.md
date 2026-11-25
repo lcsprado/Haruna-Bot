@@ -1,0 +1,10 @@
+# PvP V2: equipamentos acima dos counters (25/11/2026)
+
+Candidato de homologação. Não altera stats persistidos, itens, economia, PvE ou V1. Equipamentos e pedras continuam compondo ATK/DEF/HP/VEL/CRIT reais; não há peso fixo de 55% imposto artificialmente. Defesa no PvP V2: 50%, em vez de 45%. Calibração direcional de dano entre classes para moderar vantagens naturais; bônus de 0 a 9%, maior somente contra Paladino no Despertar V. As habilidades e cadências atuais permanecem.
+
+Ciclo desejado: Paladino > Samurai > Necromante > Berserker > Paladino. Confrontos diagonais aproximadamente neutros. Vantagem não significa vitória garantida. O ajuste também reduz disparidades naturais já excessivas (por exemplo, Necromante recebe pequeno ajuste contra Samurai).
+
+Simulação preliminar: trecho real de db.js e funções de classe, sem pets/escudos, nível de classe igual ao geral (cap 100), equipamentos sintéticos iguais ou 25% mais fortes, 400 sementes por par e checkpoint, 6 checkpoints (21/0,25/I,50/III,75/IV,100/III,100/V). Foram 43.200 duelos na comparação de três configurações. Candidato: taxas agregadas de 44,7% a 56,1%, equipamento superior vence de 86,5% a 88,5% (média sobre ambas as direções de todos os pares). Counters em aproximadamente 52% a 64,5% na maioria dos cenários. A distribuição 55/20/15/10% é objetivo conceitual, não resultado medido nem multiplicador. A validação oficial usa a auditoria do motor real e mais checkpoints, inclusive pet/escudo. Não introduz atributos de penetração/anti-cura/roubo de vida em novos itens: exige auditoria separada de catálogo, forja, pedras e preços. Sem autorização de publicação, permanecer na branch.
+
+
+Revisão após auditoria integral: a configuração inicial ultrapassou o limite agregado de 70% em um cenário sem equipamentos (Lv25, Despertar II). A calibração passa a usar defesa de 47,5% e 70% da correção de confronto quando pelo menos um participante estiver abaixo do Despertar III; a partir de III mantém 50% e a calibração integral. A simulação ampliada preliminar da configuração reduzida passou nas duas sementes. As taxas citadas acima são da configuração inicial; aguarda-se CI da regra híbrida.
