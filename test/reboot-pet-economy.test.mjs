@@ -3,10 +3,11 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petCombatExperience,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit,v2PetSacrifice} from '../src/neon/reboot-pet-economy.js'
 const yes={enabled:true},no={enabled:false}
-test('altar V2 tem custo progressivo e conserva 100% de chances e catálogo V1',()=>{
+test('altar V2 restaura custo original e conserva 100% de chances e catálogo V1',()=>{
  const a={raidLevel:70,summonCost:100,pets:[{species:'lobo',chance:32},{species:'outro',chance:60},{species:'vital',chance:8}]}
  const b=effectivePetAltar(a,yes)
- assert.equal(b.summonCost,160)
+ assert.equal(b.summonCost,100)
+ for(const raidLevel of [10,15,20,25,30,40,50,60,65,70])assert.equal(effectivePetAltar({...a,raidLevel},yes).summonCost,raidLevel===10?50:100)
  assert.equal(b.pets[2].chance,5)
  assert.equal(b.pets.reduce((n,p)=>n+p.chance,0),100)
  assert.equal(a.pets[2].chance,8)
