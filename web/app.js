@@ -2476,8 +2476,12 @@ function renderCombatResult(value){
           ((x.actualDamage!=null&&Number(x.actualDamage)!==Number(x.dmg))?' (golpe '+num(x.dmg)+')':'')+
           ' • ❤️ '+num(x.hp);
       }
-      const technique=x.heroTechnique?'<small>✨ '+esc(x.heroTechnique)+'</small>':'';
-      const defense=x.defenseTechnique?'<small>🛡️ '+esc(x.defenseTechnique)+' • '+num(x.defenseBlocked||0)+' bloqueado</small>':'';
+      const skills=Array.isArray(x.classTechniques)&&x.classTechniques.length?x.classTechniques:x.classTechnique?[x.classTechnique]:[];
+      const skillEffects=(Number(x.classSkillBonusPct)>0&&!x.dodged?' • +'+num(Number(x.classSkillBonusPct)*100)+'% bônus da técnica':'')+
+        (Number(x.classShieldCreated)>0?' • +'+num(x.classShieldCreated)+' de escudo criado':'')+(x.dodged?' • golpe esquivado':'');
+      const technique=(x.heroTechnique?'<small>✨ '+esc(x.heroTechnique)+'</small>':'')+
+        (skills.length?'<small>⚜️ '+esc(skills.join(' / '))+skillEffects+'</small>':'');
+      const defense=x.defenseTechnique?'<small>🛡️ '+esc(x.defenseTechnique)+(Number(x.defenseBlocked)>0?' • '+num(x.defenseBlocked)+' bloqueado':'')+(Number(x.shieldAbsorbed)>0?' • escudo absorveu '+num(x.shieldAbsorbed):'')+'</small>':'';
       return heading+'<div class="combat-hit '+(x.crit?'critical':'')+'"><span>'+label+
         (technique||defense?'<span class="combat-techniques">'+technique+defense+'</span>':'')+
         '</span><strong>'+detail+'</strong></div>';
