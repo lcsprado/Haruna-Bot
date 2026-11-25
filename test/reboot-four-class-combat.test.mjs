@@ -83,3 +83,27 @@ test('equipamento 25% superior prevalece contra os counters; quatro classes sem 
   for(const id of ids)assert.ok(wins[id]/1200>=.35&&wins[id]/1200<=.65,`Classe desequilibrada: ${level}/${stage} ${id}`)
  }
 })
+
+test('V2: habilidades ativam durante duelos curtos sem inflar os bônus',async()=>{
+ const {classPvpAttack,classPvpDefense}=await import('../src/neon/pvp-class-powers.js')
+ const attack=(id,stage,idx,extra={})=>classPvpAttack({classId:id,awakeningStage:stage,attackIndex:idx,damage:200,hp:400,maxHp:1000,roll:.5,...extra})
+ const pal=attack('paladin',3,4)
+ assert.equal(pal.heal,10);assert.equal(pal.shieldCreated,15);assert.equal(pal.skillBonusPct,.05)
+ assert.deepEqual(pal.techniques,['Bênção Restauradora','Julgamento Divino','Égide Celestial'])
+ assert.equal(attack('paladin',3,3).heal,0)
+ assert.equal(attack('paladin',3,4,{hp:800}).shieldCreated,0)
+ assert.equal(attack('paladin',1,4).shieldCreated,0)
+ const block=classPvpDefense({classId:'paladin',awakeningStage:3,damage:100,hp:400,maxHp:1000,roll:.5,awakeningState:pal.awakeningState})
+ assert.equal(block.shieldAbsorbed,15)
+ const nec=attack('necromancer',3,4)
+ assert.equal(nec.heal,10);assert.equal(nec.skillBonusPct,.04)
+ assert.ok(nec.techniques.includes('Drenagem de Almas'));assert.ok(nec.techniques.includes('Maldição'))
+ let state={},sam
+ for(let i=1;i<=4;i++){sam=attack('samurai',3,i,{awakeningState:state});state=sam.awakeningState}
+ assert.equal(sam.skillBonusPct,.03);assert.equal(state.focus,2);assert.ok(sam.techniques.includes('Postura Iai'))
+ const crit=attack('samurai',3,5,{critical:true,awakeningState:state});assert.equal(crit.awakeningState.focus,0);assert.ok(crit.skillBonusPct>.03)
+ const ber=attack('berserker',3,2,{hp:440});assert.ok(ber.techniques.includes('Fúria Crescente'));assert.ok(ber.skillBonusPct>0)
+ assert.equal(attack('berserker',3,2,{hp:600}).skillBonusPct,0)
+ assert.equal(attack('paladin',0,4).heal,0)
+ assert.equal(attack('paladin',3,4,{applied:false}).heal,0)
+})
