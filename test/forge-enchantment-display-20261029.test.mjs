@@ -27,7 +27,9 @@ test('teto seguro no recibo e modelo não perde pedras na transação',()=>{
   assert.equal(gearStatsWithEnchants({atk:1},[{stone_id:'forca',quantity:99}],stones).atk,16)
   const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
   const forge=db.split('export async function forgeEquipmentStar(')[1]?.split('export const listStarForgeWeapons=')[0]||''
-  assert.match(forge,/SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id FOR UPDATE/)
+  assert.match(forge,/SELECT stone_id,quantity,COALESCE\(to_jsonb\(e\)->'upgrade_levels','\[\]'::jsonb\) AS upgrade_levels FROM equipment_enchantments e WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id FOR UPDATE/)
+  assert.match(forge,/SELECT stone_id,quantity,COALESCE\(to_jsonb\(e\)->'upgrade_levels','\[\]'::jsonb\) AS upgrade_levels FROM equipment_enchantments e WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id/)
+  assert.equal(gearStatsWithEnchants({atk:1},[{stone_id:'forca',quantity:2,upgrade_levels:[10,1]}],stones).atk,13)
   assert.match(forge,/JSON\.stringify\(enchantments\)!==JSON\.stringify\(enchantmentsBefore\)/)
   assert.doesNotMatch(forge,/(DELETE FROM|UPDATE) equipment_enchantments/)
 })

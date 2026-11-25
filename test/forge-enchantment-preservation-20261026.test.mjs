@@ -10,7 +10,7 @@ const forge=db.split('export async function forgeEquipmentStar(')[1]?.split('exp
 const upgrade=db.split('export async function upgradeEquipment(')[1]?.split('export async function equipItem(')[0]||''
 
 test('forging keeps the same permanent stone rows and aborts the transaction if they change',()=>{
-  assert.match(forge,/SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id FOR UPDATE/)
+  assert.match(forge,/SELECT stone_id,quantity,.*FROM equipment_enchantments e WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id FOR UPDATE/)
   assert.match(forge,/await syncEffectiveGear\(c,jid,itemId\)/)
   assert.match(forge,/JSON\.stringify\(enchantments\)!==JSON\.stringify\(enchantmentsBefore\)/)
   assert.match(forge,/forja cancelada sem consumir recursos/)
@@ -19,7 +19,7 @@ test('forging keeps the same permanent stone rows and aborts the transaction if 
 })
 
 test('level upgrades return the saved enchantments without consuming stones',()=>{
-  assert.match(upgrade,/SELECT stone_id,quantity FROM equipment_enchantments/)
+  assert.match(upgrade,/SELECT stone_id,quantity,.*FROM equipment_enchantments e/)
   assert.match(upgrade,/cash:Number\(money\?\.cash\|\|0\),enchantments,before/)
   assert.doesNotMatch(upgrade,/(DELETE FROM|UPDATE) equipment_enchantments/)
 })
@@ -27,7 +27,7 @@ test('level upgrades return the saved enchantments without consuming stones',()=
 test('WhatsApp forging and upgrading show saved enchantments and their actual effect',()=>{
   assert.match(index,/import \{STONES,initEnchantments/)
   assert.match(index,/const enchantmentsReceipt=rows=>/)
-  assert.match(index,/STONES\[row\.stone_id\]\.label/)
+  assert.match(index,/stoneLevelLabel\(STONES\[row\.stone_id\],lv\)/)
   assert.match(index,/enchantmentsReceipt\(result\.enchantments\)/)
   assert.match(index,/enchantmentsReceipt\(r\.enchantments\)/)
   assert.equal(STONES.pedra_precisao_alpha.value,.01)

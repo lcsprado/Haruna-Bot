@@ -2,6 +2,8 @@
 import {db, getEquipmentInfo, equipmentStatsAtLevel, getEquipmentStarLevels} from './db.js'
 import {assertRebootItemAllowed,classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
 
+import {randomInt,randomUUID} from 'node:crypto'
+import {stoneLevels,stoneLevelValue,stoneRowValue,stoneUpgradeQuote,stoneUpgradeOutcome,stoneLevelLabel} from './stone-upgrade-policy.js'
 import {STONES,planStoneApplication} from './enchantment-stones-catalog.js'
 export {STONES}
 const fm=n=>Number(n).toLocaleString('pt-BR')
@@ -12,6 +14,8 @@ export async function initEnchantments(){
   if(initPromise)return initPromise
   initPromise=(async()=>{
   await db.query('CREATE TABLE IF NOT EXISTS equipment_enchantments (jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, item_id TEXT NOT NULL REFERENCES items(id), stone_id TEXT NOT NULL REFERENCES items(id), quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 3), PRIMARY KEY(jid,item_id,stone_id))')
+  await db.query("ALTER TABLE equipment_enchantments ADD COLUMN IF NOT EXISTS upgrade_levels jsonb NOT NULL DEFAULT '[]'::jsonb")
+  await db.query('CREATE TABLE IF NOT EXISTS equipment_stone_attempts (token uuid PRIMARY KEY, jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now())')
   for(const [id,name,description,category,price,rarity] of itemRows){
     await db.query('INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,rarity=EXCLUDED.rarity,sellable=TRUE',
       [id,name,description,category,price,rarity])
@@ -25,8 +29,8 @@ export function sumEnchants(rows=[]){
     const stone=STONES[r.stone_id]
     if(!stone)continue
     const n=Math.max(0,Math.min(3,Number(r.quantity)||0))
-    out[stone.stat]+=stone.value*n
-    out.stones.push({id:r.stone_id,itemId:r.item_id,quantity:n,label:stone.name,bonus:stone.label})
+    out[stone.stat]+=stoneRowValue(stone.value,r)
+    out.stones.push({id:r.stone_id,itemId:r.item_id,quantity:n,label:stone.name,bonus:stoneLevels(r).map(lv=>'Lv.'+lv+' '+stoneLevelLabel(stone,lv)).join(' • '),levels:stoneLevels(r)})
   }
   out.damage=Math.min(.24,out.damage)
   return out
@@ -37,10 +41,10 @@ export async function getEquippedEnchants(queryable,jid,itemIds=[]){
   // Mesmo SELECT de encantamentos, sem consulta extra por ataque de Boss.
   const sealId='selo_poder_5pct_alpha_20261019'
   const result=await queryable.query(`
-    SELECT item_id,stone_id,quantity FROM equipment_enchantments
+    SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e
       WHERE jid=$1 AND item_id=ANY($2::text[])
     UNION ALL
-    SELECT NULL::text AS item_id,$3::text AS stone_id,1::integer AS quantity
+    SELECT NULL::text AS item_id,$3::text AS stone_id,1::integer AS quantity,'[]'::jsonb AS upgrade_levels
       FROM inventories WHERE jid=$1 AND item_id=$3 AND quantity>0
   `,[jid,ids,sealId])
   const out=sumEnchants(result.rows)
@@ -59,14 +63,14 @@ async function applyStone(jid,stoneId,itemId,expectedReplaceId=null){
     const inv=(await c.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0 FOR UPDATE',[jid,[stoneId,itemId]])).rows
     if(!inv.some(x=>x.item_id===stoneId))throw Error('Você não possui essa pedra.')
     if(!inv.some(x=>x.item_id===itemId))throw Error('Você não possui esse equipamento.')
-    const current=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows
+    const current=(await c.query('SELECT stone_id,quantity,upgrade_levels FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows
     const plan=planStoneApplication(current,stoneId)
     if(!plan)throw Error('Sem espaço para encantamento ou substituição por pedra superior da mesma família.')
     if(plan.replaceId!==expectedReplaceId)throw Error('Os encantamentos mudaram. Abra o menu novamente.')
     if(plan.replaceId){
       const old=current.find(x=>x.stone_id===plan.replaceId)
       if(Number(old.quantity)===1)await c.query('DELETE FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,plan.replaceId])
-      else await c.query('UPDATE equipment_enchantments SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,plan.replaceId])
+      else {const levels=stoneLevels(old);levels.splice(levels.indexOf(Math.min(...levels)),1);await c.query('UPDATE equipment_enchantments SET quantity=quantity-1,upgrade_levels=$4::jsonb WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,plan.replaceId,JSON.stringify(levels)])}
     }
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,stoneId])
     await c.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,stone_id) DO UPDATE SET quantity=equipment_enchantments.quantity+1',[jid,itemId,stoneId])
@@ -103,8 +107,9 @@ export function previewEquipmentEnchantment(itemId,level,rows=[],stoneId,stars=1
   }
   const plan=planStoneApplication(rows,stoneId)
   if(!plan)return null
-  const removed=plan.replaceId?STONES[plan.replaceId].value:0
+  const removed=plan.replaceId?stoneLevelValue(STONES[plan.replaceId].value,Math.min(...stoneLevels(rows.find(r=>r.stone_id===plan.replaceId)))):0
   const after={...before,[stone.stat]:before[stone.stat]+stone.value-removed}
+  if(stone.stat==='damage')after.damage=Math.min(.24,rows.filter(r=>STONES[r.stone_id]?.stat==='damage').reduce((n,r)=>n+stoneRowValue(STONES[r.stone_id].value,r),0)+stone.value-removed)
   return {before,after,...plan}
 }
 const statDescriptions={
@@ -134,7 +139,7 @@ async function equipmentChoices(jid,stoneId){
   if(!eligible.length)return []
   const ids=eligible.map(r=>r.item_id)
   const [enchantResult,starLevels]=await Promise.all([
-    db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids]),
+    db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[jid,ids]),
     getEquipmentStarLevels(jid,ids)
   ])
   const enchanted=enchantResult.rows
@@ -188,6 +193,25 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
     if(menu.ids.length)set('enchant_stone',{stoneIds:menu.ids})
     else clearFlow()
     await reply(menu.text)
+  }
+
+  if(stage==='enchant_upgrade_pick'){
+    const selected=data?.choices?.[nChoice(input)-1]
+    if(!selected){await reply('Escolha um número da lista ou 0 para sair.');return true}
+    const stone=STONES[selected.stoneId],q=stoneUpgradeQuote(stone,selected.level)
+    set('enchant_upgrade_confirm',{...selected,token:randomUUID()})
+    await reply('💎 *APRIMORAR ENCANTAMENTO?*\n⚙️ '+selected.itemName+'\n'+stone.name+' Lv.'+q.level+' → Lv.'+q.next+'\n📈 '+stoneLevelLabel(stone,q.level)+' → '+stoneLevelLabel(stone,q.next)+'\n💰 R$ '+fm(q.cost)+' (carteira)\n✅ Sucesso: '+q.success+'%\n⚠️ Falha: '+q.failure+'%\n💥 Quebra da pedra: '+q.breakage+'%\nNa falha perde apenas o dinheiro; na quebra perde apenas esta pedra e o dinheiro.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+    return true
+  }
+  if(stage==='enchant_upgrade_confirm'){
+    if(input==='2'){clearFlow();await reply('Cancelado. Nenhuma cobrança.');return true}
+    if(input!=='1'){await reply('Responda 1 para confirmar ou 2 para cancelar.');return true}
+    set('enchant_processing',{})
+    let receipt
+    try{receipt=await upgradeAppliedStone(sender,data)}catch(e){clearFlow();await reply('❌ '+String(e.message||e));return true}
+    clearFlow()
+    await reply(upgradeReceipt(receipt)+'\n\nUse *!uparencanto* para uma nova tentativa.')
+    return true
   }
   if(stage==='enchant_stone'){
     if(input==='99'){await restart();return true}
@@ -259,8 +283,16 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
   return true
 }
 export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearFlow}){
-  if(cmd!=='encantar'&&cmd!=='encantamentos')return false
+  if(cmd!=='encantar'&&cmd!=='encantamentos'&&cmd!=='uparencanto')return false
   await initEnchantments()
+  if(cmd==='uparencanto'||(cmd==='encantamentos'&&args[0]==='upar')){
+    if(!classesOnlyRebootEnabled()){await reply('Disponível na temporada V2.');return true}
+    const choices=(await listAppliedStoneUpgrades(sender)).filter(x=>x.level<10).slice(0,40)
+    if(!choices.length){clearFlow();await reply('Nenhum encantamento aplicado disponível para aprimorar.');return true}
+    setFlow('enchant_upgrade_pick',{choices},ENCHANT_FLOW_MINUTES*60*1000)
+    await reply('💎 *APRIMORAR ENCANTAMENTOS*\n\n'+choices.map((x,i)=>(i+1)+'. '+x.itemName+' — '+STONES[x.stoneId].name+' Lv.'+x.level+' ('+stoneLevelLabel(STONES[x.stoneId],x.level)+')').join('\n')+'\n\nEscolha o número ou 0 para sair.')
+    return true
+  }
   if(cmd==='encantar'){
     if(args.length>=2){
       // Compatibilidade com o comando antigo, sem pular a confirmação.
@@ -282,13 +314,60 @@ export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearF
   const gear=items.filter(x=>['weapon','armor','boots','helmet'].includes(x.category))
   const stones=items.filter(x=>Boolean(STONES[x.item_id]))
   const ids=gear.map(x=>x.item_id)
-  const enchanted=ids.length?(await db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[sender,ids])).rows:[]
+  const enchanted=ids.length?(await db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[sender,ids])).rows:[]
   let out='✨ *ENCANTAMENTOS ALPHA*\n\n💎 *Suas pedras:*\n'
   out+=stones.length?stones.map(x=>'• '+x.name+' ×'+fm(x.quantity)+' — '+STONES[x.item_id].label).join('\n'):'Nenhuma pedra no inventário.'
   out+='\n\n⚙️ *Encantamentos nos equipamentos:*\n'
   const enchantedGear=gear.filter(x=>enchanted.some(y=>y.item_id===x.item_id))
-  out+=enchantedGear.length?enchantedGear.map(x=>'• '+x.name+': '+enchanted.filter(y=>y.item_id===x.item_id).map(y=>(STONES[y.stone_id]?.name||y.stone_id)+' ×'+y.quantity).join(', ')).join('\n'):'Nenhum encantamento aplicado.'
-  out+='\n\n👉 Digite *!encantar* para escolher a pedra e o equipamento pelos números.'
+  out+=enchantedGear.length?enchantedGear.map(x=>'• '+x.name+': '+enchanted.filter(y=>y.item_id===x.item_id).map(y=>(STONES[y.stone_id]?.name||y.stone_id)+' '+stoneLevels(y).map(lv=>'Lv.'+lv+(STONES[y.stone_id]?' ('+stoneLevelLabel(STONES[y.stone_id],lv)+')':'')).join(', ')).join(', ')).join('\n'):'Nenhum encantamento aplicado.'
+  out+='\n\n👉 Digite *!encantar* para escolher a pedra e o equipamento pelos números.\n⬆️ *!uparencanto* — evoluir pedras aplicadas até Lv.10.'
   await reply(out)
   return true
+}
+
+export async function listAppliedStoneUpgrades(jid){
+ if(!classesOnlyRebootEnabled())return []
+ const {rows}=await db.query("SELECT e.item_id,e.stone_id,e.quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels,i.name FROM equipment_enchantments e JOIN inventories v ON v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0 JOIN items i ON i.id=e.item_id WHERE e.jid=$1 ORDER BY i.name,e.stone_id",[jid])
+ return rows.filter(r=>STONES[r.stone_id]&&!isRebootCollabItemId(r.item_id)).flatMap(r=>{
+  const levels=stoneLevels(r)
+  return levels.map((level,index)=>({itemId:r.item_id,itemName:r.name,stoneId:r.stone_id,stoneName:STONES[r.stone_id].name,label:stoneLevelLabel(STONES[r.stone_id],level),nextLabel:level<10?stoneLevelLabel(STONES[r.stone_id],level+1):null,level,index,levels,quote:level<10?stoneUpgradeQuote(STONES[r.stone_id],level):null}))
+ })
+}
+export async function upgradeAppliedStone(jid,{itemId,stoneId,index,level,levels,token}={}){
+ if(!classesOnlyRebootEnabled())throw Error('Disponível somente na V2.')
+ assertRebootItemAllowed(itemId)
+ const stone=STONES[stoneId],quote=stoneUpgradeQuote(stone,level)
+ if(!Number.isInteger(index)||index<0||index>2||!Array.isArray(levels)||levels[index]!==level||!/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(String(token)))throw Error('Confirmação inválida. Abra o menu novamente.')
+ await initEnchantments()
+ const c=await db.connect()
+ try{
+  await c.query('BEGIN')
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['stone-attempt:'+token])
+  const prior=(await c.query('SELECT jid,receipt FROM equipment_stone_attempts WHERE token=$1',[token])).rows[0]
+  if(prior){if(prior.jid!==jid)throw Error('Confirmação inválida.');await c.query('COMMIT');return prior.receipt}
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['enchant:'+jid+':'+itemId])
+  const inv=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity>0 FOR UPDATE',[jid,itemId])).rows[0]
+  if(!inv)throw Error('Você não possui mais o equipamento.')
+  const row=(await c.query('SELECT quantity,upgrade_levels FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 AND stone_id=$3 FOR UPDATE',[jid,itemId,stoneId])).rows[0]
+  const now=stoneLevels(row)
+  if(!row||JSON.stringify(now)!==JSON.stringify(levels)||now[index]!==level)throw Error('Encantamento alterado. Abra o menu novamente.')
+  const debit=await c.query('UPDATE wallets SET cash=cash-$2,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND cash>=$2 RETURNING cash',[jid,quote.cost])
+  if(!debit.rowCount)throw Error('Saldo insuficiente na carteira.')
+  const outcome=stoneUpgradeOutcome(quote,randomInt(100))
+  if(outcome==='success')now[index]=quote.next
+  if(outcome==='breakage')now.splice(index,1)
+  if(outcome!=='failure'){
+    if(!now.length)await c.query('DELETE FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,stoneId])
+    else await c.query('UPDATE equipment_enchantments SET quantity=$4,upgrade_levels=$5::jsonb WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,stoneId,now.length,JSON.stringify(now)])
+  }
+  const receipt={itemId,stoneId,level,next:outcome==='success'?quote.next:outcome==='breakage'?null:level,outcome,cost:quote.cost,cash:Number(debit.rows[0].cash)}
+  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'enchant',$2,'stone_upgrade',$3)",[jid,quote.cost,stoneId+':'+itemId+':'+level+':'+outcome+':'+token])
+  await c.query('INSERT INTO equipment_stone_attempts(token,jid,receipt) VALUES($1,$2,$3::jsonb)',[token,jid,JSON.stringify(receipt)])
+  await c.query('COMMIT')
+  return receipt
+ }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}finally{c.release()}
+}
+function upgradeReceipt(r){
+ const stone=STONES[r.stoneId]
+ return (r.outcome==='success'?'✅ *SUCESSO!* '+stone.name+' Lv.'+r.level+' → Lv.'+r.next+' — '+stoneLevelLabel(stone,r.next):r.outcome==='breakage'?'💥 *PEDRA QUEBRADA!* '+stone.name+' Lv.'+r.level+' foi destruída. Seu equipamento está intacto.':'⚠️ *FALHOU!* '+stone.name+' permanece Lv.'+r.level)+'\n💰 Custo: R$ '+fm(r.cost)+' • Saldo: R$ '+fm(r.cash)
 }

@@ -170,6 +170,7 @@ import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
 import {createRoubaRoubaEngine,ROUBA_GROUP_JID} from './rouba-rouba-alpha.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
+import {stoneLevels,stoneLevelLabel} from './stone-upgrade-policy.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {miningRuntimeEnabled} from './torre-mineracao-activity.js'
 import {initMiningStore,getMiningStatus} from './torre-mineracao-store.js'
@@ -4553,7 +4554,7 @@ return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'
 // Forjar ou upar muda estrelas/nível, mas não consome pedras já aplicadas.
 const enchantmentsReceipt=rows=>{
 const lines=(rows||[]).filter(row=>STONES[row.stone_id]&&Number(row.quantity)>0)
-.map(row=>'💎 '+STONES[row.stone_id].name+' ×'+Number(row.quantity)+' — '+STONES[row.stone_id].label)
+.map(row=>'💎 '+STONES[row.stone_id].name+' — '+stoneLevels(row).map(lv=>'Lv.'+lv+' '+stoneLevelLabel(STONES[row.stone_id],lv)).join(' • '))
 return '\n✨ *ENCANTAMENTOS DA PEÇA (PRESERVADOS)*\n'+(lines.length?lines.join('\n'):'Nenhum encantamento registrado neste modelo.')
 }
 // Uma estrela de forja (🌟) nao e o nivel da copia (⭐).
@@ -5639,7 +5640,7 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 🚀 *ALPHA BOT ${classesOnlyRebootEnabled()?'2.0':'3.0'}*
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
-⛏️ *!minerar* / *!picaretas* • ⚔️ *!raidlote* • 🏁 *!corridas* / *!gt*
+💎 *!uparencanto* — evoluir pedras aplicadas até Lv.10.\n⛏️ *!minerar* / *!picaretas* • ⚔️ *!raidlote* • 🏁 *!corridas* / *!gt*
 🎟️ *!bingo* / 🔨 *!leilao* — eventos agendados
 1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
