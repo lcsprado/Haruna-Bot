@@ -63,7 +63,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       assert.equal(await getCash(),28000)
       assert.equal((await buyMiningPickaxe(db,input)).repeated,true)
       assert.equal(await getCash(),28000)
-      assert.equal(await uses('madeira'),4)
+      assert.equal(await uses('madeira'),12)
       await assert.rejects(buyMiningPickaxe(db,{...input,pickaxeId:'ferro'}),/divergente/)
       assert.equal(await getCash(),28000)
       await assert.rejects(buyMiningPickaxe(db,{jid,pickaxeId:'diamante',key:key('buy-diamond')}),/nao esta a venda/)
@@ -83,16 +83,16 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       await db.query("INSERT INTO trevo_games(jid,game_type,state) VALUES($1,'raid',jsonb_build_object('status','active','players',jsonb_build_object($1::text,true)))",[jid])
       await assert.rejects(start('raid'),/Raid/)
       await db.query('DELETE FROM trevo_games WHERE jid=$1',[jid])
-      assert.equal(await uses('madeira'),4)
+      assert.equal(await uses('madeira'),12)
     })
 
     await t.test('início único, guard recíproco e ausência de resgate antecipado',async()=>{
       const input={jid,pickaxeId:'madeira',key:key('start-wood')}
       const first=await startMiningExpedition(db,input)
-      assert.equal(first.usesAfter,3)
-      assert.equal(await uses('madeira'),3)
+      assert.equal(first.usesAfter,11)
+      assert.equal(await uses('madeira'),11)
       assert.equal((await startMiningExpedition(db,input)).repeated,true)
-      assert.equal(await uses('madeira'),3)
+      assert.equal(await uses('madeira'),11)
       await assert.rejects(startMiningExpedition(db,{...input,key:key('start-second')}),/anterior/)
       await assert.rejects(run(c=>assertNoActiveMining(c,jid)),/minerando/)
       const early=await claimMiningExpedition(db,jid)
@@ -123,18 +123,18 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       const repaired=await repairMiningPickaxe(db,input)
       assert.equal(repaired.costCash,300)
       assert.equal(await getCash(),29200)
-      assert.equal(await uses('madeira'),4)
+      assert.equal(await uses('madeira'),12)
       assert.equal((await repairMiningPickaxe(db,input)).repeated,true)
       assert.equal(await getCash(),29200)
     })
 
     await t.test('cancelamento não premia nem devolve resistência',async()=>{
       await startMiningExpedition(db,{jid,pickaxeId:'madeira',key:key('start-cancel')})
-      assert.equal(await uses('madeira'),3)
+      assert.equal(await uses('madeira'),11)
       assert.equal((await cancelMiningExpedition(db,jid)).status,'cancelled')
       assert.equal((await claimMiningExpedition(db,jid)).status,'none')
       assert.equal(await getCash(),29200)
-      assert.equal(await uses('madeira'),3)
+      assert.equal(await uses('madeira'),11)
     })
 
     await t.test('concessão de Ouro Cerco / Diamante Evento sem venda',async()=>{
@@ -145,8 +145,8 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       const diamond=await grantMiningPickaxeReward(db,{jid,pickaxeId:'diamante',source:'evento_inaugural',key:key('event-diamond')})
       assert.equal(diamond.status,'granted')
       await assert.rejects(grantMiningPickaxeReward(db,{jid,pickaxeId:'diamante',source:'cerco',key:key('wrong-source')}),/Origem/)
-      assert.equal(await uses('ouro'),7)
-      assert.equal(await uses('diamante'),8)
+      assert.equal(await uses('ouro'),15)
+      assert.equal(await uses('diamante'),16)
     })
 
     await t.test('concorrência de dois inícios permite uma expedição, não duas',async()=>{
@@ -155,7 +155,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       const both=await Promise.allSettled(reqs)
       assert.equal(both.filter(x=>x.status==='fulfilled').length,1)
       assert.equal(both.filter(x=>x.status==='rejected').length,1)
-      assert.equal(await uses('madeira'),2)
+      assert.equal(await uses('madeira'),10)
       assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM mining_expeditions WHERE jid=$1 AND status='running'",[jid])).rows[0].n,1)
     })
 
@@ -176,7 +176,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       assert.equal(await handleMiningCommand(buyInput),true)
       assert.equal(await handleMiningCommand(buyInput),true)
       assert.equal(await getCash(),before-7500)
-      assert.equal(await uses('ferro'),5)
+      assert.equal(await uses('ferro'),13)
       assert.match(sent.at(-1),/PICARETA COMPRADA/)
     })
 
