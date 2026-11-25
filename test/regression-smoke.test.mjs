@@ -95,7 +95,12 @@ test('Coroa da Madrugada keeps dual stats',()=>{
 })
 
 test('raid timers remain level-scaled',()=>{
-  assert.ok(games.includes("10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50"),'raid duration table changed unexpectedly')
+  const expression=games.match(/^const raidDurationMinutes=(.*)$/m)?.[1]
+  assert.ok(expression,'raid duration policy missing')
+  const duration=enabled=>new Function('rebootEconomyEnabled','return ('+expression+')')(()=>enabled)
+  const levels=[10,15,20,25,30,40,50,60,65,70,75]
+  assert.deepEqual(levels.map(duration(true)),[12,15,18,22,25,30,38,40,45,50,35])
+  assert.deepEqual(levels.map(duration(false)),[12,15,18,22,25,30,35,40,45,50,35])
 })
 
 test('equiparpet without args opens the interactive team flow',()=>{
