@@ -2,6 +2,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {db} from '../src/neon/db.js'
+import {STONES} from '../src/neon/enchantment-stones-catalog.js'
 import {initMiningStore,buyMiningPickaxe,repairMiningPickaxe,startMiningExpedition,
   claimMiningExpedition,cancelMiningExpedition,grantMiningPickaxeReward,getMiningPickaxes} from '../src/neon/torre-mineracao-store.js'
 import {assertMiningHomologation,miningActivityLock,assertNoActiveMining} from '../src/neon/torre-mineracao-activity.js'
@@ -47,9 +48,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
     await db.query("INSERT INTO users(jid,push_name,level,exp) VALUES($1,'Teste',100,0)",[jid])
     await db.query("INSERT INTO wallets(jid,cash,bank) VALUES($1,0,0)",[jid])
     await db.query("INSERT INTO stats(jid) VALUES($1)",[jid])
-    await db.query(`INSERT INTO items(id) VALUES
-      ('pedra_forca_alpha'),('pedra_fortaleza_alpha'),('pedra_agilidade_alpha'),
-      ('pedra_precisao_alpha'),('pedra_furia_alpha')`)
+    await db.query('INSERT INTO items(id) SELECT unnest($1::text[])',[Object.keys(STONES)])
 
     await t.test('não compra sem saldo, sem gerar registros parciais',async()=>{
       await assert.rejects(buyMiningPickaxe(db,{jid,pickaxeId:'madeira',key:key('buy-poor')}),/insuficiente/)
