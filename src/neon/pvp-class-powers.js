@@ -43,7 +43,8 @@ export function classPvpAttack({
   const index=Math.max(1,Math.floor(Number(attackIndex)||1))
   const ratio=clamp(Number(hp)/Math.max(1,Number(maxHp)||1),0,1)
   let bonus=0,heal=Number(base.heal||0),technique=null
-  const trigger=(name)=>{technique=name}
+  const v2=classesOnlyRebootEnabled(),techniques=[]
+  const trigger=(name)=>{technique=name;if(!techniques.includes(name))techniques.push(name)}
   if(id==='warrior'){
     bonus+=.01
     if(stage>=3){
@@ -88,20 +89,29 @@ export function classPvpAttack({
       bonus+=.13;state.marks=0;state.guard=true;trigger('Flecha Celestial')
     }
   }else if(id==='paladin'){
-    if(stage>=1&&index%8===0&&ratio<.5)
-      heal=Math.max(heal,Math.floor(maxHp*.02))
-    if(stage>=2&&index%8===0){bonus+=.10;trigger('Julgamento Divino')}
-    if(stage>=3&&index%8===0&&ratio<.5){addShield(state,maxHp,.03);trigger('Égide Celestial')}
+    const cadence=v2?4:8
+    if(stage>=1&&index%cadence===0&&ratio<.5){
+      heal=Math.max(heal,Math.floor(maxHp*(v2?.01:.02)))
+      if(v2&&heal>0)trigger('Bênção Restauradora')
+    }
+    if(stage>=2&&index%cadence===0){bonus+=v2?.05:.10;trigger('Julgamento Divino')}
+    if(stage>=3&&index%cadence===0&&ratio<.5){
+      const previous=Number(state.shield||0)
+      addShield(state,maxHp,v2?.015:.03)
+      if(!v2||Number(state.shield||0)>previous)trigger('Égide Celestial')
+    }
   }else if(id==='berserker'){
-    if(ratio<.4)bonus+=.01
-    if(stage>=2&&ratio<.25)bonus+=.03
+    const furyThreshold=v2?.45:.4
+    if(ratio<furyThreshold){bonus+=.01;if(v2)trigger('Fúria Controlada')}
+    if(stage>=2&&ratio<(v2?.30:.25)){bonus+=.03;if(v2)trigger('Instinto de Sobrevivência')}
     if(stage>=5&&ratio<.60){bonus+=.04;trigger('Frenesi Mortal')}
     if(stage>=3){
       if(ratio>.5)state.fury=0
-      else if(ratio<.4)state.fury=Math.min(3,Number(state.fury||0)+1)
+      else if(ratio<furyThreshold)state.fury=Math.min(3,Number(state.fury||0)+1)
       bonus+=.01*Number(state.fury||0)
+      if(v2&&state.fury>0)trigger('Fúria Crescente')
     }
-    if(stage>=4&&state.retaliation&&ratio<.4){bonus+=.03;state.retaliation=false;trigger('Retaliação Sangrenta')}
+    if(stage>=4&&state.retaliation&&ratio<furyThreshold){bonus+=.03;state.retaliation=false;trigger('Retaliação Sangrenta')}
     if(stage>=5){
       state.frenzy=ratio<.25?Math.min(3,Number(state.frenzy||0)+1):0
       bonus+=.01*Number(state.frenzy||0)
@@ -117,9 +127,11 @@ export function classPvpAttack({
       }
     }
   }else if(id==='necromancer'){
-    if(stage>=1&&index%(stage>=5?3:4)===0&&hp>0)
-      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.18:.03))))
-    if(stage>=2&&index%7===0){bonus+=.08;trigger('Maldição')}
+    if(stage>=1&&index%(stage>=5?3:4)===0&&hp>0){
+      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.18:v2?.05:.03))))
+      if(v2&&heal>0&&hp<maxHp)trigger('Drenagem de Almas')
+    }
+    if(stage>=2&&index%(v2?4:7)===0){bonus+=v2?.04:.08;trigger('Maldição')}
     if(stage>=3)bonus+=.008*Number(state.souls||0)
     if(stage>=5&&index%4===0&&state.souls>=3){bonus+=.12;state.souls=0;trigger('Colheita Final')}
     if(stage>=3&&index%(stage>=5?3:4)===0&&hp>0){
@@ -135,7 +147,7 @@ export function classPvpAttack({
       else trigger('Natureza Viva')
     }
   }else if(id==='samurai'){
-    if(critical){if(stage>=1)bonus+=.02
+    if(critical){if(stage>=1){bonus+=.02;if(v2)trigger('Lâmina Aperfeiçoada')}
       if(stage>=3&&state.focus>0){
         const count=Number(state.focus)
         bonus+=stage>=5&&count>=3?.15:.028*count
@@ -143,7 +155,12 @@ export function classPvpAttack({
         trigger(stage>=5&&count>=3?'Corte da Lua':'Postura Iai')
       }
       state.focus=0
-    }else if(stage>=3){state.focus=Math.min(3,Number(state.focus||0)+1)}
+    }else if(stage>=3){
+      // A normal strike can use part of a full focus stack; a critical still
+      // benefits from the remaining charges. No guaranteed critical.
+      if(v2&&Number(state.focus||0)>=3){bonus+=.03;state.focus=2;trigger('Postura Iai')}
+      else state.focus=Math.min(3,Number(state.focus||0)+1)
+    }
   }
   // Additional PvP-only damage is bounded even when effects coincide.
   const role=PVP_AWAKENING_ROLES[id]||{attack:0,defense:0}
@@ -151,7 +168,7 @@ export function classPvpAttack({
   const result=v2PvpDamageAdjustment(Math.max(1,Math.round(base.damage*(1+clamp(bonus,0,.22))*(1+roleBonus))),id,stage,applied)
   return {damage:result,heal:Math.max(0,heal),proc:base.proc,
     lastProcAttack:base.lastProcAttack,awakeningState:state,technique,
-    skillActivated:Boolean(technique)}
+    skillActivated:Boolean(technique),...(v2?{techniques,skillBonusPct:clamp(bonus,0,.22),shieldCreated:Math.max(0,Number(state.shield||0)-Number(awakeningState?.shield||0))}:{})}
 }
 
 export function classPvpDefense({
@@ -191,7 +208,7 @@ export function classPvpDefense({
       n=Math.max(0,Math.floor(Number(hp)-Math.ceil(maxHp*.05)))
       technique='Intervenção Divina'
     }
-  }else if(id==='berserker'&&stage>=4&&ratio<.4){
+  }else if(id==='berserker'&&stage>=4&&ratio<(classesOnlyRebootEnabled()?.45:.4)&&incoming>0){
     state.retaliation=true;technique='Retaliação Sangrenta'
   }else if(id==='monk'&&stage>=4&&state.guard){
     reduction+=.08;state.guard=false;technique='Defesa Fluida'
