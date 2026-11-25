@@ -162,3 +162,35 @@ test('substituição superior preserva três espaços, dois percentuais e impede
  assert.deepEqual(planStoneApplication(pct,'pedra_furia_rara_alpha'),{replaceId:'pedra_furia_alpha',totalAfter:2})
  assert.deepEqual(planStoneApplication([],'pedra_furia_rara_alpha'),{replaceId:null,totalAfter:1})
 })
+
+import {miningSessionQuote,miningSessionOutcome,parseMiningDuration,MINING_HOURLY} from '../src/neon/mining-session-v2.js'
+test('nova mineração escolhe tempo e consome usos, com lucro após reparo',()=>{
+ assert.equal(parseMiningDuration('30m'),1800)
+ assert.equal(parseMiningDuration('8h'),28800)
+ assert.throws(()=>parseMiningDuration('9h'),/Escolha/)
+ for(const [id,p] of Object.entries(MINING_PICKAXES)){
+  for(const duration of [1800,3600,7200]){
+   const q=miningSessionQuote(id,p.maxUses,duration)
+   assert.equal(q.usesCost,Math.ceil(duration/3600))
+   assert.equal(q.usesAfter,p.maxUses-q.usesCost)
+   assert.ok(q.cash>miningRepairQuote(id,q.usesAfter).costCash)
+  }
+ }
+ assert.throws(()=>miningSessionQuote('madeira',1,7200),/Resistência/)
+})
+test('sorteios por cinco minutos são cumulativos, reproduzíveis e não excedem tempo contratado',()=>{
+ const row={pickaxe_id:'diamante',started_at:100,ends_at:29800-900,roll_seed:'ab'.repeat(32)}
+ row.ends_at=row.started_at+28800
+ const a=miningSessionOutcome(row,1900)
+ assert.equal(a.ticks,6)
+ assert.equal(a.cash,2500)
+ assert.equal(a.xp,250)
+ assert.deepEqual(a,miningSessionOutcome(row,1900))
+ const b=miningSessionOutcome(row,row.ends_at)
+ assert.deepEqual(b,miningSessionOutcome(row,row.ends_at+99999))
+ assert.equal(b.ticks,96)
+ assert.equal(b.cash,40000)
+ for(const [id,n] of Object.entries(a.stones))assert.ok(b.stones[id]>=n)
+ assert.ok(Object.values(b.stones).reduce((n,x)=>n+x,0)>1)
+ assert.equal(miningSessionOutcome(row,399).cash,0)
+})
