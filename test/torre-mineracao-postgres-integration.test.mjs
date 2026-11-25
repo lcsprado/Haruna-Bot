@@ -100,32 +100,32 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       assert.equal(await getCash(),28000)
     })
 
-    await t.test('um resgate real paga R$ 800, XP base e no máximo uma pedra',async()=>{
-      // Simulação de passagem de 4 horas APENAS nos dados efêmeros de homologação.
-      await db.query("UPDATE mining_expeditions SET started_at=EXTRACT(EPOCH FROM NOW())::bigint-14410,ends_at=EXTRACT(EPOCH FROM NOW())::bigint-10 WHERE jid=$1 AND status='running'",[jid])
+    await t.test('um resgate real paga R$ 1.500, XP base e drops por ciclo',async()=>{
+      // Simulação de passagem de 1 hora APENAS nos dados efêmeros de homologação.
+      await db.query("UPDATE mining_expeditions SET started_at=EXTRACT(EPOCH FROM NOW())::bigint-3610,ends_at=EXTRACT(EPOCH FROM NOW())::bigint-10 WHERE jid=$1 AND status='running'",[jid])
       const claimed=await claimMiningExpedition(db,jid)
       assert.equal(claimed.status,'claimed')
-      assert.equal(claimed.cash,800)
-      assert.equal(claimed.awardedXp,250)
-      assert.equal(await getCash(),28800)
-      assert.equal((await db.query('SELECT exp FROM users WHERE jid=$1',[jid])).rows[0].exp,250)
+      assert.equal(claimed.cash,1500)
+      assert.equal(claimed.awardedXp,150)
+      assert.equal(await getCash(),29500)
+      assert.equal((await db.query('SELECT exp FROM users WHERE jid=$1',[jid])).rows[0].exp,150)
       assert.equal(await committed(),1)
       assert.equal((await claimMiningExpedition(db,jid)).status,'none')
-      assert.equal(await getCash(),28800)
-      assert.equal((await db.query('SELECT exp FROM users WHERE jid=$1',[jid])).rows[0].exp,250)
+      assert.equal(await getCash(),29500)
+      assert.equal((await db.query('SELECT exp FROM users WHERE jid=$1',[jid])).rows[0].exp,150)
       const stones=Number((await db.query('SELECT COALESCE(SUM(quantity),0)::int AS n FROM inventories WHERE jid=$1',[jid])).rows[0].n)
-      assert.equal(stones,claimed.stoneId?1:0)
-      assert.ok(stones===0||stones===1)
+      assert.equal(stones,Object.values(claimed.stones).reduce((n,x)=>n+x,0))
+      assert.ok(stones>=0&&stones<=12)
     })
 
     await t.test('reparo proporcional e replay não cobra novamente',async()=>{
       const input={jid,pickaxeId:'madeira',key:key('repair-wood')}
       const repaired=await repairMiningPickaxe(db,input)
       assert.equal(repaired.costCash,300)
-      assert.equal(await getCash(),28500)
+      assert.equal(await getCash(),29200)
       assert.equal(await uses('madeira'),4)
       assert.equal((await repairMiningPickaxe(db,input)).repeated,true)
-      assert.equal(await getCash(),28500)
+      assert.equal(await getCash(),29200)
     })
 
     await t.test('cancelamento não premia nem devolve resistência',async()=>{
@@ -133,7 +133,7 @@ test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e blo
       assert.equal(await uses('madeira'),3)
       assert.equal((await cancelMiningExpedition(db,jid)).status,'cancelled')
       assert.equal((await claimMiningExpedition(db,jid)).status,'none')
-      assert.equal(await getCash(),28500)
+      assert.equal(await getCash(),29200)
       assert.equal(await uses('madeira'),3)
     })
 
