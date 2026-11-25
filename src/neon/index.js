@@ -10866,14 +10866,7 @@ const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
 const spacedMarketBuy=rawCmdLower==='comprar' && /^#\d+$/.test(String(args[0]||''))
 if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
-// Mineração é uma atividade AFK exclusiva; status/resgate e consultas básicas continuam.
-if(miningRuntimeEnabled()){
-  const mining=await getMiningStatus(db,sender)
-  if(mining&&!mining.ready&&!new Set(['minerar','picaretas','saldo','balance','bal','perfil','profile','menu','comandos','ping','coletar']).has(cmd)){
-    await reply('⛏️ Você está minerando e não pode iniciar outra atividade. Falta '+Math.ceil(mining.remainingSeconds/60)+' min. Use !minerar status ou !minerar cancelar.')
-    continue
-  }
-}
+// As atividades incompatíveis são bloqueadas nas transações de Raid, Raidlote, Carpinar e Dormir.
 let ownerTarget=sender
 // A menção crua do WhatsApp pode ser @lid; nunca passar isso ao financeiro.
 if(isOwner && (['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)||(classesOnlyRebootEnabled()&&cmd==='daritem'))){
