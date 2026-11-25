@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/neon/gt-alpha-*.js'
+      - 'src/neon/reboot-economy-policy.js'
+      - 'test/reboot-economy-policy.test.mjs'
       - 'src/neon/index.js'
       - 'test/gt-alpha.test.mjs'
       - 'test/gt-alpha-weather-sponsor.test.mjs'
@@ -33,6 +35,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check src/neon/gt-alpha-rules.js
+          node --check src/neon/reboot-economy-policy.js
           node --check src/neon/gt-alpha-event.js
           node --check src/neon/gt-alpha-sponsors.js
           node --check src/neon/gt-alpha-sponsor-rules.js
@@ -40,4 +43,4 @@ jobs:
           node --check src/neon/racing-commands.js
           node --check src/neon/index.js
       - name: Racing physics, payouts and safety
-        run: node --test test/gt-alpha.test.mjs test/gt-alpha-weather-sponsor.test.mjs test/gt-alpha-sponsor-numeric.test.mjs test/racing-alpha.test.mjs
+        run: node --test test/gt-alpha.test.mjs test/gt-alpha-weather-sponsor.test.mjs test/gt-alpha-sponsor-numeric.test.mjs test/racing-alpha.test.mjs test/reboot-economy-policy.test.mjs
