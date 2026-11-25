@@ -139,7 +139,7 @@ async function equipmentChoices(jid,stoneId){
   if(!eligible.length)return []
   const ids=eligible.map(r=>r.item_id)
   const [enchantResult,starLevels]=await Promise.all([
-    db.query('SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids]),
+    db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[jid,ids]),
     getEquipmentStarLevels(jid,ids)
   ])
   const enchanted=enchantResult.rows
@@ -314,12 +314,12 @@ export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearF
   const gear=items.filter(x=>['weapon','armor','boots','helmet'].includes(x.category))
   const stones=items.filter(x=>Boolean(STONES[x.item_id]))
   const ids=gear.map(x=>x.item_id)
-  const enchanted=ids.length?(await db.query('SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])',[sender,ids])).rows:[]
+  const enchanted=ids.length?(await db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[sender,ids])).rows:[]
   let out='✨ *ENCANTAMENTOS ALPHA*\n\n💎 *Suas pedras:*\n'
   out+=stones.length?stones.map(x=>'• '+x.name+' ×'+fm(x.quantity)+' — '+STONES[x.item_id].label).join('\n'):'Nenhuma pedra no inventário.'
   out+='\n\n⚙️ *Encantamentos nos equipamentos:*\n'
   const enchantedGear=gear.filter(x=>enchanted.some(y=>y.item_id===x.item_id))
-  out+=enchantedGear.length?enchantedGear.map(x=>'• '+x.name+': '+enchanted.filter(y=>y.item_id===x.item_id).map(y=>(STONES[y.stone_id]?.name||y.stone_id)+' '+stoneLevels(y).map(lv=>'Lv.'+lv+' ('+stoneLevelLabel(STONES[y.stone_id],lv)+')').join(', ')).join(', ')).join('\n'):'Nenhum encantamento aplicado.'
+  out+=enchantedGear.length?enchantedGear.map(x=>'• '+x.name+': '+enchanted.filter(y=>y.item_id===x.item_id).map(y=>(STONES[y.stone_id]?.name||y.stone_id)+' '+stoneLevels(y).map(lv=>'Lv.'+lv+(STONES[y.stone_id]?' ('+stoneLevelLabel(STONES[y.stone_id],lv)+')':'')).join(', ')).join(', ')).join('\n'):'Nenhum encantamento aplicado.'
   out+='\n\n👉 Digite *!encantar* para escolher a pedra e o equipamento pelos números.\n⬆️ *!uparencanto* — evoluir pedras aplicadas até Lv.10.'
   await reply(out)
   return true
