@@ -10,6 +10,7 @@ import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {STONE_EFFECTS} from './enchantment-stones-catalog.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {equipmentGrowthMultiplier} from './equipment-growth-v2.js'
 import {planShopForge5} from './shop-forge5-plan.js'
 import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
@@ -641,6 +642,17 @@ SET quantity=inventories.quantity+EXCLUDED.quantity
 await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
 await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
 })
+// V2: reselect effective forged tiers after changing the strength curve.
+if(classesOnlyRebootEnabled()){
+ await db.query(`INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+ SELECT sf.jid,sf.item_id,sf.level,${nowSql} FROM equipment_star_forges sf
+ JOIN inventories inv ON inv.jid=sf.jid AND inv.item_id=sf.item_id AND inv.quantity>0
+ JOIN items it ON it.id=sf.item_id
+ WHERE sf.stars>=2 AND (it.category IN ('weapon','armor','boots','helmet') OR (it.category='shield' AND sf.stars>=3))
+ AND sf.item_id NOT LIKE 'pecados_%'
+ ON CONFLICT(jid,item_id) DO UPDATE SET level=EXCLUDED.level,updated_at=EXCLUDED.updated_at
+ WHERE equipment_upgrades.level<>EXCLUDED.level`)
+}
 // As tabelas de pets são criadas por initCommunityPack; reparar só depois.
 }
 const recentEnsureUsers=createRecentEnsureCache()
@@ -2424,7 +2436,7 @@ level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
 const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)||POCO_ABISMO_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
-const mult=multipliers[level-1]
+const mult=classesOnlyRebootEnabled()?equipmentGrowthMultiplier(level,starLevel,true)/starMult:multipliers[level-1]
 return {
 ...eq,itemId,level,stars:starLevel,starMult,mult,
 atk:Math.round(Number(eq.atk||0)*mult*starMult),
@@ -2535,7 +2547,7 @@ const requiredCopies=shieldForge?(stars===1?2:1):collab?special.requiredCopies:s
 const ready=shieldForge?(stars===1?basicCopies>=2&&shieldDonorCopies>=1:Number(r.forged_level)===10&&shieldDonorCopies>=1):collab?special.ready:stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
 const canForge=shieldForge?stars<5&&ready&&copies>=2&&Number(r.cash)>=fee:collab?special.canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed
 return {...r,origin,collab,shieldForge,fee,basicCopies,shieldDonorCopies,stars,needed,free,requiredCopies,ready,canForge,
-current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
+current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):shieldForge&&classesOnlyRebootEnabled()?1:10,stars),
 next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
 }
@@ -2601,7 +2613,7 @@ await syncEffectiveGear(c,jid,itemId)
 const enchantments=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id',[jid,itemId])).rows
 if(JSON.stringify(enchantments)!==JSON.stringify(enchantmentsBefore))throw new Error('Encantamentos divergentes; forja cancelada sem consumir recursos.')
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',$3,$4,$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; ${collab?'0 cópias consumidas':'-1 cópia'}; ${shieldForge?'R$ '+fee:'-'+required+' '+origin.materialId}`,fee,shieldForge?'equipment_star_forge_shield':collab?'equipment_star_forge_collab_fragments':'equipment_star_forge'])
-return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,shieldForge&&stars===1&&classesOnlyRebootEnabled()?1:10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
 export const listStarForgeWeapons=listStarForgeEquipment
