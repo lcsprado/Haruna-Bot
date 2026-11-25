@@ -1,6 +1,6 @@
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 // Política candidata V2: mesma coleção e especialidades, aquisição sem privilégios.
-export const V2_PET_ALTAR_COSTS=Object.freeze({10:50,15:100,20:100,25:100,30:100,40:120,50:120,60:140,65:150,70:160})
+export const V2_PET_ALTAR_COSTS=Object.freeze({10:50,15:100,20:100,25:100,30:100,40:100,50:100,60:100,65:100,70:100})
 export function effectivePetAltar(altar,{enabled=classesOnlyRebootEnabled()}={}){
  if(!enabled)return altar
  const cost=V2_PET_ALTAR_COSTS[altar.raidLevel]
