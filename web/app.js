@@ -1085,6 +1085,7 @@ async function openWebPage(page){
   window.scrollTo({top:0,left:0,behavior:'auto'});
 }
 function actionFeedback(name,result){
+  if(name==='stone.upgrade'&&result)return (result.outcome==='success'?'✅ Encantamento aprimorado para Lv.'+result.next:result.outcome==='breakage'?'💥 Pedra quebrada. Equipamento intacto.':'⚠️ Falha. Pedra preservada.')+' • '+money(result.cost);
   if((name==='game.quiz.answer'||name==='game.number.guess')&&result?.rewardCooldown) return '✅ Acertou! Prêmio em recarga (30 min entre Quiz e Número).';
   if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
@@ -2195,6 +2196,11 @@ function inventoryCard(i,options={}){
     (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
+function renderStoneUpgrades(){
+ const rows=ui.data.appliedStoneUpgrades||[];
+ if(!rows.length)return '';
+ return '<div class="card section"><h3>💎 Aprimorar encantamentos</h3><p>Até Lv.10. Falha cobra somente dinheiro; quebra destrói apenas a pedra selecionada.</p>'+rows.map((r,i)=>'<div class="section"><strong>'+esc(r.itemName)+' — '+esc(r.stoneName)+' Lv.'+r.level+'</strong><p>'+esc(r.label)+(r.quote?' → '+esc(r.nextLabel)+' • '+money(r.quote.cost)+' • sucesso '+r.quote.success+'% • falha '+r.quote.failure+'% • quebra '+r.quote.breakage+'%':' • Nível máximo')+'</p>'+(r.quote?'<button class="btn" data-stone-upgrade="'+i+'">Aprimorar</button>':'')+'</div>').join('')+'</div>';
+}
 function renderInventory(){
   const inv=ui.data.inventory||[];
   const query=String(ui.inventorySearch||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -2219,7 +2225,7 @@ function renderInventory(){
     '<div class="tabs inventory-tabs section" role="tablist" aria-label="Categorias do inventário">'+
       '<button type="button" role="tab" aria-selected="'+isEquipment+'" class="tab '+(isEquipment?'active':'')+'" data-inventory-section="equipment">⚔️ Equipamentos ('+groups.filter(g=>EQUIPMENT_GROUP_KEYS.has(g.key)).reduce((total,g)=>total+g.all.length,0)+')</button>'+
       groups.filter(g=>!EQUIPMENT_GROUP_KEYS.has(g.key)).map(g=>'<button type="button" role="tab" aria-selected="'+(ui.inventorySection===g.key)+'" class="tab '+(ui.inventorySection===g.key?'active':'')+'" data-inventory-section="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>'+
-    (isEquipment?equipmentPanel()+'<div class="tabs equipment-tabs" role="tablist" aria-label="Tipos de equipamentos">'+
+    (isEquipment?renderStoneUpgrades()+equipmentPanel()+'<div class="tabs equipment-tabs" role="tablist" aria-label="Tipos de equipamentos">'+
       groups.filter(g=>EQUIPMENT_GROUP_KEYS.has(g.key)).map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>':'')+
     '<div class="section inventory-group">'+
       '<div class="section-title"><h3>'+selected.label+'</h3><small>'+selected.all.length+' tipo(s)</small></div>'+
@@ -3552,6 +3558,14 @@ function bind(){
     x.disabled=true;
     try{await doAction('relic.unequip',{}, {success:'⚜️ Insígnia desequipada.'});await loadRelics();render();}
     catch{x.disabled=false;}
+  });
+  document.querySelectorAll('[data-stone-upgrade]').forEach(x=>x.onclick=async()=>{
+   const r=(ui.data.appliedStoneUpgrades||[])[Number(x.dataset.stoneUpgrade)];
+   if(!r?.quote||x.disabled)return;
+   const q=r.quote;
+   if(!confirm('Aprimorar '+r.stoneName+' Lv.'+r.level+' → Lv.'+q.next+' por '+money(q.cost)+'? Sucesso '+q.success+'%, falha '+q.failure+'%, quebra '+q.breakage+'%. Na quebra perde somente a pedra.'))return;
+   x.disabled=true;
+   try{await doAction('stone.upgrade',{itemId:r.itemId,stoneId:r.stoneId,index:r.index,level:r.level,levels:r.levels,token:crypto.randomUUID()},{});}finally{x.disabled=false;}
   });
   document.querySelectorAll('[data-item-upgrade]').forEach(x=>x.onclick=()=>doAction('item.upgrade',{itemId:x.dataset.itemUpgrade,sourceLevel:Number(x.dataset.sourceLevel),sourceKind:x.dataset.sourceKind},{}));
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
