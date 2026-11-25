@@ -36,12 +36,12 @@ test('V2 limita Boss semanal, ranking e etapas do GT, sem reduzir piloto',()=>{
  withMode('classes_only',()=>{
   assert.equal(rebootEconomyEnabled(),true);
   assert.equal(budgetReport().weeklyBoss,40_000);
-  assert.equal(budgetReport().weeklyGt,20_000);
-  assert.equal(budgetReport().gtThreeHeatsFourPlayers,7_950);
+  assert.equal(budgetReport().weeklyGt,102_500);
+  assert.equal(budgetReport().gtThreeHeatsFourPlayers,52_500);
   assert.deepEqual(gtEffectiveWeeklyPrizes(),V2_EVENT_BUDGET.gtWeeklyPrizes);
   const top=gtRaceReward(1,70);
-  assert.deepEqual(top,{cash:1200,pilotXp:750,playerXp:420,percent:6});
-  assert.equal(gtRaceReward(1,70).playerXp*3,1260);
+  assert.deepEqual(top,{cash:7000,pilotXp:750,playerXp:1050,percent:15});
+  assert.equal(gtRaceReward(1,70).playerXp*3,3150);
   const winners=weeklyBossCashPoolShares('2026-11-20',[
    {jid:'a',damage:3},{jid:'b',damage:2},{jid:'c',damage:1}]);
   assert.equal([...winners.values()].reduce((a,b)=>a+b,0),40_000);

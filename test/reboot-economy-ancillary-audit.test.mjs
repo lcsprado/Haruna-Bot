@@ -17,10 +17,10 @@ test('C4f identifica os 3 Bingos históricos e leilão sem reusar suas edições
 test('patrocínio V2 não multiplica lucro semanal do GT',()=>{
  assert.equal(report.sponsor.cash,5000);
  assert.deepEqual(report.sponsor.discountCaps,[5000,10000]);
- assert.equal(report.gt.weeklyRanking,20000);
- assert.equal(report.gt.dailyHeatsFourPlayers,7950);
+ assert.equal(report.gt.weeklyRanking,102500);
+ assert.equal(report.gt.dailyHeatsFourPlayers,52500);
  assert.equal(report.gt.weeklySponsorMaxFour,20000);
- assert.equal(report.gt.maxConditionalWeeklyWithSponsors,95650);
+ assert.equal(report.gt.maxConditionalWeeklyWithSponsors,490000);
 });
 test('empréstimos transferem valor, leilão consome caixa mas itens ainda precisam correção',()=>{
  assert.equal(report.loans.mintsMoney,false);

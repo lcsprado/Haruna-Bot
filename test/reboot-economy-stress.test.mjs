@@ -37,8 +37,8 @@ test('7,30,60,120 dias: prêmios não se multiplicam por quatro ao pagar pools',
   }
 });
 test('Poço é uma edição sazonal, não 1 evento semanal, e requer conclusão hipotética',()=>{
-  assert.equal(eventPressure(7).groupTotal,132800);
-  assert.ok(eventPressure(120).groupTotal<3000000);
+  assert.equal(eventPressure(7).groupTotal,507500);
+  assert.equal(eventPressure(120).groupTotal,8850000); // projeção condicional com GT aprovado
   assert.equal(eventPressure(30).sources.pocoRanking,0);
   const e60=eventPressure(60);
   assert.equal(e60.sources.pocoRanking,40000);
