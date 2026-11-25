@@ -98,3 +98,17 @@ test('liberação de produção recusa banco incorreto, flags incompletas e host
    assert.throws(()=>assertMiningRuntime(bad),/Mineração bloqueada/)
  }
 })
+
+import {readFileSync} from 'node:fs'
+test('mineração não bloqueia comandos gerais e Raid manual preserva exclusão transacional',()=>{
+ const router=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
+ const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+ const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ const lote=readFileSync(new URL('../src/neon/raid-lote-store.js',import.meta.url),'utf8')
+ assert.doesNotMatch(router,/mining&&!mining.ready&&!new Set/)
+ assert.match(games,/raid-membership:\$\{host\}\x60\]\)\s*await assertNoActiveMining\(c,host\)/)
+ assert.match(games,/raid-membership:\$\{jid\}\x60\]\)\s*await assertNoActiveMining\(c,jid\)/)
+ assert.match(games,/for\(const jid of ids\)await assertNoActiveMining\(c,jid\)/)
+ assert.equal((db.match(/await assertNoActiveMining\(client,jid\)/g)||[]).length,2)
+ assert.ok((lote.match(/await assertNoActiveMining\(c,jid\)/g)||[]).length>=2)
+})
