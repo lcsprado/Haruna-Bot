@@ -2,15 +2,10 @@
 import {db, getEquipmentInfo, equipmentStatsAtLevel, getEquipmentStarLevels} from './db.js'
 import {assertRebootItemAllowed,classesOnlyRebootEnabled,isRebootCollabItemId} from './reboot-classes-policy.js'
 
-export const STONES=Object.freeze({
-  pedra_furia_alpha:{name:'Pedra da Fúria',stat:'damage',value:.02,categories:['weapon'],label:'+2 p.p. dano'},
-  pedra_forca_alpha:{name:'Pedra da Força',stat:'atk',value:5,categories:['weapon'],label:'+5 ATK'},
-  pedra_fortaleza_alpha:{name:'Pedra da Fortaleza',stat:'def',value:5,categories:['armor','helmet'],label:'+5 DEF'},
-  pedra_agilidade_alpha:{name:'Pedra da Agilidade',stat:'spd',value:2,categories:['boots'],label:'+2 VEL'},
-  pedra_precisao_alpha:{name:'Pedra da Precisão',stat:'crit',value:.01,categories:['weapon','helmet'],label:'+1 p.p. CRIT'}
-})
+import {STONES,planStoneApplication} from './enchantment-stones-catalog.js'
+export {STONES}
 const fm=n=>Number(n).toLocaleString('pt-BR')
-const itemRows=Object.entries(STONES).map(([id,v])=>[id,v.name,'Encantamento permanente: '+v.label+'. Até 3 pedras por equipamento.','consumable',0,'event'])
+const itemRows=Object.entries(STONES).map(([id,v])=>[id,v.name,'Encantamento permanente: '+v.label+'. Até 3 pedras por equipamento.','consumable',0,v.rarity])
 
 let initPromise=null
 export async function initEnchantments(){
@@ -18,7 +13,7 @@ export async function initEnchantments(){
   initPromise=(async()=>{
   await db.query('CREATE TABLE IF NOT EXISTS equipment_enchantments (jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, item_id TEXT NOT NULL REFERENCES items(id), stone_id TEXT NOT NULL REFERENCES items(id), quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 3), PRIMARY KEY(jid,item_id,stone_id))')
   for(const [id,name,description,category,price,rarity] of itemRows){
-    await db.query('INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,$5,$6,FALSE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,rarity=EXCLUDED.rarity,sellable=FALSE',
+    await db.query('INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,rarity=EXCLUDED.rarity,sellable=TRUE',
       [id,name,description,category,price,rarity])
   }
   })()
@@ -52,7 +47,7 @@ export async function getEquippedEnchants(queryable,jid,itemIds=[]){
   out.attackPct=result.rows.some(row=>row.stone_id===sealId)?0.05:0
   return out
 }
-async function applyStone(jid,stoneId,itemId){
+async function applyStone(jid,stoneId,itemId,expectedReplaceId=null){
   assertRebootItemAllowed(itemId)
   const stone=STONES[stoneId],eq=getEquipmentInfo(itemId)
   if(!stone)throw Error('Pedra de encantamento inválida.')
@@ -65,13 +60,17 @@ async function applyStone(jid,stoneId,itemId){
     if(!inv.some(x=>x.item_id===stoneId))throw Error('Você não possui essa pedra.')
     if(!inv.some(x=>x.item_id===itemId))throw Error('Você não possui esse equipamento.')
     const current=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows
-    const total=current.reduce((a,x)=>a+Number(x.quantity),0)
-    if(total>=3)throw Error('Esse equipamento já possui o limite de 3 encantamentos.')
-    const percentage=current.filter(x=>STONES[x.stone_id]?.stat==='damage'||STONES[x.stone_id]?.stat==='crit').reduce((a,x)=>a+Number(x.quantity),0)
-    if((stone.stat==='damage'||stone.stat==='crit')&&percentage>=2)throw Error('Máximo de 2 encantamentos percentuais no mesmo equipamento.')
+    const plan=planStoneApplication(current,stoneId)
+    if(!plan)throw Error('Sem espaço para encantamento ou substituição por pedra superior da mesma família.')
+    if(plan.replaceId!==expectedReplaceId)throw Error('Os encantamentos mudaram. Abra o menu novamente.')
+    if(plan.replaceId){
+      const old=current.find(x=>x.stone_id===plan.replaceId)
+      if(Number(old.quantity)===1)await c.query('DELETE FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,plan.replaceId])
+      else await c.query('UPDATE equipment_enchantments SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND stone_id=$3',[jid,itemId,plan.replaceId])
+    }
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,stoneId])
     await c.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,stone_id) DO UPDATE SET quantity=equipment_enchantments.quantity+1',[jid,itemId,stoneId])
-    await c.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$1,0,$2,$3)',[jid,'equipment_enchant',stoneId+':'+itemId])
+    await c.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$1,0,$2,$3)',[jid,'equipment_enchant',stoneId+':'+itemId+(plan.replaceId?':replace:'+plan.replaceId:'')])
     await c.query('COMMIT')
     return '✨ *ENCANTAMENTO APLICADO!*\n⚙️ '+eq.name+'\n💎 '+stone.name+' — '+stone.label+'\n✅ Bônus permanente enquanto o equipamento estiver equipado.'
   }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}finally{c.release()}
@@ -102,8 +101,11 @@ export function previewEquipmentEnchantment(itemId,level,rows=[],stoneId,stars=1
     crit:Number(base.crit||0)+applied.crit,
     damage:applied.damage
   }
-  const after={...before,[stone.stat]:before[stone.stat]+stone.value}
-  return {before,after}
+  const plan=planStoneApplication(rows,stoneId)
+  if(!plan)return null
+  const removed=plan.replaceId?STONES[plan.replaceId].value:0
+  const after={...before,[stone.stat]:before[stone.stat]+stone.value-removed}
+  return {before,after,...plan}
 }
 const statDescriptions={
   atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],
@@ -128,7 +130,7 @@ async function equipmentChoices(jid,stoneId){
     'SELECT v.item_id,i.name,i.category,COALESCE(u.level,1)::int AS level,COALESCE(SUM(e.quantity),0)::int AS used_slots,COALESCE(SUM(CASE WHEN e.stone_id=ANY($3::text[]) THEN e.quantity ELSE 0 END),0)::int AS used_percentage FROM inventories v JOIN items i ON i.id=v.item_id LEFT JOIN equipment_upgrades u ON u.jid=v.jid AND u.item_id=v.item_id LEFT JOIN equipment_enchantments e ON e.jid=v.jid AND e.item_id=v.item_id WHERE v.jid=$1 AND v.quantity>0 AND i.category=ANY($2::text[]) GROUP BY v.item_id,i.name,i.category,u.level ORDER BY i.category,i.name',
     [jid,stone.categories,percentageStoneIds]
   )).rows
-  const eligible=rows.filter(r=>(!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id))&&getEquipmentInfo(r.item_id)&&Number(r.used_slots)<3&&(!['damage','crit'].includes(stone.stat)||Number(r.used_percentage)<2))
+  const eligible=rows.filter(r=>(!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id))&&getEquipmentInfo(r.item_id))
   if(!eligible.length)return []
   const ids=eligible.map(r=>r.item_id)
   const [enchantResult,starLevels]=await Promise.all([
@@ -141,11 +143,11 @@ async function equipmentChoices(jid,stoneId){
     if(!enchantByItem.has(row.item_id))enchantByItem.set(row.item_id,[])
     enchantByItem.get(row.item_id).push(row)
   }
-  return eligible.map(r=>({...r,stars:starLevels[r.item_id]||1,preview:previewEquipmentEnchantment(r.item_id,r.level,enchantByItem.get(r.item_id)||[],stoneId,starLevels[r.item_id]||1)}))
+  return eligible.map(r=>({...r,stars:starLevels[r.item_id]||1,preview:previewEquipmentEnchantment(r.item_id,r.level,enchantByItem.get(r.item_id)||[],stoneId,starLevels[r.item_id]||1)})).filter(r=>r.preview)
 }
 async function stoneMenu(jid){
   const stones=await stoneChoices(jid)
-  if(!stones.length)return {ids:[],text:'✨ *ENCANTAMENTOS ALPHA*\n\nVocê não possui nenhuma pedra de encantamento no inventário.\n🎁 Conquiste pedras em eventos ou leilões.\n\nNenhum item será consumido.'}
+  if(!stones.length)return {ids:[],text:'✨ *ENCANTAMENTOS ALPHA*\n\nVocê não possui nenhuma pedra de encantamento no inventário.\n🎁 Conquiste pedras em mineração, eventos ou leilões.\n\nNenhum item será consumido.'}
   let text='✨ *ENCANTAR EQUIPAMENTO*\n\n💎 *Escolha uma pedra disponível:*\n\n'
   stones.forEach((s,i)=>{text+=(i+1)+'. *'+s.name+'* — '+s.label+' (×'+fm(s.quantity)+')\n'})
   text+='\n👉 Responda só com o número da pedra.\n0️⃣ Cancelar'
@@ -155,17 +157,17 @@ async function gearMenu(jid,stoneId){
   const stone=STONES[stoneId]
   if(!stone)return {ids:[],text:'Pedra inválida. Use *!encantar* novamente.'}
   const gear=await equipmentChoices(jid,stoneId)
-  if(!gear.length)return {ids:[],text:'⚠️ Nenhum equipamento disponível para *'+stone.name+'*.\nVerifique se você tem um equipamento compatível e espaço para novos encantamentos.\n\n9️⃣ Voltar às pedras • 0️⃣ Cancelar'}
+  if(!gear.length)return {ids:[],text:'⚠️ Nenhum equipamento disponível para *'+stone.name+'*.\nVerifique se você tem um equipamento compatível e espaço para novos encantamentos.\n\n99 — Voltar às pedras • 0️⃣ Cancelar'}
   const shown=gear.slice(0,40)
   let text='⚙️ *ESCOLHA O EQUIPAMENTO*\n\n💎 '+stone.name+' — *'+stone.label+'*\n\n'
   shown.forEach((g,i)=>{
     const icon=g.category==='weapon'?'⚔️':g.category==='armor'?'🛡️':g.category==='boots'?'👢':'🪖'
     text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+(g.stars>1?' • 🌟 '+'★'.repeat(g.stars):'')+' • 🔒 '+g.used_slots+'/3\n'+
       '   📊 Atual: '+equipmentStatLine(g.preview.before)+'\n'+
-      '   💎 Com pedra: '+equipmentStatLine(g.preview.after)+'\n'
+      '   💎 Com pedra: '+equipmentStatLine(g.preview.after)+(g.preview.replaceId?' • substitui '+STONES[g.preview.replaceId].name:'')+'\n'
   })
   if(gear.length>shown.length)text+='\n⚠️ Exibindo os primeiros 40 equipamentos elegíveis.\n'
-  text+='\n👉 Responda apenas o número do equipamento.\n9️⃣ Voltar às pedras • 0️⃣ Cancelar'
+  text+='\n👉 Responda apenas o número do equipamento.\n99 — Voltar às pedras • 0️⃣ Cancelar'
   return {ids:shown.map(g=>g.item_id),text}
 }
 async function confirmMenu(jid,stoneId,itemId){
@@ -175,7 +177,7 @@ async function confirmMenu(jid,stoneId,itemId){
   const owned=(await stoneChoices(jid)).some(s=>s.id===stoneId)
   if(!owned)throw Error('Você não possui mais essa pedra. Use !encantar novamente.')
   const {before,after}=gear.preview
-  return '✨ *CONFIRMAR ENCANTAMENTO?*\n\n💎 Pedra: *'+stone.name+'*\n⚙️ Equipamento: *'+gear.name+' Lv.'+gear.level+'*\n🎯 Efeito: *'+stone.label+'*\n\n📊 *ATRIBUTOS TOTAIS DA PEÇA*\n• Atual: '+equipmentStatLine(before)+'\n• Com a pedra: '+equipmentStatLine(after)+'\n\n📈 '+changedEquipmentStat(stone,before,after)+'\n🔒 Espaços usados: *'+gear.used_slots+'/3 → '+(Number(gear.used_slots)+1)+'/3*\n\n⚠️ A pedra será consumida apenas ao confirmar. Não há cobrança em dinheiro. O bônus é permanente e funciona quando esse equipamento estiver equipado.\n\n1️⃣ *Confirmar aplicação*\n2️⃣ *Cancelar aplicação*\n9️⃣ Voltar aos equipamentos\n0️⃣ Sair'
+  return {replaceId:gear.preview.replaceId,text:'✨ *CONFIRMAR ENCANTAMENTO?*\n\n💎 Pedra: *'+stone.name+'*\n⚙️ Equipamento: *'+gear.name+' Lv.'+gear.level+'*\n🎯 Efeito: *'+stone.label+'*\n\n📊 *ATRIBUTOS TOTAIS DA PEÇA*\n• Atual: '+equipmentStatLine(before)+'\n• Com a pedra: '+equipmentStatLine(after)+'\n\n📈 '+changedEquipmentStat(stone,before,after)+'\n🔒 Espaços usados: *'+gear.used_slots+'/3 → '+gear.preview.totalAfter+'/3*\n\n'+(gear.preview.replaceId?'⚠️ Substitui e consome definitivamente '+STONES[gear.preview.replaceId].name+'.\n':'')+'⚠️ A pedra será consumida apenas ao confirmar. Não há cobrança em dinheiro. O bônus é permanente e funciona quando esse equipamento estiver equipado.\n\n1️⃣ *Confirmar aplicação*\n2️⃣ *Cancelar aplicação*\n9️⃣ Voltar aos equipamentos\n0️⃣ Sair'}
 }
 export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,clearFlow}){
   if(!String(stage||'').startsWith('enchant_'))return false
@@ -188,7 +190,7 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
     await reply(menu.text)
   }
   if(stage==='enchant_stone'){
-    if(input==='9'){await restart();return true}
+    if(input==='99'){await restart();return true}
     const index=nChoice(input)-1
     const stoneId=data?.stoneIds?.[index]
     if(!STONES[stoneId]){await reply('❌ Escolha um número da lista ou *0* para cancelar.');return true}
@@ -199,14 +201,14 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
     return true
   }
   if(stage==='enchant_gear'){
-    if(input==='9'){await restart();return true}
+    if(input==='99'){await restart();return true}
     const index=nChoice(input)-1
     const itemId=data?.gearIds?.[index]
-    if(!itemId){await reply('❌ Escolha um equipamento pelo número, *9* para voltar ou *0* para sair.');return true}
+    if(!itemId){await reply('❌ Escolha um equipamento pelo número, *99* para voltar ou *0* para sair.');return true}
     try{
       const menu=await confirmMenu(sender,data.stoneId,itemId)
-      set('enchant_confirm',{stoneId:data.stoneId,itemId})
-      await reply(menu)
+      set('enchant_confirm',{stoneId:data.stoneId,itemId,replaceId:menu.replaceId})
+      await reply(menu.text)
     }catch(e){await reply('❌ '+String(e.message||e)+'\n9️⃣ Voltar • 0️⃣ Sair')}
     return true
   }
@@ -231,7 +233,7 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
     set('enchant_processing',{stoneId:data.stoneId,itemId:data.itemId})
     let receipt
     try{
-      receipt=await applyStone(sender,String(data.stoneId),String(data.itemId))
+      receipt=await applyStone(sender,String(data.stoneId),String(data.itemId),data.replaceId??null)
     }catch(e){
       clearFlow()
       await reply('❌ '+String(e.message||e)+'\nNenhuma pedra foi consumida. Use *!encantar* para recomeçar.')
@@ -265,8 +267,8 @@ export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearF
       const stoneId=String(args[0]),itemId=String(args[1])
       try{
         const message=await confirmMenu(sender,stoneId,itemId)
-        setFlow('enchant_confirm',{stoneId,itemId},ENCHANT_FLOW_MINUTES*60*1000)
-        await reply(message)
+        setFlow('enchant_confirm',{stoneId,itemId,replaceId:message.replaceId},ENCHANT_FLOW_MINUTES*60*1000)
+        await reply(message.text)
       }catch(e){await reply('❌ '+String(e.message||e)+'\nUse *!encantar* para escolher pelas listas numeradas.')}
       return true
     }
