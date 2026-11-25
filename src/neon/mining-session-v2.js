@@ -9,22 +9,23 @@ export const MINING_HOURLY=Object.freeze({
 export function parseMiningDuration(raw='1h'){
  const s=String(raw).trim().toLowerCase()
  if(s==='30m'||s==='30min')return 1800
- if(/^[1-8]h?$/.test(s))return parseInt(s,10)*3600
- throw Error('Escolha 30m ou de 1h a 8h, conforme a resistência.')
+ if(/^(?:[1-9]|1[0-2])h?$/.test(s))return parseInt(s,10)*3600
+ throw Error('Escolha 30m ou de 1h a 12h, conforme a resistência.')
 }
 export function miningSessionQuote(id,uses,duration=3600){
- if(![1800,3600,7200,10800,14400,18000,21600,25200,28800].includes(duration))throw Error('Duração inválida.')
+ if(duration!==1800&&(!Number.isInteger(duration)||duration<3600||duration>43200||duration%3600!==0))throw Error('Duração inválida.')
  const repair=miningRepairQuote(id,uses),cost=Math.ceil(duration/3600)
  if(uses<cost)throw Error('Resistência insuficiente. Repare ou escolha um tempo menor.')
  return {...miningQuote(id),durationSeconds:duration,usesBefore:uses,usesAfter:uses-cost,usesCost:cost,cash:Math.floor(MINING_HOURLY[id].cash*duration/3600),xp:Math.floor(MINING_HOURLY[id].xp*duration/3600)}
 }
+export const miningDurationOptions=uses=>[1800,...Array.from({length:12},(_,i)=>(i+1)*3600)].filter(d=>Math.ceil(d/3600)<=uses)
 export const newMiningSeed=()=>randomBytes(32).toString('hex')
 function roll(seed,tick,kind){
  return createHmac('sha256',Buffer.from(seed,'hex')).update('mining-v2:'+tick+':'+kind).digest().readUInt32BE(0)/4294967296
 }
 export function miningSessionOutcome(row,now){
  const id=row.pickaxe_id,start=Number(row.started_at),end=Number(row.ends_at),seed=row.roll_seed
- if(!/^[0-9a-f]{64}$/.test(seed||'')||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||!Number.isSafeInteger(now)||end<=start||end-start>28800)throw Error('Expedição inválida.')
+ if(!/^[0-9a-f]{64}$/.test(seed||'')||!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||!Number.isSafeInteger(now)||end<=start||end-start>43200)throw Error('Expedição inválida.')
  const ticks=Math.floor(Math.max(0,Math.min(now,end)-start)/MINING_TICK_SECONDS),stones={}
  const chance=miningQuote(id).stoneChancePercent/100
  for(let i=0;i<ticks;i++){
