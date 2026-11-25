@@ -4,10 +4,13 @@
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 export const V2_PVP_DEFENSE_COEFFICIENT=.50
 export const V2_PVP_COUNTERS=Object.freeze({paladin:'samurai',samurai:'necromancer',necromancer:'berserker',berserker:'paladin'})
-export function pvpDefenseCoefficient(enabled=classesOnlyRebootEnabled()){
- return enabled?V2_PVP_DEFENSE_COEFFICIENT:.45
+// Early awakenings have a narrower stat budget. Gradual calibration avoids
+// making base class stats overpower early gear and still reaches 50% at III.
+const earlyMatch=(from,to)=>Boolean(from&&to)&&Math.min(Number(from.awakeningStage)||0,Number(to.awakeningStage)||0)<3
+export function pvpDefenseCoefficient(enabled=classesOnlyRebootEnabled(),from=null,to=null){
+ return enabled?(earlyMatch(from,to)?.475:V2_PVP_DEFENSE_COEFFICIENT):.45
 }
-export function v2PvpMatchupAdjustment(from,to,enabled=classesOnlyRebootEnabled()){
+function rawMatchupAdjustment(from,to,enabled){
  if(!enabled||!from?.classApplied||!to?.classApplied||from.heroId||to.heroId)return 0
  const a=from.classId,b=to.classId,stage=Number(from.awakeningStage)||0,targetStage=Number(to.awakeningStage)||0
  // Samurai's innate initiative already counters Necromancer; temper that
@@ -20,4 +23,8 @@ export function v2PvpMatchupAdjustment(from,to,enabled=classesOnlyRebootEnabled(
  if(a==='samurai'&&b==='paladin')return targetStage>=5?.05:0
  if(a==='berserker'&&b==='necromancer')return .01
  return 0
+}
+
+export function v2PvpMatchupAdjustment(from,to,enabled=classesOnlyRebootEnabled()){
+ return rawMatchupAdjustment(from,to,enabled)*(earlyMatch(from,to)?.7:1)
 }
