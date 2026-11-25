@@ -1431,7 +1431,7 @@ return transaction(async client=>{
 const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
 const offer=itemR.rows[0]
 if(!offer) throw new Error('Item da troca não encontrado.')
-const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
+const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && (item.rarity!=='legendary'||Object.hasOwn(STONE_EFFECTS,item.id)) && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
 if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
 if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
@@ -6702,7 +6702,7 @@ assertV2MarketListing(qty,price)
 await expireMarketListings()
 return transaction(async client=>{
 const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
-if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
+if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || (itemRow.rarity==='legendary'&&!Object.hasOwn(STONE_EFFECTS,itemId)) || itemId==='elmo_soberano_golem')
 throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
