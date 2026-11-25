@@ -11,9 +11,9 @@ import {businessV4CatalogPatch,businessV4IntervalGross} from './business-rebalan
 
 export const V2_EVENT_BUDGET=Object.freeze({
   weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
-  gtWeeklyPrizes:Object.freeze([10_000,5_500,3_000,1_500]),
-  gtHeatPrizes:Object.freeze([1_200,750,450,250,100]),
-  gtXpPercentPerHeat:Object.freeze([6,5,4,3,2]), // máximo 18% do próximo nível/3 vitórias
+  gtWeeklyPrizes:Object.freeze([50_000,30_000,15_000,7_500]),
+  gtHeatPrizes:Object.freeze([7_000,5_000,3_500,2_000,1_000]),
+  gtXpPercentPerHeat:Object.freeze([15,12,10,8,5]), // máximo 45% do próximo nível/3 vitórias
   pocoRankPrizes:Object.freeze([20_000,12_000,8_000]), // só uma edição sazonal
   pocoFloorBands:Object.freeze([300,500,700,1_100,1_600,2_300]),
   dailyBaseByTier:Object.freeze([4_500,5_000,5_500,6_000,6_500]),
