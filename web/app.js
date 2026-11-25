@@ -2099,7 +2099,7 @@ function inventoryLeveledStatsMarkup(item,equippedCopy=false){
   if(Number(stats.crit)>0) parts.push('🎯 +'+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(Number(stats.crit)*100)+'% CRIT');
   if(!parts.length) return '';
   return '<p class="item-bonus"><strong>Atributos reais no Lv.'+num(stats.level||item.equipment_level||1)+'</strong> • '+parts.join(' • ')+'</p>'+
-    (equippedCopy?'':'<p class="muted">Bônus ainda não ativos: toque em <strong>Equipar</strong> para aplicá-los ao personagem.</p>');
+    (equippedCopy?'':'<p class="muted">Atributos desta cópia, não somados ao equipamento em uso.</p>');
 }
 function inventorySaleLimit(item){
   const available=Math.max(0,Math.trunc(Number(item?.quantity||0)));
@@ -2129,13 +2129,13 @@ function inventoryEquipmentCopies(i){
   if(!['weapon','armor','boots','helmet'].includes(i.category)) return {equipped:i.equipped?[{...i,quantity:1}]:[],available:[{...i,quantity:Math.max(0,Number(i.quantity||0)-(i.equipped?1:0))}].filter(c=>c.quantity>0)};
   const scale=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50];
   const tiers=(Array.isArray(i.upgrade_distribution)&&i.upgrade_distribution.length?i.upgrade_distribution:[{level:i.equipment_level||1,quantity:i.quantity}])
-    .map(t=>({level:Number(t.level),quantity:Number(t.quantity),stars:Number(t.stars||1),kind:t.stars!=null?'star':'normal'}))
+    .map(t=>({level:Number(t.level),quantity:Number(t.quantity),stars:Number(t.stars||1),kind:t.stars!=null?'star':'normal',stats:t.stats||null}))
     .filter(t=>t.quantity>0);
   const strength=t=>(scale[t.level-1]||1)*(1+.04*(t.stars-1));
   tiers.sort((a,b)=>strength(b)-strength(a)||Number(a.kind==='star')-Number(b.kind==='star'));
   const best=tiers[0];
   const card=(t,quantity)=>({...i,quantity,equipment_level:t.level,equipment_stars:t.stars,forged_level:t.kind==='star'?t.level:0,sourceKind:t.kind,
-    equipment_stats:Number(i.equipment_stats?.level||i.equipment_level)===t.level&&t===best?i.equipment_stats:null});
+    equipment_stats:t.stats||(Number(i.equipment_stats?.level||i.equipment_level)===t.level&&Number(i.equipment_stats?.stars||1)===t.stars?i.equipment_stats:null)});
   const equipped=i.equipped&&best?[card(best,1)]:[];
   const available=tiers.map((t,n)=>card(t,t.quantity-(i.equipped&&n===0?1:0))).filter(t=>t.quantity>0);
   // Sale API is model-based and consumes basic/lowest normal tiers before forge.
@@ -2189,7 +2189,7 @@ function inventoryCard(i,options={}){
     : (eq?'<span class="tag">CÓPIA DISPONÍVEL</span>':'');
   return '<div class="card item-card '+rarityClass(i.rarity)+(equippedCopy?' equipped-item-card':'')+'">'+itemArtMarkup(i)+
     '<div class="tag-row">'+equippedTag+'<span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+(eq&&i.equipment_stats?'Descrição do item (atributos-base): ':'')+esc(itemDisplayDescription(i))+'</p>'+inventoryLeveledStatsMarkup(i,equippedCopy)+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+(eq?'Atributos-base (Lv.1): ':'')+esc(itemDisplayDescription(i))+'</p>'+inventoryLeveledStatsMarkup(i,equippedCopy)+
     (!equippedCopy&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
     (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
