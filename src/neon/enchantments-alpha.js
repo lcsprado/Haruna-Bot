@@ -327,11 +327,10 @@ export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearF
 
 export async function listAppliedStoneUpgrades(jid){
  if(!classesOnlyRebootEnabled())return []
- await initEnchantments()
- const {rows}=await db.query("SELECT e.item_id,e.stone_id,e.quantity,e.upgrade_levels,i.name FROM equipment_enchantments e JOIN inventories v ON v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0 JOIN items i ON i.id=e.item_id WHERE e.jid=$1 ORDER BY i.name,e.stone_id",[jid])
+ const {rows}=await db.query("SELECT e.item_id,e.stone_id,e.quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels,i.name FROM equipment_enchantments e JOIN inventories v ON v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0 JOIN items i ON i.id=e.item_id WHERE e.jid=$1 ORDER BY i.name,e.stone_id",[jid])
  return rows.filter(r=>STONES[r.stone_id]&&!isRebootCollabItemId(r.item_id)).flatMap(r=>{
   const levels=stoneLevels(r)
-  return levels.map((level,index)=>({itemId:r.item_id,itemName:r.name,stoneId:r.stone_id,level,index,levels,quote:level<10?stoneUpgradeQuote(STONES[r.stone_id],level):null}))
+  return levels.map((level,index)=>({itemId:r.item_id,itemName:r.name,stoneId:r.stone_id,stoneName:STONES[r.stone_id].name,label:stoneLevelLabel(STONES[r.stone_id],level),nextLabel:level<10?stoneLevelLabel(STONES[r.stone_id],level+1):null,level,index,levels,quote:level<10?stoneUpgradeQuote(STONES[r.stone_id],level):null}))
  })
 }
 export async function upgradeAppliedStone(jid,{itemId,stoneId,index,level,levels,token}={}){
