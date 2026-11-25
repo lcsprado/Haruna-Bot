@@ -115,3 +115,27 @@ test('backend rejects old code-only sessions and marks new sessions as password 
   assert.match(accounts,/web_sessions\(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at,auth_method\)/)
   assert.match(accounts,/VALUES\(\$1,\$2,\$3,\$4,\$5,\$5,'password'\)/)
 })
+test('Inventário Web mostra níveis individuais e envia a origem exata do upgrade',()=>{
+  const source=ui.slice(ui.indexOf('function inventoryEquipmentCopies('),ui.indexOf('function inventoryCard('));
+  assert.ok(source.length>0);
+  const split=new Function(source+'; return inventoryEquipmentCopies')();
+  const item={item_id:'garras_vazio',category:'weapon',quantity:2,equipped:true,equipment_level:5,upgrade_distribution:[{level:5,quantity:1},{level:2,quantity:1}]};
+  const before=split(item);
+  assert.equal(before.equipped[0].equipment_level,5);
+  assert.equal(before.available[0].equipment_level,2);
+  const after=split({...item,equipment_level:10,upgrade_distribution:[{level:10,quantity:1},{level:5,quantity:1}]});
+  assert.equal(after.equipped[0].equipment_level,10);
+  assert.equal(after.available[0].equipment_level,5);
+  const identical=split({...item,upgrade_distribution:[{level:5,quantity:2}]});
+  assert.equal(identical.available[0].quantity,1);
+  const sale=split({...item,quantity:3,sellable_quantity:2,upgrade_distribution:[{level:5,quantity:1},{level:3,quantity:1},{level:2,quantity:1}]});
+  assert.equal(sale.available.find(c=>c.equipment_level===3).sellable_quantity,0);
+  assert.equal(sale.available.find(c=>c.equipment_level===2).quantity,1);
+  assert.equal(sale.equipped[0].equipment_level,5);
+  const forged=split({...item,upgrade_distribution:[{level:9,quantity:1,stars:5},{level:10,quantity:1}]});
+  assert.equal(forged.equipped[0].sourceKind,'star');
+  assert.equal(forged.available[0].sourceKind,'normal');
+  assert.ok(ui.includes('sourceLevel:Number(x.dataset.sourceLevel)'));
+  assert.ok(ui.includes('sourceKind:x.dataset.sourceKind'));
+  assert.ok(backend.includes("body.sourceKind==='star'?'star':'normal'"));
+});
