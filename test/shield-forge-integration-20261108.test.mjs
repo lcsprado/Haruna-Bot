@@ -97,9 +97,9 @@ test('forja de escudo executa em transação isolada sem ReferenceError, consumi
   const sandbox={
     ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
     ensureUser:async()=>{},transaction:async action=>action(client),
-    assertRebootItemAllowed,
+    assertRebootItemAllowed,classesOnlyRebootEnabled:()=>true,
     sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
-    shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
+    shieldForgeCost,equipmentStatsAtLevel:(id,level,stars)=>({id,level,stars}),syncEffectiveGear:async()=>{},
     nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'
   }
   const forge=vm.runInNewContext('async function forgeEquipmentStar('+source+'\nforgeEquipmentStar',sandbox)
@@ -108,6 +108,8 @@ test('forja de escudo executa em transação isolada sem ReferenceError, consumi
   assert.equal(result.copies,4)
   assert.equal(result.cashSpent,22500)
   assert.equal(result.shieldForge,true)
+  assert.equal(result.before.level,1)
+  assert.equal(result.after.level,1)
   assert.ok(sqls.some(sql=>sql.startsWith('UPDATE inventories SET quantity=quantity-1')))
   assert.ok(sqls.some(sql=>sql.startsWith('UPDATE wallets SET cash=')))
   assert.ok(sqls.some(sql=>sql.startsWith('INSERT INTO equipment_star_forges')))
@@ -133,7 +135,7 @@ test('forja de escudo protege equipamento vinculado/equipado sem cobrar taxa',as
   const sandbox={
     ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
     ensureUser:async()=>{},transaction:async action=>action(client),
-    assertRebootItemAllowed,
+    assertRebootItemAllowed,classesOnlyRebootEnabled:()=>true,
     sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
     shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
     nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'

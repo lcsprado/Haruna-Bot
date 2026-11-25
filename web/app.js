@@ -2131,7 +2131,7 @@ function inventoryEquipmentCopies(i){
   const tiers=(Array.isArray(i.upgrade_distribution)&&i.upgrade_distribution.length?i.upgrade_distribution:[{level:i.equipment_level||1,quantity:i.quantity}])
     .map(t=>({level:Number(t.level),quantity:Number(t.quantity),stars:Number(t.stars||1),kind:t.stars!=null?'star':'normal'}))
     .filter(t=>t.quantity>0);
-  const strength=t=>(scale[t.level-1]||1)*(1+.04*(t.stars-1));
+  const strength=t=>t.stars>1?(250+10*(t.stars-2)+t.level)/100:(scale[t.level-1]||1);
   tiers.sort((a,b)=>strength(b)-strength(a)||Number(a.kind==='star')-Number(b.kind==='star'));
   const best=tiers[0];
   const card=(t,quantity)=>({...i,quantity,equipment_level:t.level,equipment_stars:t.stars,forged_level:t.kind==='star'?t.level:0,sourceKind:t.kind,
