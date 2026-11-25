@@ -7,6 +7,7 @@ import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.
 import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
+import {STONE_EFFECTS} from './enchantment-stones-catalog.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {planShopForge5} from './shop-forge5-plan.js'
 import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
@@ -3144,12 +3145,7 @@ UNION ALL
 SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity
 FROM inventories WHERE jid=$1 AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
 `,[jid,enchantedIds])).rows
-const enchantMap={
-pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
-pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-pedra_precisao_alpha:['crit',.01],
-selo_poder_5pct_alpha_20261019:['attackPct',.05]
-}
+const enchantMap={...STONE_EFFECTS,selo_poder_5pct_alpha_20261019:['attackPct',.05]}
 const ench={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
 for(const row of enchantRows){
 const data=enchantMap[row.stone_id]
@@ -3320,9 +3316,7 @@ FROM inventories WHERE jid=ANY($1::text[]) AND item_id='selo_poder_5pct_alpha_20
 `,[[attackerJid,defenderJid]])).rows
 const eqEnch=(jid,ids)=>{
 const stats={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
-const map={pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
-pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-pedra_precisao_alpha:['crit',.01],selo_poder_5pct_alpha_20261019:['attackPct',.05]}
+const map={...STONE_EFFECTS,selo_poder_5pct_alpha_20261019:['attackPct',.05]}
 for(const e of enchantRows){
 const st=map[e.stone_id]
 if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
