@@ -9,6 +9,7 @@ import {classCombatGrowth} from '../src/neon/class-combat-balance.js';
 import {classPvpAttack,classPvpDefense,classPvpCritBonus} from '../src/neon/pvp-class-powers.js';
 import {antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
 import {applyVitalCombatHp,vitalPulseHeal} from '../src/neon/vital-pets.js';
+import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from '../src/neon/pvp-equipment-counter-policy.js';
 import {pvpWinnerByHealth} from '../src/neon/pvp-outcome-policy.js';
 import {REBOOT_CLASS_IDS,classesOnlyRebootEnabled} from '../src/neon/reboot-classes-policy.js';
 const IDS=['paladin','necromancer','samurai','berserker'];
@@ -28,18 +29,18 @@ export function compileClassDuel(dbSource){
  const body=dbSource.slice(start,end);
  if(!body.includes('classPvpAttack(')||!body.includes('classPvpDefense(')||!body.includes('round<=20')||
     /await\s|\.query\(|process\.|require\(|import\s|fetch\(/.test(body))throw Error('Trecho de combate não é puro ou mudou.');
- const deps={classPvpAttack,classPvpDefense,vitalPulseHeal,effectiveShieldedCritChance,shieldedCriticalMultiplier,pvpWinnerByHealth};
+ const deps={classPvpAttack,classPvpDefense,vitalPulseHeal,effectiveShieldedCritChance,shieldedCriticalMultiplier,pvpWinnerByHealth,pvpDefenseCoefficient,v2PvpMatchupAdjustment};
  // Fonte local versionada, trecho sem I/O. A ramificação de herói nunca é executada.
  const duel=new Function(...Object.keys(deps),'A','B','Math',body+'\nreturn {winner:pvpWinnerByHealth(A,B,Math.random()).classId,ending:[A.hp,B.hp],rounds:Math.max(A.attackIndex,B.attackIndex)}');
  return (a,b,random)=>{const math=Object.create(Math);math.random=random;return duel(...Object.values(deps),a,b,math)};
 }
-export function buildClassFighter(id,level,stage,scenario){
+export function buildClassFighter(id,level,stage,scenario,gearScale=1){
  if(!IDS.includes(id)||![...LEVELS,...ELIGIBLE_LEVELS].includes(level)||!SCENARIOS.includes(scenario))throw Error('Cenário inválido.');
  const c=PLAYER_CLASSES[id],g=classCombatGrowth(id,level);
  // Base inicial e crescimento geral lidos do esquema: HP+8/ATK+2/DEF+1/SPD+1.
  // Despertar concluído nos checkpoints é hipótese, não elegibilidade comprovada.
  const hp=100+(level-1)*8+c.hp+g.hp+[0,0,30,75,135,215][stage];
- const m=scenario!=='none'?{hp:level*3,atk:Math.round(level*1.2),def:Math.round(level*.8),spd:10,crit:.06}:{hp:0,atk:0,def:0,spd:0,crit:0};
+ const m=scenario!=='none'?{hp:Math.round(level*3*gearScale),atk:Math.round(level*1.2*gearScale),def:Math.round(level*.8*gearScale),spd:Math.round(10*gearScale),crit:.06*gearScale}:{hp:0,atk:0,def:0,spd:0,crit:0};
  const pet=scenario==='petShield'?petPvpSpecialty(level>=60?'quimera_rubra':'cachorro',level):null;
  const max=vitalHp(hp+m.hp,pet);
  const shield=scenario==='petShield'?antiCritShieldStats('escudo_runico',Math.min(10,Math.ceil(level/10)),1):null;
