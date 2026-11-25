@@ -877,7 +877,7 @@ const RAID_CONFIGS=[
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level)&&raidEnabledInReboot(r))||null
 const raidEffectiveConfig=level=>candidateRaidConfig(raidConfig(level))
-const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:rebootEconomyEnabled()?38:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
 export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...candidateRaidConfig(r),durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
