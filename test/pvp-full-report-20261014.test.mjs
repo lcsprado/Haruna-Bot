@@ -91,3 +91,16 @@ test('relatorio identifica habilidades dos heróis sem confundir cura com classe
   assert.match(msg,/Armadura correspondente -2% dano recebido/);
   assert.doesNotMatch(msg,/Ban.*habilidade da classe/);
 });
+
+test('relatório exibe técnicas simultâneas, bônus, escudo criado e absorvido sem confundir cura',()=>{
+ const r=sample()
+ Object.assign(r.log[1],{classTechnique:'Égide Celestial',classTechniques:['Bênção Restauradora','Julgamento Divino','Égide Celestial'],classSkillBonusPct:.05,classShieldCreated:15})
+ Object.assign(r.log[3],{defenseTechnique:'Escudo de Despertar',defenseBlocked:22,shieldAbsorbed:15})
+ const msg=formatPvpBattleReport(r)
+ assert.match(msg,/Bênção Restauradora \/ Julgamento Divino \/ Égide Celestial/)
+ assert.match(msg,/\+5% de bônus da técnica/)
+ assert.match(msg,/\+15 de escudo criado/)
+ assert.match(msg,/escudo absorveu 15/)
+ const web=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
+ assert.match(web,/x\.classTechniques/);assert.match(web,/x\.classShieldCreated/)
+})
