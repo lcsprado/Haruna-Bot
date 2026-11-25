@@ -128,6 +128,10 @@ test('Inventário Web mostra níveis individuais e envia a origem exata do upgra
   assert.equal(after.available[0].equipment_level,5);
   const identical=split({...item,upgrade_distribution:[{level:5,quantity:2}]});
   assert.equal(identical.available[0].quantity,1);
+  const sale=split({...item,quantity:3,sellable_quantity:2,upgrade_distribution:[{level:5,quantity:1},{level:3,quantity:1},{level:2,quantity:1}]});
+  assert.equal(sale.available.find(c=>c.equipment_level===3).sellable_quantity,0);
+  assert.equal(sale.available.find(c=>c.equipment_level===2).quantity,1);
+  assert.equal(sale.equipped[0].equipment_level,5);
   const forged=split({...item,upgrade_distribution:[{level:9,quantity:1,stars:5},{level:10,quantity:1}]});
   assert.equal(forged.equipped[0].sourceKind,'star');
   assert.equal(forged.available[0].sourceKind,'normal');
