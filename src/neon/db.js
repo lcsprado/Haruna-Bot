@@ -12,10 +12,13 @@ import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcar
 import {stoneRowValue} from './stone-upgrade-policy.js'
 import {STONE_EFFECTS} from './enchantment-stones-catalog.js'
 import {syncEffectiveGear,selectEffectiveGear} from './equipment-star-logic.js'
+import {equipmentGrowthMultiplier} from './equipment-growth-v2.js'
 import {planShopForge5} from './shop-forge5-plan.js'
 import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
+import {paidGearSaleSteps,paidGearRefund,paidGearSaleMarker} from './paid-gear-resale.js'
+import {PAID_GEAR_HISTORY_INDEXES,PAID_GEAR_HISTORY_SQL} from './paid-gear-history-sql.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
@@ -648,6 +651,24 @@ SET quantity=inventories.quantity+EXCLUDED.quantity
 await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
 await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
 })
+// Create only the small ledger indexes needed by V2. Serialize concurrent bootstraps.
+if(classesOnlyRebootEnabled()){
+ await transaction(async client=>{
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended('v2-paid-gear-indexes',0))")
+  for(const sql of PAID_GEAR_HISTORY_INDEXES)await client.query(sql)
+ })
+}
+// V2: reselect effective forged tiers after changing the strength curve.
+if(classesOnlyRebootEnabled()){
+ await db.query(`INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+ SELECT sf.jid,sf.item_id,sf.level,${nowSql} FROM equipment_star_forges sf
+ JOIN inventories inv ON inv.jid=sf.jid AND inv.item_id=sf.item_id AND inv.quantity>0
+ JOIN items it ON it.id=sf.item_id
+ WHERE sf.stars>=2 AND (it.category IN ('weapon','armor','boots','helmet') OR (it.category='shield' AND sf.stars>=3))
+ AND sf.item_id NOT LIKE 'pecados_%'
+ ON CONFLICT(jid,item_id) DO UPDATE SET level=EXCLUDED.level,updated_at=EXCLUDED.updated_at
+ WHERE equipment_upgrades.level<>EXCLUDED.level`)
+}
 // As tabelas de pets são criadas por initCommunityPack; reparar só depois.
 }
 const recentEnsureUsers=createRecentEnsureCache()
@@ -1560,6 +1581,14 @@ function raidLegendarySellValue(item){
 if(item?.rarity!=='legendary'||!['weapon','armor'].includes(item.category))return null
 return RAID_LEGENDARY_GEAR_SELL_VALUES[item.id]??null
 }
+const PAID_GEAR_CATEGORIES=new Set(['weapon','armor','boots','helmet','shield'])
+async function paidGearHistory(client,jid,itemIds){
+ if(!itemIds.length)return new Map()
+ const {rows}=await client.query(PAID_GEAR_HISTORY_SQL,[jid,itemIds])
+ const history=new Map()
+ for(const row of rows){if(!history.has(row.item_id))history.set(row.item_id,[]);history.get(row.item_id).push(row)}
+ return history
+}
 export async function getInventory(jid) {
 const { rows } = await db.query(`
 SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
@@ -1646,26 +1675,30 @@ ELSE 1
 END DESC,
 it.name
 `,[jid])
+const v2=classesOnlyRebootEnabled()
+const paidHistory=v2?await paidGearHistory(db,jid,rows.filter(r=>PAID_GEAR_CATEGORIES.has(r.category)&&(Number(r.equipment_level)>1||Number(r.forged_level)>0||r.upgraded_copies?.length)).map(r=>r.item_id)):new Map()
 return rows.filter(r=>!classesOnlyRebootEnabled()||!isRebootCollabItemId(r.item_id)).map(r=>{
 if(classesOnlyRebootEnabled())r.sell_unit=rebootResaleUnit(r,{enabled:true})
 const upgradeRows=Array.isArray(r.upgraded_copies)?r.upgraded_copies:[]
 const upgradedQuantity=upgradeRows.reduce((n,c)=>n+Number(c.quantity||0),0)
 const sale=equipmentSalePolicy({quantity:r.quantity,equipped:r.equipped,boundQuantity:r.bound_quantity,upgradedQuantity,hasForge:Number(r.forged_level||0)>0,sellable:r.sellable!==false})
 const refundFromCopies=upgradeRows.reduce((n,c)=>n+equipmentUpgradeSellRefund(r.rarity,c.level)*Number(c.quantity||0),0)
+const paidSteps=v2&&sale.maxSellable>0&&PAID_GEAR_CATEGORIES.has(r.category)?paidGearSaleSteps({rows:paidHistory.get(r.item_id)||[],quantity:r.quantity,tiers:upgradeRows,forge:Number(r.forged_level)>0?{level:r.forged_level,stars:r.equipment_stars}:null,equipped:r.equipped,itemId:r.item_id}):[]
 return ({
 ...r,
 equipped:Boolean(r.equipped),
 upgrade_distribution:(()=>{
 const paid=Array.isArray(r.upgraded_copies)?r.upgraded_copies.map(c=>({level:Number(c.level),quantity:Number(c.quantity)})):[]
 const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0)-(r.forged_level?1:0))
-return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{level:r.forged_level,quantity:1,stars:r.equipment_stars}]:[])].sort((a,b)=>b.level-a.level)
+return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{level:r.forged_level,quantity:1,stars:r.equipment_stars}]:[])].sort((a,b)=>b.level-a.level).map(t=>({...t,stats:equipmentStatsAtLevel(r.item_id,t.level,t.stars||1)}))
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
 sellable_quantity:sale.maxSellable,
 regular_sellable_quantity:sale.regularSellable,
 can_sell_all:sale.canSellAll,
-upgrade_refund:sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
+upgrade_refund_steps:v2?paidSteps:null,
+upgrade_refund:v2?paidGearRefund(paidSteps,sale.maxSellable):sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
 ? (upgradeRows.length?refundFromCopies:equipmentUpgradeSellRefund(r.rarity,r.equipment_level))
 : 0
 })
@@ -1722,6 +1755,14 @@ for(const row of binds){
   excess-=take
 }
 }
+async function paidGearQuote(client,jid,item,owned,equipped,upgradeRows,qty){
+ if(!classesOnlyRebootEnabled()||!PAID_GEAR_CATEGORIES.has(item.category))return null
+ const forge=(await client.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,item.id])).rows[0]
+ if(!upgradeRows.length&&!forge)return {refund:0,marker:paidGearSaleMarker([],qty,owned-qty)}
+ const history=await paidGearHistory(client,jid,[item.id])
+ const steps=paidGearSaleSteps({rows:history.get(item.id)||[],quantity:owned,tiers:upgradeRows,forge,equipped,itemId:item.id})
+ return {refund:paidGearRefund(steps,qty),marker:paidGearSaleMarker(steps,qty,owned-qty)}
+}
 export async function sellItem(jid, itemId, qty=1) {
 assertRebootItemAllowed(itemId)
 qty=Number(qty)
@@ -1767,7 +1808,8 @@ const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
-const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
+const paidQuote=await paidGearQuote(client,jid,item,owned,equipped,upgradeRows,qty)
+const upgradeRefund=paidQuote?paidQuote.refund:(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
 ? (upgradeRows.length?upgradeRows.reduce((n,r)=>n+equipmentUpgradeSellRefund(item.rarity,r.level)*Number(r.quantity||0),0):equipmentUpgradeSellRefund(item.rarity,equipmentLevel))
 : 0
 const baseTotal=unit*qty
@@ -1777,11 +1819,11 @@ await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [qty,jid,itemId]
 )
-if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category)){
+if(remaining===0 && ['weapon','armor','boots','helmet','shield'].includes(item.category)){
 await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
-}else if(['weapon','armor','boots','helmet'].includes(item.category)){
+}else if(['weapon','armor','boots','helmet','shield'].includes(item.category)){
 await syncEffectiveGear(client,jid,itemId)
 }
 await client.query(
@@ -1791,7 +1833,7 @@ await client.query(
 await client.query(`
 INSERT INTO transactions(from_jid,to_jid,amount,type,note)
 VALUES('shop',$1,$2,'sale',$3)
-`,[jid,total,`${itemId} x${qty}|base:${baseTotal}|upgrade_refund:${upgradeRefund}|lv:${equipmentLevel}`])
+`,[jid,total,`${itemId} x${qty}|base:${baseTotal}|upgrade_refund:${upgradeRefund}|lv:${equipmentLevel}${paidQuote?.marker||''}`])
 const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
 return {
 item:{
@@ -1823,6 +1865,7 @@ qty:Number(s?.qty||0)
 if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
 throw new Error('Quantidade inválida na venda em lote.')
 }
+if(new Set(normalized.map(r=>r.itemId)).size!==normalized.length)throw new Error('Seleção de venda duplicada.')
 for(const row of normalized)assertRebootItemAllowed(row.itemId)
 await ensureUser(jid)
 return transaction(async client=>{
@@ -1869,7 +1912,8 @@ const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
-const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
+const paidQuote=await paidGearQuote(client,jid,item,owned,equipped,upgradeRows,sel.qty)
+const upgradeRefund=paidQuote?paidQuote.refund:(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
 ? (upgradeRows.length?upgradeRows.reduce((n,r)=>n+equipmentUpgradeSellRefund(item.rarity,r.level)*Number(r.quantity||0),0):equipmentUpgradeSellRefund(item.rarity,equipmentLevel))
 : 0
 const baseTotal=unit*sel.qty
@@ -1879,11 +1923,11 @@ await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [sel.qty,jid,sel.itemId]
 )
-if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category)){
+if(remaining===0 && ['weapon','armor','boots','helmet','shield'].includes(item.category)){
 await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
-}else if(['weapon','armor','boots','helmet'].includes(item.category)){
+}else if(['weapon','armor','boots','helmet','shield'].includes(item.category)){
 await syncEffectiveGear(client,jid,sel.itemId)
 }
 sold.push({
@@ -1897,7 +1941,8 @@ baseTotal,
 total,
 equipped,
 equipmentLevel,
-upgradeRefund
+upgradeRefund,
+paidSaleMarker:paidQuote?.marker||''
 })
 grandTotal+=total
 totalUnits+=sel.qty
@@ -1910,7 +1955,7 @@ for(const row of sold){
 await client.query(`
 INSERT INTO transactions(from_jid,to_jid,amount,type,note)
 VALUES('shop',$1,$2,'sale_batch',$3)
-`,[jid,row.total,`${row.itemId} x${row.qty}`])
+`,[jid,row.total,`${row.itemId} x${row.qty}|base:${row.baseTotal}|upgrade_refund:${row.upgradeRefund}${row.paidSaleMarker||''}`])
 }
 const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
 return {
@@ -2436,7 +2481,7 @@ level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
 const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)||WEEKLY_GOLEM_V2_GEAR_IDS.includes(itemId)||POCO_ABISMO_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
-const mult=multipliers[level-1]
+const mult=classesOnlyRebootEnabled()?equipmentGrowthMultiplier(level,starLevel,true)/starMult:multipliers[level-1]
 return {
 ...eq,itemId,level,stars:starLevel,starMult,mult,
 atk:Math.round(Number(eq.atk||0)*mult*starMult),
@@ -2572,7 +2617,7 @@ const requiredCopies=shieldForge?(stars===1?2:1):collab?special.requiredCopies:s
 const ready=shieldForge?(stars===1?basicCopies>=2&&shieldDonorCopies>=1:Number(r.forged_level)===10&&shieldDonorCopies>=1):collab?special.ready:stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
 const canForge=shieldForge?stars<5&&ready&&copies>=2&&Number(r.cash)>=fee:collab?special.canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed
 return {...r,origin,collab,shieldForge,fee,basicCopies,shieldDonorCopies,stars,needed,free,requiredCopies,ready,canForge,
-current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
+current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):shieldForge&&classesOnlyRebootEnabled()?1:10,stars),
 next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
 }
@@ -2638,7 +2683,7 @@ await syncEffectiveGear(c,jid,itemId)
 const enchantments=(await c.query("SELECT stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=$2 ORDER BY stone_id",[jid,itemId])).rows
 if(JSON.stringify(enchantments)!==JSON.stringify(enchantmentsBefore))throw new Error('Encantamentos divergentes; forja cancelada sem consumir recursos.')
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',$3,$4,$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; ${collab?'0 cópias consumidas':'-1 cópia'}; ${shieldForge?'R$ '+fee:'-'+required+' '+origin.materialId}`,fee,shieldForge?'equipment_star_forge_shield':collab?'equipment_star_forge_collab_fragments':'equipment_star_forge'])
-return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,shieldForge&&stars===1&&classesOnlyRebootEnabled()?1:10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
 export const listStarForgeWeapons=listStarForgeEquipment
@@ -3847,6 +3892,7 @@ await client.query(
 'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
 [jid]
 )
+if(classesOnlyRebootEnabled())await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'owner',0,'owner_reset_inventory','admin inventory reset')",[jid])
 return { removed }
 })
 }

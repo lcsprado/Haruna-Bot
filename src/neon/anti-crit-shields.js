@@ -1,3 +1,5 @@
+import {shieldGrowthMultiplier} from './equipment-growth-v2.js'
+import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {POCO_ABISMO_GEAR} from './poco-abismo-gear.js'
 import {effectiveShieldForgeFee} from './reboot-gear-economy.js'
 // Escudos são equipamentos anti-crítico, não alteram atributos-base de heróis ou classes.
@@ -31,12 +33,12 @@ export function shieldForgeCost(itemId,currentStars=1){
   const reference=Number(shield.price||({egide_celestial:100000,egide_crepusculo:225000,bastiao_eclipse:250000,escudo_monarca_caido_20261116:160000,muralha_abismo_imperial_20261116:160000,baluarte_trovao_eterno_20261116:160000}[shield.id]||100000));
   return effectiveShieldForgeFee(Math.ceil(reference*stars*.5));
 }
-export function antiCritShieldStats(itemId,level=1,stars=1){
+export function antiCritShieldStats(itemId,level=1,stars=1,enabled=classesOnlyRebootEnabled()){
   const shield=SHIELDS_BY_ID[String(itemId||'')];
   if(!shield)return null;
   const lv=Math.max(1,Math.min(10,Math.trunc(Number(level)||1)));
   const starLevel=Math.max(1,Math.min(5,Math.trunc(Number(stars)||1)));
-  const growth=(1+.5*((lv-1)/9))*(1+.04*(starLevel-1));
+  const growth=shieldGrowthMultiplier(lv,starLevel,enabled);
   return {
     critResist:Number(Math.min(.20,shield.critResist*growth).toFixed(6)),
     critGuard:Number(Math.min(.30,shield.critGuard*growth).toFixed(6))

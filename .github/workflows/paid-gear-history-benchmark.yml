@@ -1,0 +1,42 @@
+name: V2 - benchmark histórico de equipamentos PostgreSQL
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/paid-gear-history-sql.js'
+      - 'src/neon/db.js'
+      - 'scripts/benchmark-paid-gear-history.mjs'
+      - '.github/workflows/paid-gear-history-benchmark.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: benchmark
+          POSTGRES_PASSWORD: disposable
+          POSTGRES_DB: gear_benchmark
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U benchmark -d gear_benchmark"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ALPHA_GEAR_BENCHMARK: isolated-ci
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: gear_benchmark
+      PGUSER: benchmark
+      PGPASSWORD: disposable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/benchmark-paid-gear-history.mjs
