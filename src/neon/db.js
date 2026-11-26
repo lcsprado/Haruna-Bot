@@ -3310,7 +3310,7 @@ armor_level:Number(a.level||1),
 boot_level:Number(b.level||1),
 }
 }
-export async function battle(attackerJid, defenderJid) {
+export async function battle(attackerJid, defenderJid, options={}) {
 if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
 await ensureUser(defenderJid)
 for(let attempt=1;attempt<=3;attempt++){
@@ -3395,8 +3395,11 @@ const bSynergySpd=Number(bSynergy.speed||0)
 if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
 if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
 if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
-const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
-if(!cd.ok) return {ok:false,remaining:cd.remaining}
+const expectedHp=classesOnlyRebootEnabled()?options.expectedHp:undefined
+if(expectedHp===undefined){
+ const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
+ if(!cd.ok) return {ok:false,remaining:cd.remaining}
+}
 const levelRows=(await client.query(
 'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
 [[attackerJid,defenderJid]]
@@ -3456,6 +3459,14 @@ enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCri
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 shieldName:beS.name||null,shieldCritResist:Number(beS.critResist||0),shieldCritGuard:Number(beS.critGuard||0),
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
+}
+// Compare the preview against the locked combat inputs before consuming cooldown.
+if(expectedHp!==undefined){
+ const valid=expectedHp&&[expectedHp.attackerHp,expectedHp.attackerMaxHp,expectedHp.defenderHp,expectedHp.defenderMaxHp].every(Number.isSafeInteger)
+ if(!valid||expectedHp.attackerHp!==A.hp||expectedHp.attackerMaxHp!==A.maxHp||expectedHp.defenderHp!==B.hp||expectedHp.defenderMaxHp!==B.maxHp)
+   return {ok:false,staleHp:true}
+ const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
+ if(!cd.ok)return {ok:false,remaining:cd.remaining}
 }
 // HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
 const applyPvpVital=(fighter,synergy)=>{
