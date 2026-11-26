@@ -37,6 +37,6 @@ test('common Boss: suppressed payouts do not enter money, XP, pet XP, box or rec
   assert.match(src,/if\(!commonV2\|\|cash>0\) await credit/)
   assert.match(src,/if\(!commonV2\|\|exp>0\) await grantExpInTransaction/)
   assert.match(src,/if\(pp&&\(!commonV2\|\|commonV2\.xp>0\)\)/)
-  assert.match(src,/if\(commonV2\.boxChance>0&&Math\.random\(\)<commonV2\.boxChance\)/)
+  assert.match(src,/if\(commonV2\.boxChance>0&&Math\.random\(\)<Math\.min\(\.05,commonV2\.boxChance\+Number\(pb\.drop\|\|0\)\*\.10\)\)/)
   assert.match(src,/\(commonV2&&commonV2\.xp===0\)\?null:await maybeGrantReclassScroll/)
 })

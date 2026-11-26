@@ -38,7 +38,7 @@ test('prêmios especiais legados do Golem não são concedidos na V2',()=>{
  assert.match(s,/legendaryBoxes=weekly&&!rebootEconomyEnabled\(\)\?weeklyGolemLegendaryBoxCount/)
 })
 
-test('Superboss V2: XP proporcional, caixas limitadas e chance exclusiva sem bônus de pet',()=>{
+test('Superboss V2: XP proporcional, caixas limitadas e chance exclusiva base antes dos bônus de pet',()=>{
  const reward=(position,damage,totalDamage)=>rebootWeeklyBossReward({position,damage,totalDamage,weekendKey:'2026-11-20'})
  assert.deepEqual(reward(1,1_000_000,1_000_000),{xp:4000,box:'caixa_epica',exclusiveChance:.05})
  const rows=[reward(1,400_000,1_000_000),reward(2,300_000,1_000_000),reward(3,200_000,1_000_000),reward(4,100_000,1_000_000)]
@@ -53,8 +53,9 @@ test('Superboss V2: XP proporcional, caixas limitadas e chance exclusiva sem bô
 test('Superboss V2 usa prêmio novo na liquidação e não multiplica XP pelo evento antigo',()=>{
  const s=source('src/neon/games.js')
  assert.match(s,/cash=v2Reward\?\(weeklyCashShares\?\.get\(p\.jid\)\|\|0\):weeklyCashShares===null/)
- assert.match(s,/exp=v2Reward\?v2Reward\.xp:Math\.floor/)
+ assert.match(s,/exp=v2Reward\?Math\.floor\(v2Reward\.xp\*\(1\+Number\(pb\.xp\|\|0\)\)\):Math\.floor/)
  assert.match(s,/v2Reward\?exp:await halloweenPveXp/)
+ assert.match(s,/v2Reward\.exclusiveChance>0&&Math\.random\(\)<v2Reward\.exclusiveChance\+Math\.min\(\.008,Number\(pb\.drop\|\|0\)\*\.10\)/)
  assert.match(s,/if\(v2Reward\)\{[\s\S]*?\}else drops=weekly\?await giveBossDrops/)
  assert.match(source('src/neon/index.js'),/classesOnlyRebootEnabled\(\)\?'🏆 Superboss 2\.0/)
 })

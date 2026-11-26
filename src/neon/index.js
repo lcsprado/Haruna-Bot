@@ -11748,7 +11748,12 @@ text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n🏷️ ${pe
 const synergy=petTeamSynergy(team)
 if(synergy) text+=`✨ *SINERGIA — ${synergy.label}*\n${synergy.text}\n\n`
 else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 espécies distintas do mesmo estilo ou complete o mesmo estilo com um ou dois Coringas.\n\n'
-text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n🛟 O Suporte participa das sinergias passivas.\n👉 Use *!equiparpet* para montar o time.'
+if(classesOnlyRebootEnabled()){
+const reward=profileCombatPetBonuses(p1,team).active
+const percent=n=>Number((Number(n||0)*100).toFixed(2)).toLocaleString('pt-BR')
+text+=`📊 *BÔNUS PASSIVOS DA EQUIPE — BOSS/RAID*\n⚔️ Dano: +${percent(reward.damage)}% • 🛡️ Defesa: +${percent(reward.defense)}%\n❤️ HP: +${percent(reward.hp)}% • 🎯 CRIT: +${percent(reward.crit)} p.p.\n🌀 Esquiva: +${percent(reward.dodge)} p.p.\n🍀 Lucky Drop: +${percent(reward.drop)}%\n✨ XP do personagem: +${percent(reward.xp)}%\nPrincipal 100% • Suporte 50% • Reserva 25% (sem exigir sinergia).\n\n`
+}
+text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n🛟 O Suporte concede bônus passivos.\n👉 Use *!equiparpet* para montar o time.'
 return await reply(text)
 }
 if(cmd==='equiparpet'){
