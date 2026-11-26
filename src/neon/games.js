@@ -10,7 +10,7 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
-import {applyV2PetXpEvent} from './reboot-pet-xp-event.js'
+import {applyV2PetXpEvent,applyV2OwnerEvent} from './reboot-pet-xp-event.js'
 import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
@@ -1151,12 +1151,12 @@ export async function withdrawRaid(chat,jid,level=null){
   })
 }
 
-async function raidPetXp(c,jid,gain,{lote=false}={}){
+async function raidPetXp(c,jid,gain,{lote=false,raid=false}={}){
   gain=Math.max(0,Math.floor(Number(gain)||0))
   if(!gain) return null
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p||PECADOS_HERO_IDS.includes(String(p.species||'')))return null
-  if(!lote&&rebootEconomyEnabled())gain=await applyV2PetXpEvent(c,jid,gain,p.xp)
+  if(!lote&&rebootEconomyEnabled())gain=raid?await applyV2OwnerEvent(c,jid,['pet','raid'],gain,{pet:true,limit:Math.max(0,9900-Number(p.xp||0)-gain)}):await applyV2PetXpEvent(c,jid,gain,p.xp)
   const rawXp=Number(p.xp||0)+gain
   const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(p.xp||0)))
   const level=Math.min(100,1+Math.floor(rawXp/100))
@@ -1170,14 +1170,14 @@ async function raidPetXp(c,jid,gain,{lote=false}={}){
   return r?{name:r.name,xp:gain,creditedXp,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
 
-async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
+async function grantTeamPetXp(c,jid,baseGain,{lote=false,raid=false}={}){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=lote?1:await getPetXpEventMultiplier(c)
   baseGain=rebootEconomyEnabled()?petCombatExperience(baseGain):lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
     :await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
-  const primary=await raidPetXp(c,jid,baseGain,{lote})
+  const primary=await raidPetXp(c,jid,baseGain,{lote,raid})
   if(primary) awards.push({slot:1,name:primary.name,xp:primary.xp,creditedXp:primary.creditedXp,level:primary.level})
 
   const team=(await c.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
@@ -1188,7 +1188,7 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
     const slot=Number(pet.slot)
     let gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
     if(!gain) continue
-    if(!lote&&rebootEconomyEnabled())gain=await applyV2PetXpEvent(c,jid,gain,pet.xp)
+    if(!lote&&rebootEconomyEnabled())gain=raid?await applyV2OwnerEvent(c,jid,['pet','raid'],gain,{pet:true,limit:Math.max(0,9900-Number(pet.xp||0)-gain)}):await applyV2PetXpEvent(c,jid,gain,pet.xp)
     const rawXp=Number(pet.xp||0)+gain
     const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(pet.xp||0)))
     const level=Math.min(100,1+Math.floor(rawXp/100))
@@ -1466,11 +1466,13 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
-    const normalCash=v2RaidCash?v2RaidCash.payouts.get(p.jid):Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
+    const baseCash=v2RaidCash?v2RaidCash.payouts.get(p.jid):Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
+    const normalCash=v2RaidCash&&!lote?cfg.keyPrice+await applyV2OwnerEvent(c,p.jid,['dinheiro'],Math.max(0,baseCash-cfg.keyPrice)):baseCash
     const originalCash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
     const cash=relative?raidLoteRelativeCash(originalCash,s.loteNominalKeyPrice,relative):originalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
-    const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
+    const rawExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
+    const normalExp=rebootEconomyEnabled()&&!lote?await applyV2OwnerEvent(c,p.jid,['xp','raid'],rawExp):rawExp
     const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
@@ -1478,7 +1480,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       :{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const petXp=loteReduced?raidLoteReward(baseRaidPetXp,'petXp'):(baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0)
-    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp,{lote}):[]
+    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp,{lote,raid:true}):[]
     const awardedPetXp=petXpTeam[0]?.xp??petXp
 
     let material=null,drop=null,gearDrop=null
@@ -1544,12 +1546,13 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote||rebootEconomyEnabled()?baseQty:baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
+    const qty=loteReduced?raidLoteReward(baseQty,'fragment'):(lote?baseQty:rebootEconomyEnabled()?await applyV2OwnerEvent(c,p.jid,['fragmentos'],baseQty):baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
     }
     }
+    const v2DropMultiplier=rebootEconomyEnabled()&&!lote&&(cfg.box||cfg.gear?.length)?await applyV2OwnerEvent(c,p.jid,['drop'],1,{roll:true}):1
     if(cfg.box){
       // Lv15-25: aproximadamente metade da chance antiga.
       // Lv30+: o 1º colocado não recebe mais caixa garantida; base de 55%.
@@ -1563,7 +1566,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
       if(!lote&&cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
-      boxChance=Math.min(.85,loteReduced?raidLoteGearChance(boxChance):(lote?boxChance:boxChance*ownerDrop))
+      boxChance=Math.min(.85,loteReduced?raidLoteGearChance(boxChance):(lote?boxChance:boxChance*ownerDrop*v2DropMultiplier))
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
@@ -1576,7 +1579,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
-      const normalChance=Math.min(.12,(lote?baseGearChance:(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop))
+      const normalChance=Math.min(.12,(lote?baseGearChance:(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop*v2DropMultiplier))
       const chance=expandedV2GearChance(cfg,loteReduced?raidLoteGearChance(normalChance):normalChance)
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
@@ -4125,6 +4128,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             :weeklyNov13Xp
           exp=v2Reward?Math.floor(v2Reward.xp*(1+Number(pb.xp||0))):Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
+          if(rebootEconomyEnabled()&&exp>0)exp=await applyV2OwnerEvent(c,p.jid,['xp'],exp)
           if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':(eventMode?'boss_event_eclipse_v2':'boss_common'))
           if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp&&(!commonV2||commonV2.xp>0)){
