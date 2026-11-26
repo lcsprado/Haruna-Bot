@@ -15,8 +15,9 @@ const uses=async(id)=>Number((await db.query('SELECT uses_remaining FROM mining_
 const committed=async()=>Number((await db.query("SELECT COUNT(*)::int AS n FROM mining_expeditions WHERE jid=$1 AND status='claimed'",[jid])).rows[0].n)
 const run=async(fn)=>{const c=await db.connect();try{await c.query('BEGIN');await miningActivityLock(c,jid);const r=await fn(c);await c.query('ROLLBACK');return r}catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}}
 
-test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e bloqueios',async(t)=>{
+test('homologação PostgreSQL real: dinheiro, tempo, drops, idempotência e bloqueios',{skip:process.env.ALPHA_MINING_INTEGRATION_PG!=='1'},async(t)=>{
   assertMiningHomologation()
+  assert.ok(['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.DATABASE_URL).hostname),'Banco deve ser PostgreSQL local descartável')
   try{
     // Fixture exclusiva do banco descartável. Não usar initDatabase nem bancos reais.
     await db.query(`

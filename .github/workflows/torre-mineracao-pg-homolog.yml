@@ -63,6 +63,8 @@ jobs:
           node --check src/neon/index.js
           node --check src/neon/raid-lote-store.js
       - name: Regras, isolamento e integracao PostgreSQL real
+        env:
+          ALPHA_MINING_INTEGRATION_PG: '1'
         run: >-
           node --test
           test/torre-mineracao-4h.test.mjs

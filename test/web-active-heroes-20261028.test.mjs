@@ -57,7 +57,12 @@ test('retratos responsivos e cache Web atual sem recuperar aba NPC antiga',()=>{
  assert.match(css,/collab-current-hero/)
  assert.match(css,/collab-hero-card-art/)
  assert.match(css,/@media\(max-width:610px\)\{\.collab-current-hero/)
- assert.match(html,/\/app\.js\?v=20261119-identity-v2/)
- assert.match(html,/\/styles\.css\?v=20261119-identity-v2/)
- assert.match(sw,/alpha-rpg-pwa-20261119-identity-v2/)
+ const appVersion=html.match(/\/app\.js\?v=([^"'\s]+)/)?.[1]
+ const cssVersion=html.match(/\/styles\.css\?v=([^"'\s]+)/)?.[1]
+ const cacheVersion=sw.match(/const CACHE='alpha-rpg-pwa-([^']+)'/)?.[1]
+ assert.ok(appVersion&&cssVersion&&cacheVersion)
+ assert.equal(appVersion,cssVersion,'JS e CSS devem usar a mesma versão')
+ assert.equal(cacheVersion,appVersion,'Service worker deve invalidar o mesmo release')
+ assert.match(appVersion,/^\d{8}-[a-z0-9-]+$/)
+ assert.ok(appVersion>='20261124-fortress-v2','não reintroduzir cache anterior à fortaleza V2')
 })

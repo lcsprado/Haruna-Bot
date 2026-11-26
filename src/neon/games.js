@@ -1,5 +1,5 @@
 import {v2EpicRaidBoxChance} from './v2-raid-epic-box-policy.js'
-import {assertNoActiveMining} from './torre-mineracao-activity.js'
+import {assertNoActiveMining,assertNoActiveRest} from './torre-mineracao-activity.js'
 import {expandV2RaidWeapons,expandedV2GearChance} from './v2-raid-weapon-builds.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout} from './raid-lote-policy.js'
@@ -956,6 +956,7 @@ export async function createRaid(chat,host,name='Jogador',level=10,options={}){
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${host}`])
     await assertNoActiveMining(c,host)
+    if(classesOnlyRebootEnabled())await assertNoActiveRest(c,host)
     await assertNoActiveRaidLote(c,host)
     const sameRoom=(await resolveRaidRoom(c,chat,cfg.level))[0]
     if(sameRoom) throw new Error(`Já existe uma sala da Raid Lv.${cfg.level} neste grupo.`)
@@ -994,6 +995,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null,options={}){
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${jid}`])
     await assertNoActiveMining(c,jid)
+    if(classesOnlyRebootEnabled())await assertNoActiveRest(c,jid)
     await assertNoActiveRaidLote(c,jid)
     const joinedHere=(await resolveRaidRoom(c,chat,null,{jid}))[0]
     if(joinedHere){
@@ -1281,7 +1283,10 @@ export async function startRaid(chat,host,level=null,options={}){
     }
     if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala expirou. Abra outra Raid.')
     const ids=Object.keys(s.players||{})
-    for(const jid of ids)await assertNoActiveMining(c,jid)
+    for(const jid of ids){
+      await assertNoActiveMining(c,jid)
+      if(!loteAttemptId&&classesOnlyRebootEnabled())await assertNoActiveRest(c,jid)
+    }
     const cfg=raidEffectiveConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     // Todas as Raids podem ser iniciadas solo. O tempo, HP e ATK da Raid

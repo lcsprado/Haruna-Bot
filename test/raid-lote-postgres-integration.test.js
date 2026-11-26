@@ -17,6 +17,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
   try{
     await db.query('CREATE TABLE users(jid TEXT PRIMARY KEY,level INTEGER NOT NULL)')
     await db.query('CREATE TABLE player_carpinar(jid TEXT PRIMARY KEY REFERENCES users(jid),ends_at BIGINT NOT NULL)')
+    await db.query('CREATE TABLE player_sleep(jid TEXT PRIMARY KEY REFERENCES users(jid),ends_at BIGINT NOT NULL)')
     await db.query('CREATE TABLE stats(jid TEXT PRIMARY KEY,hp BIGINT NOT NULL)')
     await db.query('CREATE TABLE inventories(jid TEXT NOT NULL,item_id TEXT NOT NULL,quantity INTEGER NOT NULL,PRIMARY KEY(jid,item_id))')
     await db.query('CREATE TABLE wallets(jid TEXT PRIMARY KEY,cash BIGINT NOT NULL,bank BIGINT NOT NULL)')
@@ -195,15 +196,21 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
         [v2Jid]
       )
       const req={jid:v2Jid,level:10,durationHours:4,
-        requestKey:'v2-timed-four-hours-idempotent',confirmed:true}
+        requestKey:'v2-timed-four-hours-idempotent',confirmed:true,usePet:false}
       await db.query("INSERT INTO player_carpinar(jid,ends_at) VALUES($1,EXTRACT(EPOCH FROM NOW())::BIGINT+3600)",[v2Jid])
       await assert.rejects(startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog}),/carpindo/)
       await db.query('DELETE FROM player_carpinar WHERE jid=$1',[v2Jid])
+      await db.query("INSERT INTO player_sleep(jid,ends_at) VALUES($1,EXTRACT(EPOCH FROM NOW())::BIGINT+3600)",[v2Jid])
+      await assert.rejects(startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog}),/dormindo/)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),18395)
+      await db.query('DELETE FROM player_sleep WHERE jid=$1',[v2Jid])
       const plan=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
       assert.equal(plan.firstPrice.totalPrice,2200)
       assert.equal(plan.job.duration_hours,4)
       const row=(await db.query('SELECT * FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
       assert.equal(row.billing_mode,'per_attempt')
+      assert.equal(row.use_pet,false)
+      await assert.rejects(startTimedRaidLoteSession(db,{...req,usePet:true},{getCatalog:v2Catalog}),/parâmetros divergentes/)
       assert.equal(Number(row.requested),1000000)
       assert.ok(row.next_attempt_at instanceof Date)
       assert.ok(Math.abs(row.next_attempt_at.getTime()-row.created_at.getTime())<3000)
@@ -212,6 +219,10 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       const replay=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
       assert.equal(replay.alreadyPurchased,true)
       assert.equal(replay.job.id,plan.job.id)
+      await db.query("INSERT INTO player_sleep(jid,ends_at) VALUES($1,EXTRACT(EPOCH FROM NOW())::BIGINT+3600)",[v2Jid])
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})).status,'player_busy')
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),18395)
+      await db.query('DELETE FROM player_sleep WHERE jid=$1',[v2Jid])
       const next=await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})
       assert.equal(next.status,'reserved')
       assert.equal(Number(next.attempt.seq),1)

@@ -1,4 +1,4 @@
-import {assertNoActiveMining} from './torre-mineracao-activity.js'
+import {assertNoActiveMining,getActiveRest} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES,RAID_LOTE_V2_MAX_ATTEMPTS} from './raid-lote-policy.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
@@ -293,11 +293,9 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     }
     // Exclusao mutua com Carpinar: o mesmo advisory lock e usado ao
     // iniciar trabalho AFK; a validacao no banco impede corridas entre comandos.
-    const carpinar=(await c.query(
-      "SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
-      [jid]
-    )).rows[0]
-    if(carpinar)throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
+    const rest=await getActiveRest(c,jid)
+    if(rest==='sleep')throw new Error('Você está dormindo. Termine o sono antes de ativar o Raidlote.')
+    if(rest==='carpinar')throw new Error('🌾 Você está carpindo. Termine a jornada antes de ativar o Raidlote.')
     const active=(await c.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') FOR UPDATE",[jid])).rows[0]
     if(active)throw new Error('Já existe Raidlote em andamento')
     const busy=(await c.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
@@ -400,6 +398,11 @@ export async function reserveNextRaidLoteAttempt(db,jobId,{getCatalog}={}){
       AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1
     `,[job.jid])).rows[0]
     if(busy)return {status:'player_busy'}
+    // Pacotes V2 antigos que já estavam em conflito não cobram nova tentativa.
+    if(continuous){
+      if(await getActiveRest(c,job.jid))return {status:'player_busy'}
+      await assertNoActiveMining(c,job.jid)
+    }
     const id=crypto.randomUUID(),seq=Number(job.started)+1
     if(continuous){
       // Cobrança exatamente uma vez, na MESMA transação que reserva a tentativa.

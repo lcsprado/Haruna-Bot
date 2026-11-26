@@ -17,7 +17,9 @@ test('ajuste isolado na Raid70 V2, sem zerar dano válido ou alterar economia V1
  assert.equal(estimatedRaidPetHit(70,320),16);
  for(const lv of [10,15,20,25,30,40,50,60,65,75]){
   assert.equal(raidPlayerDefenseCoefficient(lv),.22);
-  assert.equal(raidPetDamageMultiplier(lv),raidPetDamageMultiplier(lv,{enabled:false}));
+  const expected=lv===40?.35:lv===50?.30:raidPetDamageMultiplier(lv,{enabled:false});
+  assert.equal(raidPetDamageMultiplier(lv),expected);
+  if(lv===40||lv===50)assert.equal(raidPetDamageMultiplier(lv,{enabled:false}),1);
  }
  assert.deepEqual(V2_RAID_DIFFICULTY[70],{hp:1600000,atk:320});
  const game=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
