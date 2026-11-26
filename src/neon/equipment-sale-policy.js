@@ -1,6 +1,5 @@
-// Regras compartilhadas pelo menu e pelas transações: cópias Lv.1 podem ser
-// vendidas individualmente; cópias aprimoradas somente na liquidação integral,
-// sem peça equipada, vinculada ou forjada.
+// Revenda voluntária ao sistema: qualquer cópia livre, inclusive aprimorada,
+// forjada ou vinculada. O mercado/descarte continuam usando o limite conservador de Lv.1.
 export function equipmentSalePolicy({
   quantity = 0, equipped = false, boundQuantity = 0,
   upgradedQuantity = 0, hasForge = false, sellable = true
@@ -15,11 +14,11 @@ export function equipmentSalePolicy({
   const regularSellable = sellable && !inconsistent
     ? Math.max(0, Math.min(basic, owned - protectedQuantity))
     : 0
-  const canSellAll = Boolean(sellable && !inconsistent && owned > 0 &&
-    protectedQuantity === 0 && !hasForge)
+  const maxSellable = sellable && !inconsistent ? Math.max(0, owned - (equipped ? 1 : 0)) : 0
+  const canSellAll = owned > 0 && maxSellable === owned
   return {
     basic, regularSellable, canSellAll,
-    maxSellable: canSellAll ? owned : regularSellable,
+    maxSellable,
     inconsistent
   }
 }
@@ -27,6 +26,5 @@ export function equipmentSalePolicy({
 export function equipmentSaleQuantityAllowed(policy, quantity, owned) {
   const qty = Number(quantity)
   return Number.isSafeInteger(qty) && qty > 0 &&
-    (qty <= policy.regularSellable ||
-      (policy.canSellAll && qty === Number(owned)))
+    qty <= policy.maxSellable && qty <= Number(owned)
 }
