@@ -19,6 +19,7 @@ import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSha
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {activeCombatPetTeam} from './reboot-pet-team.js'
+import {petTeamRewardBonuses} from './pet-team-reward-bonuses.js'
 import {raidNecromancerCurse,recordRaidAuraProtection,raidRoleReport} from './raid-cooperative-roles.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {activeRelic} from './relics.js'
@@ -815,8 +816,8 @@ function petBossBonus(pet){
 
 
 // Bônus passivos do esquadrão: 100% ativo, 50% slot 2, 25% slot 3.
-// O slot ativo não é contado duas vezes. As habilidades especiais e
-// bônus econômicos de XP/drop continuam exclusivos do pet combatente.
+// O slot ativo não é contado duas vezes. Habilidades especiais são do combatente.
+// V2 agrega XP/drop separadamente, sem depender da sinergia.
 function squadCombatBonus(activeBonus,activeSlot,team=[]){
   const total={...activeBonus}
   for(const key of ['damage','defense','crit','dodge','hp']){
@@ -830,6 +831,7 @@ function squadCombatBonus(activeBonus,activeSlot,team=[]){
     }
     total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20,hp:.30})[key],Math.max(0,value))
   }
+  if(rebootEconomyEnabled()) Object.assign(total,petTeamRewardBonuses(activeBonus,activeSlot,team,petBossBonus))
   return total
 }
 // Aplica HP temporário no snapshot de combate; não altera stats.hp.
@@ -1427,7 +1429,12 @@ async function finishRaidRewards(c,s,cfg,chat){
   const rewards=[]
   const v2RaidCash=raidCashSharesV2(cfg,ranked)
   for(let i=0;i<ranked.length;i++){
-    const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
+    const p=ranked[i],share=Number(p.damage||0)/total
+    const pb=rebootEconomyEnabled()?(
+      p.usePet===false?{xp:0,drop:0}:p.petRewardBonus||petTeamRewardBonuses(
+        p.pet&&Number(p.pet.hp)>0&&(Number(p.pet.energy)>0||p.pet.roundActive)?p.pet.bonus:null,
+        p.pet?.teamSlot||1,activeCombatPetTeam(p.teamPassives||[],[p.pet,p.reservePet],{lastEnergyActive:true}),petBossBonus)
+    ):(p.pet?.bonus||{xp:0,drop:0})
     const masteryReport=p.heroId?{heroId:p.heroId,earned:0,reason:'participacao_insuficiente'}:null
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
@@ -1843,6 +1850,7 @@ export async function raidRound(chat,level){
         p.teamSynergy=teamSynergy
       }
       if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,combatTeam)
+      if(rebootEconomyEnabled()) p.petRewardBonus=p.usePet!==false&&p.pet?.roundActive?{xp:pb.xp,drop:pb.drop}:{xp:0,drop:0}
       const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
@@ -3784,6 +3792,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       activePetSlot,
       lastAttackAt:bossNow,
       usePet:Boolean(usePet),
+      ...(rebootEconomyEnabled()?{petRewardBonus:pet&&usePet?{xp:petBonus.xp,drop:petBonus.drop}:{xp:0,drop:0}}:{}),
       classLastProcAttack:passiveHit.lastProcAttack,
       awakeningState:passiveHit.awakeningState,
       heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState
@@ -3977,7 +3986,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         damage:Number(v.damage||0),
         name:v.name||'Jogador',
         attacks:Number(v.attacks||0),
-        petHealing:Number(v.petHealing||0)
+        petHealing:Number(v.petHealing||0),
+        petRewardBonus:v.usePet===false?{xp:0,drop:0}:v.petRewardBonus
       })).sort((a,b)=>b.damage-a.damage)
       const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
       const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
@@ -3986,7 +3996,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       for(let i=0;i<entries.length;i++){
         const p=entries[i],position=i+1,share=p.damage/total
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
-        const pb=petBossBonus(pp)
+        const pb=rebootEconomyEnabled()?(p.petRewardBonus||{xp:0,drop:0}):petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
         let commonV2=rebootEconomyEnabled()&&!weekly?commonBossRewardV2(p.damage,total):null
@@ -4080,7 +4090,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           const baseXp=weeklyNov13Xp===null
             ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
             :weeklyNov13Xp
-          exp=v2Reward?v2Reward.xp:Math.floor(baseXp*(1+pb.xp))*xpMultiplier
+          exp=v2Reward?Math.floor(v2Reward.xp*(1+Number(pb.xp||0))):Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           if(commonV2){cash=commonV2.cash;exp=commonV2.xp}
           if(!commonV2||cash>0) await credit(c,p.jid,cash,weekly?'boss_weekend':(eventMode?'boss_event_eclipse_v2':'boss_common'))
           if(!commonV2||exp>0) await grantExpInTransaction(c,p.jid,v2Reward?exp:await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
@@ -4091,11 +4101,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
           if(commonV2){
-            if(commonV2.boxChance>0&&Math.random()<commonV2.boxChance)drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+            if(commonV2.boxChance>0&&Math.random()<Math.min(.05,commonV2.boxChance+Number(pb.drop||0)*.10))drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
           }else if(v2Reward){
             const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
             if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
-            if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance){
+            if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance+Math.min(.008,Number(pb.drop||0)*.10)){
               const item=Math.random()<.5
                 ?{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
                 :{id:'martelo_golem',name:'Martelo do Golem Ancestral',rarity:'Lendário'}
