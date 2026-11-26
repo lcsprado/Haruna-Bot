@@ -2121,8 +2121,11 @@ function sellInventoryItem(itemId,qty){
     (Array.isArray(item.upgraded_copies)&&item.upgraded_copies.length>0);
   const warning=special?'\n⚠️ Este item é especial, de collab, vinculado ou de evento.':'';
   const upgradeWarning=upgraded?'\n⚠️ A venda pode consumir cópias melhoradas/forjadas que não estejam equipadas.':'';
-  const estimate=Number(item.sell_unit||0)*qty;
-  if(!confirm('Confirmar venda de '+qty+'× '+name+'?\nValor base estimado: '+money(estimate)+'.'+warning+upgradeWarning+'\nEsta operação não pode ser desfeita.'))return;
+  const base=Number(item.sell_unit||0)*qty;
+  const refund=Array.isArray(item.upgrade_refund_steps)?Math.floor(item.upgrade_refund_steps.filter(s=>s.at<=qty).reduce((n,s)=>n+Number(s.basis||0),0)/2):(!item.equipped&&qty===Number(item.quantity)?Number(item.upgrade_refund||0):0);
+  const estimate=base+refund;
+  const refundInfo=refund>0?'\nValor base: '+money(base)+' • Reembolso: '+money(refund):'';
+  if(!confirm('Confirmar venda de '+qty+'× '+name+'?\nValor total estimado: '+money(estimate)+'.'+refundInfo+warning+upgradeWarning+'\nEsta operação não pode ser desfeita.'))return;
   doAction('item.sell',{itemId,qty},{}).catch(()=>{});
 }
 // Each equipment tier represents distinct physical copies; the effective copy is protected.
@@ -2190,7 +2193,7 @@ function inventoryCard(i,options={}){
     '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+(eq&&i.equipment_stats?'Descrição do item (atributos-base): ':'')+esc(itemDisplayDescription(i))+'</p>'+inventoryLeveledStatsMarkup(i,equippedCopy)+
     (!equippedCopy&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
-    (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
+    (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Reembolso estimado ao vender as cópias livres: '+money(i.upgrade_refund)+'.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
 function renderStoneUpgrades(){
