@@ -1,4 +1,5 @@
 import {assertNoActiveMining} from './torre-mineracao-activity.js'
+import {expandV2RaidWeapons,expandedV2GearChance} from './v2-raid-weapon-builds.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout} from './raid-lote-policy.js'
 import {raidLoteAutoPotionNeeded,raidLoteAutoPotionTargetHeal} from './raid-lote-auto-potion-policy.js'
@@ -876,9 +877,9 @@ const RAID_CONFIGS=[
   {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level)&&raidEnabledInReboot(r))||null
-const raidEffectiveConfig=level=>candidateRaidConfig(raidConfig(level))
+const raidEffectiveConfig=level=>expandV2RaidWeapons(candidateRaidConfig(raidConfig(level)),classesOnlyRebootEnabled())
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:rebootEconomyEnabled()?38:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
-export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...candidateRaidConfig(r),durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
+export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).map(r=>({...expandV2RaidWeapons(candidateRaidConfig(r),classesOnlyRebootEnabled()),durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
@@ -1551,7 +1552,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
       const normalChance=Math.min(.12,(lote?baseGearChance:(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop))
-      const chance=loteReduced?raidLoteGearChance(normalChance):normalChance
+      const chance=expandedV2GearChance(cfg,loteReduced?raidLoteGearChance(normalChance):normalChance)
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
