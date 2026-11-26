@@ -25,6 +25,6 @@ test('legacy and common/rare raid levels keep original behavior',()=>{
 test('integration preserves direct equipment odds, owner bonuses and RaidLote discount',()=>{
  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
  assert.ok(games.includes("enabled:rebootEconomyEnabled()&&cfg.box==='caixa_epica'"))
- assert.ok(games.includes('boxChance=Math.min(.85,loteReduced?raidLoteGearChance(boxChance):(lote?boxChance:boxChance*ownerDrop))'))
+ assert.ok(games.includes('boxChance=Math.min(.85,loteReduced?raidLoteGearChance(boxChance):(lote?boxChance:boxChance*ownerDrop*v2DropMultiplier))'))
  assert.ok(games.includes('const chance=expandedV2GearChance(cfg,loteReduced?raidLoteGearChance(normalChance):normalChance)'))
 })
