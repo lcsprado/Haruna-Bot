@@ -46,7 +46,7 @@ test('O modo especial vem do job validado na sala e nunca de opção do jogador'
  assert.match(games,/const petXp=loteReduced\?raidLoteReward/)
  assert.match(games,/const qty=loteReduced/)
  assert.match(games,/boxChance=Math\.min\(\.85,loteReduced\?raidLoteGearChance/)
- assert.match(games,/const chance=loteReduced\?raidLoteGearChance/)
+ assert.match(games,/const chance=expandedV2GearChance\(cfg,loteReduced\?raidLoteGearChance\(normalChance\):normalChance\)/)
  assert.match(games,/passManualRewards:s\.auctionPassManualRewards===true/)
  assert.match(games,/if\(!lote&&cfg\.level===60/) // exclusividades manuais não viram drops garantidos
  assert.match(games,/lote\s*\?\{ignoreGroupProgressionEvent:true/) // RaidLote não conta progressão de grupo manual
