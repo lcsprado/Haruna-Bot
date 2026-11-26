@@ -11,25 +11,25 @@ const spawn=source.slice(source.indexOf('export async function maybeSpawnGroupEv
 const claim=source.slice(source.indexOf('export async function claimGroupEvent('),
  source.indexOf('/**\n * Contratos Alpha:',source.indexOf('export async function claimGroupEvent(')))
 
-test('V2: premiações por tipo entre R$ 300 e R$ 1.000, inclusive no fim do orçamento',()=>{
+test('V2: premiações por tipo entre R$ 1.000 e R$ 5.000, inclusive no fim do orçamento',()=>{
  assert.deepEqual({min:V2_GROUP_FLASH.minCash,max:V2_GROUP_FLASH.maxCash,daily:V2_GROUP_FLASH.dailyCashCap},
-  {min:300,max:1000,daily:12000})
- const ranges={maleta:[400,850],pix:[600,1000],tesouro:[300,650]}
+  {min:1000,max:5000,daily:50000})
+ const ranges={maleta:[2000,3500],pix:[3000,5000],tesouro:[1000,2000]}
  for(const [kind,[min,max]] of Object.entries(ranges)){
-  assert.equal(v2GroupFlashCash(kind,12000,0),min)
-  assert.equal(v2GroupFlashCash(kind,12000,.9999999),max)
-  assert.equal(v2GroupFlashCash(kind,350,.9999),350)
-  assert.equal(v2GroupFlashCash(kind,299,.5),0)
+  assert.equal(v2GroupFlashCash(kind,50000,0),min)
+  assert.equal(v2GroupFlashCash(kind,50000,.9999999),max)
+  assert.equal(v2GroupFlashCash(kind,1050,.9999),1050)
+  assert.equal(v2GroupFlashCash(kind,999,.5),0)
  }
  assert.throws(()=>v2GroupFlashCash('invalid',1000,.5),/desconhecido/)
  assert.throws(()=>v2GroupFlashCash('pix',1000,1),RangeError)
 })
 
 test('V2: orçamento é único para grupos e reserva eventos não resgatados',()=>{
- assert.equal(v2GroupFlashBudgetRemaining(1000,2000),9000)
- assert.equal(v2GroupFlashBudgetRemaining(11300,400),300)
- assert.equal(v2GroupFlashBudgetRemaining(11300,700),0)
- assert.equal(v2GroupFlashBudgetRemaining(0,0),12000)
+ assert.equal(v2GroupFlashBudgetRemaining(1000,2000),47000)
+ assert.equal(v2GroupFlashBudgetRemaining(48000,1000),1000)
+ assert.equal(v2GroupFlashBudgetRemaining(48000,2000),0)
+ assert.equal(v2GroupFlashBudgetRemaining(0,0),50000)
  assert.throws(()=>v2GroupFlashBudgetRemaining(-1,0),RangeError)
  assert.match(spawn,/if\(old && Number\(old\.spawned_at\)>now-1800\) return null/)
  assert.match(spawn,/expiresAt:now\+120/)
