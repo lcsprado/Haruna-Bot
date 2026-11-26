@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {RAID_WEAPON_BUILD_TIERS,V2_NEW_RAID_WEAPONS,v2RaidWeaponItemRows,v2RaidWeaponOrigins,v2RaidWeaponStats,expandV2RaidWeapons,expandedV2GearChance} from '../src/neon/v2-raid-weapon-builds.js'
+import {RAID_WEAPON_BUILD_TIERS,V2_NEW_RAID_WEAPONS,v2RaidWeaponItemRows,v2RaidWeaponOrigins,v2RaidWeaponStats,expandV2RaidWeapons,expandedV2GearChance,V2_EXISTING_RAID_WEAPON_NAMES,v2RaidWeaponDisplayName} from '../src/neon/v2-raid-weapon-builds.js'
 test('four archetypes per eligible tier, globally unique ids, exclusive sources',()=>{
  assert.equal(V2_NEW_RAID_WEAPONS.length,25)
  assert.equal(new Set(V2_NEW_RAID_WEAPONS.map(w=>w.id)).size,25)
@@ -59,4 +59,19 @@ test('production integration points include all new ids and no new combat multip
  for(const w of V2_NEW_RAID_WEAPONS)assert.ok(db.includes("WHEN '"+w.id+"' THEN '"+w.materialId+"'"))
  assert.ok(games.includes('expandV2RaidWeapons(candidateRaidConfig(raidConfig(level)),classesOnlyRebootEnabled())'))
  assert.ok(games.includes('expandedV2GearChance(cfg,loteReduced?raidLoteGearChance(normalChance):normalChance)'))
+})
+
+test('approved names are unique; V2 renames leave legacy and all existing item IDs intact',()=>{
+ const newNames=V2_NEW_RAID_WEAPONS.map(w=>w.name)
+ const existingNames=Object.values(V2_EXISTING_RAID_WEAPON_NAMES)
+ assert.equal(new Set([...newNames,...existingNames]).size,36)
+ assert.equal(v2RaidWeaponDisplayName('katana_divina','Katana Divina',true),'Shinkage')
+ assert.equal(v2RaidWeaponDisplayName('katana_divina','Katana Divina',false),'Katana Divina')
+ assert.equal(v2RaidWeaponDisplayName('armadura_divina','Armadura Divina',true),'Armadura Divina')
+ assert.ok(newNames.includes('Ragnarok'))
+ assert.ok(newNames.includes('Thanatos'))
+ const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ for(const id of Object.keys(V2_EXISTING_RAID_WEAPON_NAMES))
+  assert.ok(db.includes("v2RaidWeaponDisplayName('"+id+"',"))
+ assert.ok(db.includes('v2RaidWeaponDisplayName(item[0],item[1],classesOnlyRebootEnabled())'))
 })
