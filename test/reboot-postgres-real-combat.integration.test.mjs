@@ -587,6 +587,48 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         if(priorGroup===undefined)delete process.env.ALPHA_CLAN_SIEGE_GROUP_JID;else process.env.ALPHA_CLAN_SIEGE_GROUP_JID=priorGroup
       }
     }
+    // Real V2 event: schedule via same service as admin panel, credit manual
+    // pet action, enforce per-account budget concurrently, stop and never
+    // reactivate legacy multipliers or include a new player in old edition.
+    {
+      const {getOwnerEvent,stopOwnerEvent,parseOwnerEventBrazilDate}=await import('../src/neon/owner-event-center.js')
+      const {applyV2PetXpEvent,V2_PET_EVENT_BUDGET_PREFIX}=await import('../src/neon/reboot-pet-xp-event.js')
+      const {petAction}=await import('../src/neon/db.js')
+      const priorClock=clock
+      try{
+        clock=Date.parse('2026-11-26T18:31:00-03:00')
+        const startsAt=parseOwnerEventBrazilDate('26/11','21:00')
+        const event=await setOwnerEvent('pet',{minutes:20,multiplier:2,startsAt,owner:jids[0]})
+        assert.equal(event.scheduled,true)
+        assert.equal(event.budgetPerPlayer,1000)
+        assert.equal(event.budgetTotal,event.eligiblePlayers*1000)
+        assert.equal(await applyV2PetXpEvent(db,jids[0],100,0),100)
+        await assert.rejects(setOwnerEvent('pet',{minutes:20,multiplier:2,startsAt}),/Já existe/)
+        clock=startsAt+1000
+        assert.equal((await getOwnerEvent('pet')).active,true)
+        assert.equal(await getPetXpEventMultiplier(db),1,'legacy multiplier stays isolated')
+        assert.equal(await getOwnerEventMultiplier(db,'pet'),1)
+        const budget=async jid=>Number((await db.query('SELECT value FROM trevo_settings WHERE key=$1',[V2_PET_EVENT_BUDGET_PREFIX+jid])).rows[0]?.value.remaining)
+        assert.equal(await budget(jids[0]),1000)
+        await db.query('UPDATE pets SET xp=0,level=1,hp=100,max_hp=100,energy=100,last_action=0 WHERE jid=$1',[jids[0]])
+        await db.query('UPDATE pet_collection SET xp=0,level=1,hp=100,max_hp=100,energy=100,last_action=0 WHERE jid=$1 AND active=TRUE',[jids[0]])
+        const action=await petAction(jids[0],'treinar')
+        assert.equal(Number(action.xp),30,'manual training base 15 plus 15 event XP')
+        assert.equal(await budget(jids[0]),985)
+        const concurrent=await Promise.all([applyV2PetXpEvent(db,jids[0],700,0),applyV2PetXpEvent(db,jids[0],700,0)])
+        assert.equal(concurrent.reduce((s,n)=>s+n-700,0),985)
+        assert.equal(await budget(jids[0]),0)
+        assert.equal(await applyV2PetXpEvent(db,jids[0],100,0),100)
+        assert.equal(await applyV2PetXpEvent(db,jids[1],100,9850),100,'no bonus wasted above max level')
+        assert.equal(await budget(jids[1]),1000)
+        assert.equal(await applyV2PetXpEvent(db,jids[1],100,9750),150)
+        assert.equal(await budget(jids[1]),950)
+        assert.equal((await stopOwnerEvent('pet')).stopped,true)
+        assert.equal(await applyV2PetXpEvent(db,jids[1],100,0),100)
+        assert.equal(await budget(jids[1]),950)
+        console.log('ALPHA_V2_PET_EVENT_OK',JSON.stringify({scheduled:true,manualTraining:true,concurrency:true,capped:true,cancelled:true,legacyIsolated:true}))
+      }finally{clock=priorClock}
+    }
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpTracked:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom
