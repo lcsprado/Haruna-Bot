@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   v2-real-raid:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feature/reboot-classes-only-20261117'
+    if: github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'feature/reboot-classes-only-20261117' || github.head_ref == 'fix/v2-raid-query-scope-20261126')
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
