@@ -2489,9 +2489,10 @@ function renderCombatResult(value){
         (Number(x.classShieldCreated)>0?' • +'+num(x.classShieldCreated)+' de escudo criado':'')+(x.dodged?' • golpe esquivado':'');
       const technique=(x.heroTechnique?'<small>✨ '+esc(x.heroTechnique)+'</small>':'')+
         (skills.length?'<small>⚜️ '+esc(skills.join(' / '))+skillEffects+'</small>':'');
+      const fatigue=Number(x.fatigueDamage)>0?'<small>🔥 Fadiga: +'+num(x.fatigueDamage)+' dano inevitável</small>':'';
       const defense=x.defenseTechnique?'<small>🛡️ '+esc(x.defenseTechnique)+(Number(x.defenseBlocked)>0?' • '+num(x.defenseBlocked)+' bloqueado':'')+(Number(x.shieldAbsorbed)>0?' • escudo absorveu '+num(x.shieldAbsorbed):'')+'</small>':'';
       return heading+'<div class="combat-hit '+(x.crit?'critical':'')+'"><span>'+label+
-        (technique||defense?'<span class="combat-techniques">'+technique+defense+'</span>':'')+
+        (technique||defense||fatigue?'<span class="combat-techniques">'+technique+defense+fatigue+'</span>':'')+
         '</span><strong>'+detail+'</strong></div>';
     }).join('');
     const opening=value.opening?
@@ -2502,6 +2503,8 @@ function renderCombatResult(value){
       opening+
       '<div class="result-metrics">'+resultMetric('Golpes',attacks.length,'num')+resultMetric('Críticos',crits,'num')+
        resultMetric('Dano efetivo',total,'num')+resultMetric('Rodadas',value.roundCount||0,'num')+'</div>'+
+      (value.final?.noRoundLimit?'<p class="muted">Sem limite de rodadas • sem poções durante o duelo</p>':'')+
+      (value.final?.attackerMaxHp!=null?'<p>❤️ HP salvo: '+esc(value.opening?.attacker?.name||'Atacante')+' '+num(value.final.attackerHp)+'/'+num(value.final.attackerMaxHp)+' • '+esc(value.opening?.defender?.name||'Defensor')+' '+num(value.final.defenderHp)+'/'+num(value.final.defenderMaxHp)+'</p>':'')+
       '<div class="combat-history-label">📜 Histórico completo do combate'+
         (value.decidedByLimit?' • ⚖️ Vitória por HP após limite de rodadas':'')+'</div>'+
       '<div class="combat-log" role="region" tabindex="0" aria-label="Histórico completo do duelo">'+timeline+'</div>'+
