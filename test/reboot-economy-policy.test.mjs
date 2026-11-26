@@ -115,7 +115,7 @@ test('Todas as entradas da Raid 70 utilizam proteção e nenhuma compra pode ser
  const games=getSource('src/neon/games.js'),store=getSource('src/neon/raid-lote-store.js'),wa=getSource('src/neon/index.js');
  assert.match(games,/assertRaid70V2Start\(\{level:cfg\.level,partySize:ids\.length,mode:loteAttemptId\?'lote':'manual'\}\)/);
  assert.match(games,/const cooperation=raid70V2Contributors\(s\.players,\{level:cfg\.level\}\)/);
- assert.match(games,/const raidEffectiveConfig=level=>candidateRaidConfig\(raidConfig\(level\)\)/);
+ assert.match(games,/const raidEffectiveConfig=level=>expandV2RaidWeapons\(candidateRaidConfig\(raidConfig\(level\)\),classesOnlyRebootEnabled\(\)\)/);
  assert.match(store,/assertRaid70V2Start\(\{level:cfg\.level,partySize:1,mode:'lote'\}\)/);
  assert.ok(store.indexOf('assertRaid70V2Start')<store.indexOf('const initialQuote=raidLoteQuote'));
  assert.match(wa,/classesOnlyRebootEnabled\(\)&&level===70/);
