@@ -10,6 +10,7 @@ import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
+import {applyV2PetXpEvent} from './reboot-pet-xp-event.js'
 import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
@@ -1150,11 +1151,12 @@ export async function withdrawRaid(chat,jid,level=null){
   })
 }
 
-async function raidPetXp(c,jid,gain){
+async function raidPetXp(c,jid,gain,{lote=false}={}){
   gain=Math.max(0,Math.floor(Number(gain)||0))
   if(!gain) return null
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p||PECADOS_HERO_IDS.includes(String(p.species||'')))return null
+  if(!lote&&rebootEconomyEnabled())gain=await applyV2PetXpEvent(c,jid,gain,p.xp)
   const rawXp=Number(p.xp||0)+gain
   const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(p.xp||0)))
   const level=Math.min(100,1+Math.floor(rawXp/100))
@@ -1175,8 +1177,8 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
   baseGain=rebootEconomyEnabled()?petCombatExperience(baseGain):lote?Math.floor(baseGain*(1+Number((await activeRelic(c,jid))?.petXp||0)))
     :await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
-  const primary=await raidPetXp(c,jid,baseGain)
-  if(primary) awards.push({slot:1,name:primary.name,xp:baseGain,creditedXp:primary.creditedXp,level:primary.level})
+  const primary=await raidPetXp(c,jid,baseGain,{lote})
+  if(primary) awards.push({slot:1,name:primary.name,xp:primary.xp,creditedXp:primary.creditedXp,level:primary.level})
 
   const team=(await c.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
     WHERE t.jid=$1 AND t.slot IN (2,3) ORDER BY t.slot FOR UPDATE OF p`,[jid])).rows
@@ -1184,8 +1186,9 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false}={}){
   for(const pet of team){
     if(PECADOS_HERO_IDS.includes(String(pet.species||'')))continue
     const slot=Number(pet.slot)
-    const gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
+    let gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
     if(!gain) continue
+    if(!lote&&rebootEconomyEnabled())gain=await applyV2PetXpEvent(c,jid,gain,pet.xp)
     const rawXp=Number(pet.xp||0)+gain
     const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(pet.xp||0)))
     const level=Math.min(100,1+Math.floor(rawXp/100))
