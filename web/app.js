@@ -2,7 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js?v=20261124-fortress-v2';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-web-reboot-20261124-fortress-v2';
+const WEB_ASSET_ID='alpha-web-reboot-20261126-duel-hp-v2';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -1085,6 +1085,7 @@ async function openWebPage(page){
   window.scrollTo({top:0,left:0,behavior:'auto'});
 }
 function actionFeedback(name,result){
+  if(name==='battle'&&result?.staleHp)return 'O HP mudou desde a última atualização. Confira os valores e inicie outro duelo.';
   if(name==='stone.upgrade'&&result)return (result.outcome==='success'?'✅ Encantamento aprimorado para Lv.'+result.next:result.outcome==='breakage'?'💥 Pedra quebrada. Equipamento intacto.':'⚠️ Falha. Pedra preservada.')+' • '+money(result.cost);
   if((name==='game.quiz.answer'||name==='game.number.guess')&&result?.rewardCooldown) return '✅ Acertou! Prêmio em recarga (30 min entre Quiz e Número).';
   if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
@@ -2391,6 +2392,7 @@ function resultMetric(label,value,kind='text'){
 }
 function prettyResult(value){
   if(value==null) return '<div class="empty">Sem detalhes adicionais.</div>';
+  if(value.staleHp) return '<div class="notice warn">O HP mudou. Nenhum duelo foi iniciado e nenhuma recarga foi consumida. Confira os valores atualizados.</div>';
   if(typeof value!=='object') return '<div class="result-message">'+esc(value)+'</div>';
   if(value.ok===false&&Number(value.remaining)>0){
     return '<div class="result-message cooldown-result">⏳ Ação em recarga. Tente novamente em <strong>'+esc(formatRemaining(value.remaining))+'</strong>.</div>';
@@ -2550,7 +2552,7 @@ function renderDuelArena(members){
   const hero=activePlayableHero();
   const mine=hero&&COLLAB_PET_SPRITES[hero.id]?{id:hero.id,name:hero.name,isHero:true}:selectedCharacter();
   const enemy=characterForClass(target.class_id);
-  const myHp=Number(myCombat.effective_hp||myCombat.hp||0),myMax=Math.max(1,Number(myCombat.effective_max_hp||myCombat.max_hp||1));
+  const myHp=Number(myCombat.effective_hp??myCombat.hp??0),myMax=Math.max(1,Number(myCombat.effective_max_hp??myCombat.max_hp??1));
   const enemyHp=Number(target.effective_hp??target.hp??0),enemyMax=Math.max(1,Number(target.effective_max_hp??target.max_hp??1));
   const last=ui.lastResult&&ui.lastResult.targetJid===target.jid?ui.lastResult:null;
   const duelSummary=last&&last.winner&&last.loser
@@ -3696,7 +3698,12 @@ function bind(){
   });
   document.querySelectorAll('[data-duel-launch]').forEach(x=>x.onclick=async()=>{
     ui.duelTarget=x.dataset.duelLaunch;
-    await doAction('battle',{targetJid:ui.duelTarget},{});
+    const target=roster().find(m=>m.jid===ui.duelTarget);
+    if(!target)return;
+    const me=profile();
+    const expectedHp={attackerHp:Number(me.effective_hp??me.hp??0),attackerMaxHp:Math.max(1,Number(me.effective_max_hp??me.max_hp??1)),defenderHp:Number(target.effective_hp??target.hp??0),defenderMaxHp:Math.max(1,Number(target.effective_max_hp??target.max_hp??1))};
+    x.disabled=true;
+    try{await doAction('battle',{targetJid:ui.duelTarget,expectedHp},{});}catch{}finally{x.disabled=false;}
   });
   document.querySelectorAll('[data-duel-pet-launch]').forEach(x=>x.onclick=async()=>{
     ui.duelTarget=x.dataset.duelPetLaunch;

@@ -53,10 +53,11 @@ test('pets preserve original and updated portrait variants',()=>{
 test('PWA and Web update together without removing rich game modules or login',()=>{
   const app=read('web/app.js'),sw=read('web/sw.js'),html=read('web/index.html');
   const version=JSON.parse(read('web/version.json'));
-  assert.equal(version.assetVersion,'alpha-web-reboot-20261124-fortress-v2');
-  assert.match(app,/WEB_ASSET_ID='alpha-web-reboot-20261124-fortress-v2'/);
-  assert.match(sw,/alpha-rpg-pwa-20261124-fortress-v2/);
-  assert.match(html,/app\.js\?v=20261124-fortress-v2/);
+  assert.match(version.assetVersion,/^alpha-web-reboot-\d{8}-[a-z0-9-]+$/);
+  const suffix=version.assetVersion.slice('alpha-web-reboot-'.length);
+  assert.ok(app.includes("WEB_ASSET_ID='"+version.assetVersion+"'"));
+  assert.ok(sw.includes("const CACHE='alpha-rpg-pwa-"+suffix+"'"));
+  assert.ok(html.includes('/app.js?v='+suffix));
   for(const keep of ["['racing','🏎️','Garagem Alpha']",
     "['character','🧙','Personagem']","['pets','🐾','Pets']",
     "['clan','🛡️','Clã']",
