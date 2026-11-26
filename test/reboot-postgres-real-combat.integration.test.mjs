@@ -117,11 +117,13 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     }
     clock+=9000
     assert.equal((await raidRound(chat,10)).reason,'inactive')
-    // Same player, three concurrent XP credits: real row locks and same daily cap.
-    const credits=await Promise.all(Array.from({length:3},()=>transaction(c=>grantExpInTransaction(c,jids[0],100000))))
-    const quota=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',['reboot_xp_daily:'+jids[0]])).rows[0].value
-    assert.equal(Number(quota.used),12000)
-    assert.ok(credits.reduce((sum,r)=>sum+Number(r.awardedGain||0),0)<=12000)
+    // V2 has no daily XP cap: concurrent credits must be counted without lost increments.
+    const quotaKey='reboot_xp_daily:'+jids[0]
+    const previousQuota=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[quotaKey])).rows[0].value
+    const credits=await Promise.all(Array.from({length:3},()=>transaction(c=>grantExpInTransaction(c,jids[0],100000,{skipNightRate:true}))))
+    const quota=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[quotaKey])).rows[0].value
+    assert.deepEqual(credits.map(r=>Number(r.awardedGain)),[100000,100000,100000])
+    assert.equal(Number(quota.used)-Number(previousQuota.used),300000)
     const cd=await Promise.all(Array.from({length:3},()=>transaction(c=>claimCooldown(c,'v2-ci:global:'+jids[0],1800))))
     assert.equal(cd.filter(x=>x.ok).length,1)
     // Active records from old seasons must not change V2 rewards or status.
@@ -412,15 +414,20 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         })
         await installed.goto(origin+'/rpg')
         await installed.waitForFunction(()=>Boolean(navigator.serviceWorker.controller),{},{timeout:20000})
-        const cacheInfo=await installed.evaluate(async()=>{
+        const assetVersion=JSON.parse(await readFile(resolve(webRoot,'version.json'),'utf8')).assetVersion
+        assert.match(assetVersion,/^alpha-web-reboot-/)
+        const expectedCache=assetVersion.replace('alpha-web-reboot-','alpha-rpg-pwa-')
+        const cacheInfo=await installed.evaluate(async({expectedCache,assetVersion})=>{
           const names=await caches.keys()
-          const active=await caches.open('alpha-rpg-pwa-20261119-identity-v2')
+          if(!names.includes(expectedCache))return {names,entries:[],current:false}
+          const active=await caches.open(expectedCache)
           const entries=(await active.keys()).map(req=>new URL(req.url).pathname)
-          const js=await (await active.match('/app.js')).text()
-          return {names,entries,current:js.includes('alpha-web-reboot-20261119-identity-v2')&&js.includes("window.addEventListener('hashchange'")}
-        })
+          const response=await active.match('/app.js')
+          const js=response?await response.text():''
+          return {names,entries,current:js.includes(assetVersion)&&js.includes("window.addEventListener('hashchange'")}
+        },{expectedCache,assetVersion})
         assert.ok(!cacheInfo.names.includes('alpha-rpg-pwa-20261116-no-npcs-v1'))
-        assert.ok(cacheInfo.names.includes('alpha-rpg-pwa-20261119-identity-v2'))
+        assert.ok(cacheInfo.names.includes(expectedCache))
         assert.ok(cacheInfo.current)
         for(const path of ['/rpg','/app.js','/styles.css','/manifest.webmanifest','/racing-ui.js','/clan-siege-ui.js'])assert.ok(cacheInfo.entries.includes(path),'missing PWA shell '+path)
         await installed.reload()
@@ -493,7 +500,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       clock=beforeQuizClock
       console.log('ALPHA_V2_LEVEL_QUIZ_OK',JSON.stringify({legacyMarkerIgnored:true,rewardPaidOnce:true,auditStillBlocks:true,quizConcurrentCap:10,rollingHour:true,crossChat:true}))
     }
-    console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpCap:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
+    console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpTracked:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom
     await db.end()

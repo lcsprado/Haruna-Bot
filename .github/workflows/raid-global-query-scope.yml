@@ -1,0 +1,42 @@
+name: V2 raid query scope
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/games.js'
+      - 'test/raid-global-query-scope.integration.test.mjs'
+      - '.github/workflows/raid-global-query-scope.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: alpha_ci
+          POSTGRES_PASSWORD: disposable_only
+          POSTGRES_DB: raid_scope_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alpha_ci -d raid_scope_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ALPHA_RAID_SCOPE_TEST_URL: postgresql://alpha_ci:disposable_only@127.0.0.1:5432/raid_scope_ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          npm install --prefix "$RUNNER_TEMP/raid-scope" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund pg@8.13.0
+          ln -s "$RUNNER_TEMP/raid-scope/node_modules" node_modules
+          node --check src/neon/games.js
+          node --test test/raid-global-query-scope.integration.test.mjs
