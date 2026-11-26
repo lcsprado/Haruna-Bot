@@ -298,6 +298,10 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     const session=(await db.query('SELECT jid,auth_method FROM web_sessions WHERE token_hash=$1',[webTokenHash(token)])).rows[0]
     assert.equal(session.jid,jids[0])
     assert.equal(session.auth_method,'password')
+    const {initProgression}=await import('../src/neon/progression.js')
+    const {initLoans}=await import('../src/neon/loans.js')
+    await initProgression()
+    await initLoans()
     // The actual Web endpoint uses the same stale-HP guard and roster HP scale.
     await db.query('UPDATE web_sessions SET chat_jid=$1 WHERE token_hash=$2',[chat,webTokenHash(token)])
     await db.query("INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,1) ON CONFLICT DO NOTHING",[chat,jids[1]])
