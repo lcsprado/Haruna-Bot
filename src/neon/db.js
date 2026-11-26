@@ -10,7 +10,7 @@ import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {stoneRowValue} from './stone-upgrade-policy.js'
 import {STONE_EFFECTS} from './enchantment-stones-catalog.js'
-import {syncEffectiveGear} from './equipment-star-logic.js'
+import {syncEffectiveGear,selectEffectiveGear} from './equipment-star-logic.js'
 import {planShopForge5} from './shop-forge5-plan.js'
 import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
@@ -1675,8 +1675,11 @@ const forge=(await client.query(
 const tierCount=tiers.reduce((sum,row)=>sum+Number(row.quantity||0),0)
 const basic=owned-tierCount-(forge?1:0)
 if(basic<0)throw new Error('Cópias de equipamento inconsistentes; venda cancelada.')
-const keepForge=Boolean(equipped&&forge)
-const keepTier=equipped&&!keepForge&&tiers.length?Number(tiers[tiers.length-1].level):null
+const highestNormal=tiers.length?Number(tiers[tiers.length-1].level):1
+const effective=forge&&equipped?selectEffectiveGear(highestNormal,forge.level,forge.stars,itemId):null
+const keepForge=Boolean(equipped&&forge&&effective.level===Number(forge.level)&&
+  (effective.stars>1||effective.level!==highestNormal))
+const keepTier=equipped&&!keepForge&&tiers.length?highestNormal:null
 const keepBasic=equipped&&!keepForge&&keepTier===null?1:0
 let pending=qty
 pending-=Math.min(pending,Math.max(0,basic-keepBasic))
