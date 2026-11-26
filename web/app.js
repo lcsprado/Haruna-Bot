@@ -2105,7 +2105,7 @@ function inventoryLeveledStatsMarkup(item,equippedCopy=false){
 function inventorySaleLimit(item){
   const available=Math.max(0,Math.trunc(Number(item?.quantity||0)));
   const activeRelic=ui.relicStatus?.active?.id===item?.item_id;
-  return Math.min(9999,Math.max(0,available-(item?.equipped||activeRelic?1:0)));
+  return Math.min(9999,Math.max(0,available-(item?.equipped||activeRelic?1:0)),Math.max(0,Number(item?.sellable_quantity||0)));
 }
 function sellInventoryItem(itemId,qty){
   const item=(ui.data?.inventory||[]).find(i=>String(i.item_id)===String(itemId));
@@ -2143,9 +2143,6 @@ function inventoryEquipmentCopies(i){
   // Offer model sales only from the first tier that the API can actually consume.
   const saleOrder=[...available].sort((a,b)=>Number(a.sourceKind==='star')-Number(b.sourceKind==='star')||a.equipment_level-b.equipment_level);
   for(const copy of available) if(copy!==saleOrder[0]) copy.sellable_quantity=0;
-  // Legacy sale policy preserves a forge even when a normal copy has stronger stats.
-  // Avoid offering a misleading per-copy sale for this unusual combination.
-  if(i.equipped&&best?.kind==='normal'&&tiers.some(t=>t.kind==='star')) for(const copy of available) copy.sellable_quantity=0;
   return {equipped,available};
 }
 function inventoryCard(i,options={}){
@@ -3245,8 +3242,9 @@ function lootSafeSellQty(item){
   const stock=Math.max(0,Number(inv.quantity||0));
   const reserved=Math.max(0,(inv.upgrade_distribution||[]).reduce((n,c)=>
     n+((Number(c.level||1)>1||Number(c.stars||1)>1)?Number(c.quantity||0):0),0));
-  const keep=Math.max(reserved,inv.equipped?1:0,Math.max(0,stock-Number(inv.sellable_quantity??stock)));
-  return Math.max(0,Math.min(Number(item.qty||0),stock-keep,Number(inv.sellable_quantity??stock)));
+  const regular=Number(inv.regular_sellable_quantity??inv.sellable_quantity??0);
+  const keep=Math.max(reserved,inv.equipped?1:0,Number(inv.bound_quantity||0),Math.max(0,stock-regular));
+  return Math.max(0,Math.min(Number(item.qty||0),stock-keep,regular));
 }
 function lootSellCandidates(){
   const items=Array.isArray(ui.lootReveal?.items)?ui.lootReveal.items:[];
