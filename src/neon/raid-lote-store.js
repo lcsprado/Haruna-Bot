@@ -1,6 +1,6 @@
 import {assertNoActiveMining,getActiveRest} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
-import {raidLoteQuote,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES,RAID_LOTE_V2_MAX_ATTEMPTS} from './raid-lote-policy.js'
+import {raidLoteQuote,raidLoteRelativePolicy,RAID_LOTE_RELATIVE_VERSION,RAID_LOTE_V1,raidLoteDurationPlan,raidLoteWaitsForSchedule,RAID_LOTE_V2_INTERVAL_MINUTES,RAID_LOTE_V2_MAX_ATTEMPTS} from './raid-lote-policy.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
 import {assertRaid70V2Start} from './reboot-economy-policy.js'
 import {initRaidLoteNoticeOutbox,enqueueRaidLoteNotice} from './raid-lote-notice-outbox.js'
@@ -73,6 +73,8 @@ export async function initRaidLoteStore(db){
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS billing_mode TEXT NOT NULL DEFAULT 'prepaid'")
   await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS session_ends_at TIMESTAMPTZ")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS reward_rule_version TEXT")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS reward_player_level INTEGER")
   // Só migra constraints quando ainda estiverem na versão antiga.
   // Evita DROP/ADD e locks desnecessários a cada boot.
   async function ensureCheck(table,name,expression,marker){
@@ -117,6 +119,8 @@ export async function initRaidLoteStore(db){
     )
   `)
   await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_summary JSONB NOT NULL DEFAULT '{}'::jsonb")
+  await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_rule_version TEXT")
+  await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_player_level INTEGER")
   await ensureCheck('raid_lote_attempts','raid_lote_attempts_seq_check','seq BETWEEN 1 AND 1000000','1000000')
   await db.query(`
     CREATE TABLE IF NOT EXISTS raid_lote_municipality(
@@ -271,7 +275,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,durationHours=null
 
 // V2: sessões de tempo, sem compra antecipada ou quantidade fixa.
 // A primeira cobrança é feita pelo worker na reserva da primeira tentativa.
-export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requestKey,confirmed,usePet=true},{getCatalog}={}){
+export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requestKey,confirmed,usePet=true,quotedPlayerLevel=null},{getCatalog}={}){
   if(!jid||typeof jid!=='string')throw new Error('Jogador inválido')
   validateRequestKey(requestKey)
   if(confirmed!==true)throw new Error('Ativação requer confirmação explícita')
@@ -302,6 +306,9 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     if(busy)throw new Error('Finalize a Raid atual antes de ativar o automático')
     const user=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!user||Number(user.level)<Number(cfg.minLevel||cfg.level))throw new Error('Nível insuficiente')
+    if(quotedPlayerLevel!==null&&Number(quotedPlayerLevel)!==Number(user.level))
+      throw new Error('Seu nível mudou. Abra uma nova prévia do Raidlote.')
+    const rewardPolicy=raidLoteRelativePolicy(user.level,cfg.level,RAID_LOTE_RELATIVE_VERSION)
     const hp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(hp?.hp||0)<=0)throw new Error('Cure o personagem antes de ativar')
     const wins=(await c.query("SELECT COUNT(*)::int AS n FROM transactions WHERE to_jid=$1 AND type='minigame' AND note=$2",[jid,'raid_'+cfg.level])).rows[0]
@@ -316,12 +323,12 @@ export async function startTimedRaidLoteSession(db,{jid,level,durationHours,requ
     await c.query(`
       INSERT INTO raid_lote_jobs(id,jid,request_key,level,requested,key_price,
         keys_total,fee_total,total_paid,cash_paid,bank_paid,
-        duration_hours,billing_mode,session_ends_at,next_attempt_at,use_pet)
+        duration_hours,billing_mode,session_ends_at,next_attempt_at,use_pet,reward_rule_version,reward_player_level)
       VALUES($1,$2,$3,$4,$5,$6,0,0,0,0,0,$7::smallint,'per_attempt',
-        NOW()+($7::smallint*INTERVAL '1 hour'),NOW(),$8)
-    `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours,usePet])
+        NOW()+($7::smallint*INTERVAL '1 hour'),NOW(),$8,$9,$10)
+    `,[id,jid,requestKey,cfg.level,RAID_LOTE_V2_MAX_ATTEMPTS,cfg.keyPrice,plan.hours,usePet,rewardPolicy.version,rewardPolicy.playerLevel])
     return {job:{id,jid,level:cfg.level,requested:RAID_LOTE_V2_MAX_ATTEMPTS,started:0,won_count:0,
-      status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours,use_pet:usePet},
+      status:'queued',billing_mode:'per_attempt',duration_hours:plan.hours,use_pet:usePet,reward_rule_version:rewardPolicy.version,reward_player_level:rewardPolicy.playerLevel},
       firstPrice:quote,alreadyPurchased:false}
   })
 }
@@ -445,15 +452,15 @@ export async function reserveNextRaidLoteAttempt(db,jobId,{getCatalog}={}){
     }
     const raidChat=raidLoteRoomId(id)
     await c.query(`
-      INSERT INTO raid_lote_attempts(id,job_id,seq,raid_chat,level)
-      VALUES($1,$2,$3,$4,$5)
-    `,[id,jobId,seq,raidChat,job.level])
+      INSERT INTO raid_lote_attempts(id,job_id,seq,raid_chat,level,reward_rule_version,reward_player_level)
+      VALUES($1,$2,$3,$4,$5,$6,$7)
+    `,[id,jobId,seq,raidChat,job.level,continuous?job.reward_rule_version??null:null,continuous?job.reward_player_level??null:null])
     await c.query(`
       UPDATE raid_lote_jobs SET started=$2,status='running',current_attempt_id=$3,updated_at=NOW(),
         next_attempt_at=CASE WHEN billing_mode='per_attempt' THEN NOW() WHEN duration_hours IS NULL THEN NULL ELSE NOW()+($4::integer*INTERVAL '1 minute') END
       WHERE id=$1
     `,[jobId,seq,id,RAID_LOTE_V2_INTERVAL_MINUTES])
-    return {status:'reserved',attempt:{id,job_id:jobId,seq,raid_chat:raidChat,level:job.level},job}
+    return {status:'reserved',attempt:{id,job_id:jobId,seq,raid_chat:raidChat,level:job.level,reward_rule_version:continuous?job.reward_rule_version??null:null,reward_player_level:continuous?job.reward_player_level??null:null},job}
   })
 }
 export async function attachRaidLoteAttempt(db,attemptId,startedAtMs){

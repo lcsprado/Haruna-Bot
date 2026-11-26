@@ -111,3 +111,33 @@ export function raidLoteScheduleText(job,now=Date.now()){
   const mins=Math.max(0,Math.ceil((due-now)/60000))
   return label+' • '+(mins?'próxima tentativa em '+mins+' min':'próxima tentativa liberada')
 }
+
+
+// Regra B, somente para novos pacotes contínuos V2. Versão nula = regra legada.
+export const RAID_LOTE_RELATIVE_VERSION='v2-relative-b1'
+export function raidLoteRelativePolicy(playerLevel,raidLevel,version=RAID_LOTE_RELATIVE_VERSION){
+  if(!version)return {version:null,xpBasisPoints:10000,marginBasisPoints:10000}
+  if(version!==RAID_LOTE_RELATIVE_VERSION||!integer(playerLevel)||Number(playerLevel)<1||!integer(raidLevel)||Number(raidLevel)<1)
+    throw new RangeError('Política relativa Raidlote inválida')
+  const lv=Number(playerLevel),raid=Number(raidLevel)
+  // 2% por nível (1% por meio nível); aritmética inteira em pontos-base.
+  const reduction=lv<=30?0:Math.min(6000,100*Math.max(0,Math.min(80,lv)-2*raid))
+  return {version,playerLevel:lv,raidLevel:raid,xpBasisPoints:10000-reduction,
+    marginBasisPoints:[25,40].includes(raid)?10000:10000-reduction}
+}
+export function raidLoteRelativeCash(original,keyPrice,policy){
+  if(!integer(original)||!integer(keyPrice)||Number(keyPrice)<1)throw new RangeError('Prêmio ou chave inválidos')
+  const fee=raidLoteQuote(keyPrice,1).feePerAttempt
+  const margin=Math.max(0,Number(original)-Number(keyPrice)-fee)
+  return Number(original)-Math.round(margin*(10000-policy.marginBasisPoints)/10000)
+}
+export function raidLoteRelativeXp(base,bonus,basisPoints){
+  if(!integer(base)||!integer(bonus)||!integer(basisPoints)||basisPoints<4000||basisPoints>10000)
+    throw new RangeError('EXP relativa inválida')
+  const total=Math.round((Number(base)+Number(bonus))*basisPoints/10000)
+  const adjustedBase=Math.round(Number(base)*basisPoints/10000)
+  return {base:adjustedBase,bonus:total-adjustedBase,total}
+}
+export function raidLoteRelativeText(policy){
+  return '✨ EXP: '+(policy.xpBasisPoints/100)+'% da regra atual • 💰 Margem nominal: '+(policy.marginBasisPoints/100)+'% (chave e taxa preservadas na vitória)'
+}

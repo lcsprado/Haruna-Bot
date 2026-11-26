@@ -12,6 +12,9 @@ on:
     paths:
       - 'src/neon/torre-mineracao-*.js'
       - 'src/neon/db.js'
+      - 'src/neon/games.js'
+      - 'src/neon/enchantments-alpha.js'
+      - 'src/neon/raid-lote-policy.js'
       - 'src/neon/index.js'
       - 'src/neon/raid-lote-store.js'
       - 'test/torre-mineracao-*.test.mjs'

@@ -141,7 +141,7 @@ const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(
 // No modo V2, o consumidor real só inicia após aprovação explícita do cutover.
 assertRebootWhatsappPermission()
 
-import {RAID_LOTE_V1,raidLoteQuote,raidLoteDurationPlan,raidLoteScheduleText,RAID_LOTE_NUMERIC_CONFIRM_STAGE,RAID_LOTE_NUMERIC_CONFIRM_TTL_MS,raidLoteNumericDecision} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteQuote,raidLoteRelativePolicy,raidLoteRelativeText,raidLoteDurationPlan,raidLoteScheduleText,RAID_LOTE_NUMERIC_CONFIRM_STAGE,RAID_LOTE_NUMERIC_CONFIRM_TTL_MS,raidLoteNumericDecision} from './raid-lote-policy.js'
 import {shopForge5ServiceFee} from './shop-forge5-plan.js'
 import {effectiveExpeditionPlans} from './reboot-pet-economy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote,startTimedRaidLoteSession} from './raid-lote-store.js'
@@ -4882,12 +4882,13 @@ if(flow.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE){
   // A chave nasce do pedido de prévia: resposta 1 repetida não cria
   // sessões duplicadas, mesmo com IDs de mensagens diferentes.
   const activated=await startTimedRaidLoteSession(db,
-    {jid:sender,level,durationHours:hours,requestKey,confirmed:true,usePet:flow.data?.usePet!==false},
+    {jid:sender,level,durationHours:hours,requestKey,confirmed:true,usePet:flow.data?.usePet!==false,quotedPlayerLevel:flow.data?.rewardPlayerLevel??null},
     {getCatalog:getRaidCatalog})
   clearQuickFlow(chat,sender)
   await reply((activated.alreadyPurchased?'✅ *SESSÃO JÁ REGISTRADA*':'✅ *RAIDLOTE AUTOMÁTICO ATIVADO*')
     +'\n⚔️ Raid Lv.'+level+' • '+hours+' horas'
     +'\n🐾 '+(activated.job?.use_pet===false?'Sem pets durante todo o pacote':'Com pets')
+    +'\n'+raidLoteRelativeText(raidLoteRelativePolicy(activated.job?.reward_player_level,level,activated.job?.reward_rule_version??null))
     +'\n⚡ Primeira Raid: imediata, na próxima verificação do bot (até 8s)'
     +'\n🔄 Ao terminar uma Raid, começa outra sem espera de 80 minutos'
     +'\n💳 Chave e taxa cobradas apenas ao iniciar CADA tentativa'
@@ -13749,12 +13750,13 @@ if(confirmation&&timedRaidLote){
   if(samePreview&&petArgs.length&&pending.data?.usePet!==false)return await reply('⚠️ Abra uma nova prévia sempet antes de alterar o modo confirmado.')
   const requestKey=samePreview?pending.data.requestKey:'wa:'+createHash('sha256').update(sender+':'+chat+':'+messageId).digest('hex')
   const activated=await startTimedRaidLoteSession(db,
-    {jid:sender,level,durationHours:durationPlan.hours,requestKey,confirmed:true,usePet:samePreview?pending.data?.usePet!==false:usePet},
+    {jid:sender,level,durationHours:durationPlan.hours,requestKey,confirmed:true,usePet:samePreview?pending.data?.usePet!==false:usePet,quotedPlayerLevel:samePreview?pending.data?.rewardPlayerLevel??null:null},
     {getCatalog:getRaidCatalog})
   if(getQuickFlow(chat,sender)?.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE)clearQuickFlow(chat,sender)
   return await reply((activated.alreadyPurchased?'✅ *SESSÃO JÁ REGISTRADA*':'✅ *RAIDLOTE AUTOMÁTICO ATIVADO*')
     +'\n⚔️ Raid Lv.'+level+' • '+durationPlan.hours+' horas'
     +'\n🐾 '+(activated.job?.use_pet===false?'Sem pets durante todo o pacote':'Com pets')
+    +'\n'+raidLoteRelativeText(raidLoteRelativePolicy(activated.job?.reward_player_level,level,activated.job?.reward_rule_version??null))
     +'\n⚡ Primeira Raid: imediata, na próxima verificação do bot (até 8s)'
     +'\n🔄 Ao terminar uma Raid, começa outra sem espera de 80 minutos'
     +'\n💳 Chave e taxa cobradas apenas ao iniciar CADA tentativa'
@@ -13784,10 +13786,12 @@ if(timedRaidLote){
   const activePoco=await pocoNumericRoute({db,sender,chat,body:'1'})
   if(activePoco)return await reply('⚠️ Finalize sua decisão ativa no *Poço do Abismo* antes de iniciar um Raidlote. Os números 1 e 2 estão reservados ao combate.')
   const each=raidLoteQuote(cfg.keyPrice,1,Math.max(0,Number(owned?.quantity||0)))
+  const quotedLevel=Number((await db.query('SELECT level FROM users WHERE jid=$1',[sender])).rows[0]?.level||1)
+  const rewardPolicy=raidLoteRelativePolicy(quotedLevel,level)
   const quoteMessageId=String(msg?.key?.id||'')
   if(!quoteMessageId)return await reply('⚠️ Não foi possível identificar a prévia do Raidlote. Tente o comando novamente. Nenhuma sessão foi iniciada.')
   setQuickFlow(chat,sender,RAID_LOTE_NUMERIC_CONFIRM_STAGE,{
-    level,hours:durationPlan.hours,usePet,
+    level,hours:durationPlan.hours,usePet,rewardPlayerLevel:quotedLevel,
     requestKey:'wa:'+createHash('sha256').update('raidlote2:quote:'+sender+':'+chat+':'+quoteMessageId).digest('hex')
   },RAID_LOTE_NUMERIC_CONFIRM_TTL_MS)
   return await reply('⚔️ *RAIDLOTE 2.0 — AUTOMÁTICO CONTÍNUO*'
@@ -13796,6 +13800,7 @@ if(timedRaidLote){
     +'\n🐾 '+(usePet?'Com pets':'Sem pets durante todo o pacote')
     +'\n⚡ Primeira Raid imediata; as próximas começam ao terminar cada combate'
     +'\n💳 Custo de CADA tentativa: chave da Raid + taxa 10%'
+    +'\n'+raidLoteRelativeText(rewardPolicy)
     +'\n💰 Primeira tentativa estimada: R$ '+each.totalPrice.toLocaleString('pt-BR')
     +(each.ownedKeysUsed?' (usará sua chave existente)':'')
     +'\n💀 Se morrer, ficar sem saldo ou acabar o tempo, encerra automaticamente'

@@ -57,6 +57,26 @@ test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {sk
     await assert.rejects(upgradeAppliedStone(jid,{...next[1],token:randomUUID()}),/Saldo insuficiente/)
     assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0].cash),400)
     assert.equal(Number((await db.query("SELECT count(*) FROM transactions WHERE from_jid=$1 AND type='stone_upgrade'",[jid])).rows[0].count),1)
+    // Encantamento pertence ao tipo enquanto houver pelo menos uma unidade.
+    const enchCount=async()=>Number((await db.query('SELECT count(*) FROM equipment_enchantments WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0].count)
+    const addGear=async q=>db.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[jid,itemId,q])
+    await addGear(1);assert.equal(await enchCount(),1)
+    await db.query('UPDATE inventories SET quantity=1 WHERE jid=$1 AND item_id=$2',[jid,itemId]);assert.equal(await enchCount(),1)
+    const rollback=await db.connect()
+    try{
+      await rollback.query('BEGIN')
+      await rollback.query('UPDATE inventories SET quantity=0 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+      assert.equal(Number((await rollback.query('SELECT count(*) FROM equipment_enchantments WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0].count),0)
+      await rollback.query('ROLLBACK')
+    }finally{rollback.release()}
+    assert.equal(await enchCount(),1)
+    await db.query('UPDATE inventories SET quantity=0 WHERE jid=$1 AND item_id=$2',[jid,itemId]);assert.equal(await enchCount(),0)
+    // Resíduo histórico: leitura ignora, e UPSERT 0 -> 1 limpa antes do commit.
+    await db.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1)',[jid,itemId,stoneId])
+    assert.equal((await getEquippedEnchants(db,jid,[itemId])).atk,0)
+    await addGear(1);assert.equal(await enchCount(),0)
+    await db.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1)',[jid,itemId,stoneId])
+    await db.query('DELETE FROM inventories WHERE jid=$1 AND item_id=$2',[jid,itemId]);assert.equal(await enchCount(),0)
     // Recompensas das missões V2: duas solicitações simultâneas, e replay posterior.
     const {initProgression}=await import('../src/neon/progression.js')
     const {getDailyMissionsV2,claimDailyMissionsV2}=await import('../src/neon/daily-v2.js')
