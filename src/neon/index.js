@@ -1285,7 +1285,7 @@ async function runOwnerEventAction({type,minutes,multiplier=2,startsAt=Date.now(
   const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
   await refreshOwnerEventTimers()
   await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
-    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'🐾 Até '+event.budgetPerPlayer+' XP extra por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'Até '+event.budgetPerPlayer+' '+event.budgetUnit+' por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
     (event.scheduled?'📅 Início: '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
     '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
 }
@@ -5709,7 +5709,7 @@ const adminEventDetailMenu=async(type)=>{
   const s=await getOwnerEvent(type)
   setQuickFlow(chat,sender,'admin_event_detail',{type},5*60*1000)
   const status=s.active?'🟢 ATIVO':s.scheduled?'📅 AGENDADO':'⚪ INATIVO'
-  await reply('🎪 *'+d.label+'*\n'+status+(s.budgetPerPlayer?'\nV2: até 1.000 XP extra por jogador cadastrado com classe ativa ao agendar. Manual: pets, Raids e Boss; sem Raidlote ou PvP.':'')+
+  await reply('🎪 *'+d.label+'*\n'+status+(s.budgetPerPlayer?'\nV2: até '+s.budgetPerPlayer+' '+s.budgetUnit+' por jogador com classe ativa ao agendar. '+s.scope+'. Sem Raidlote.':'')+
     '\n\n1️⃣ Ativar 20 minutos (2x)'+
     '\n2️⃣ Ativar 60 minutos (2x)'+
     '\n3️⃣ Consultar status'+
@@ -5720,7 +5720,7 @@ const activateAdminEvent=async(type,minutes,multiplier=2,startsAt=Date.now())=>{
   const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
   await refreshOwnerEventTimers()
   await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
-    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'🐾 Até '+event.budgetPerPlayer+' XP extra por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'Até '+event.budgetPerPlayer+' '+event.budgetUnit+' por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
     (event.scheduled?'📅 Agendado para '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
     '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
 }
