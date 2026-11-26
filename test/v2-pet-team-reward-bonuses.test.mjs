@@ -34,3 +34,22 @@ test('reward snapshots are shared by manual raid, raidlote and boss; sempet is e
   assert.ok(web.includes("case 'raid.round': return raidRound"))
   assert.ok(web.includes("case 'boss.attack': return attackBoss"))
 })
+
+test('all seven passives share the weights in the real squad function, combat caps remain',()=>{
+  const src=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  const body=src.slice(src.indexOf('function squadCombatBonus('),src.indexOf('// Aplica HP temporário'))
+  const combine=new Function('rebootEconomyEnabled','petBossBonus','petTeamRewardBonuses',body+';return squadCombatBonus')(()=>true,x=>x.bonus,petTeamRewardBonuses)
+  const keys=['damage','defense','crit','dodge','hp','xp','drop']
+  const values=v=>Object.fromEntries(keys.map(k=>[k,v]))
+  const pet=(slot,v,hp=100,energy=10)=>({slot,hp,energy,bonus:values(v)})
+  for(const [active,slot,team,expected] of [
+    [values(.08),1,[pet(1,.08),pet(2,.06),pet(3,.04)],.12],
+    [values(.08),3,[pet(1,.08,0),pet(2,.06),pet(3,.08)],.11],
+    [values(.08),1,[pet(2,.06,100,0),pet(3,.04,0)],.08]
+  ]){
+    const result=combine(active,slot,team)
+    for(const key of keys)near(result[key],expected)
+  }
+  const capped=combine(values(.3),1,[pet(2,.3),pet(3,.3)])
+  near(capped.damage,.30);near(capped.defense,.25);near(capped.crit,.20);near(capped.dodge,.20);near(capped.hp,.30)
+})
