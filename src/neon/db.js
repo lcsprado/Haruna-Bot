@@ -1,4 +1,5 @@
 import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from './pvp-equipment-counter-policy.js'
+import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins,v2RaidWeaponDisplayName} from './v2-raid-weapon-builds.js'
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing} from './reboot-assets-policy.js'
@@ -594,7 +595,12 @@ starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragment
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
 starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 31/10 18h. '+g.short,g.category,0,'legendary']))
 starterItems.push(['insignia_primeiros_conquistadores_20261102','👑 Insígnia dos Primeiros Conquistadores','Relíquia da primeira Guerra de Clãs. +7% dano Boss/Raid, +3 p.p. CRIT Boss/Raid, -2% dano recebido Raid. Sem PvP.','special',0,'event'])
+starterItems.push(...v2RaidWeaponItemRows(classesOnlyRebootEnabled()))
 // O banco V2 nasce sem itens dos 7 Pecados; nenhuma exclusão em banco legado.
+for(const [index,sourceItem] of starterItems.entries()){
+ const name=v2RaidWeaponDisplayName(sourceItem[0],sourceItem[1],classesOnlyRebootEnabled())
+ if(name!==sourceItem[1])starterItems[index]=[sourceItem[0],name,...sourceItem.slice(2)]
+}
 for (const item of filterRebootStarterItems(starterItems)) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -2151,6 +2157,7 @@ LIMIT $1
 return rows
 }
 const EQUIPMENT = {
+...v2RaidWeaponStats(classesOnlyRebootEnabled()),
 ...Object.fromEntries(ANTI_CRIT_SHIELDS.map(({id,rarity,price,description,...gear})=>[id,gear])),
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
@@ -2173,22 +2180,22 @@ katana_sombria: { category:'weapon', atk:28, def:0, name:'Katana Sombria' },
 espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
 tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
 lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
-foice_carmesim: { category:'weapon', atk:43, def:0, name:'Foice Carmesim' },
-lanca_solar: { category:'weapon', atk:46, def:0, name:'Lança Solar' },
-garras_vazio: { category:'weapon', atk:51, def:0, name:'Garras do Vazio' },
-espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
+foice_carmesim: { category:'weapon', atk:43, def:0, name:v2RaidWeaponDisplayName('foice_carmesim','Foice Carmesim',classesOnlyRebootEnabled()) },
+lanca_solar: { category:'weapon', atk:46, def:0, name:v2RaidWeaponDisplayName('lanca_solar','Lança Solar',classesOnlyRebootEnabled()) },
+garras_vazio: { category:'weapon', atk:51, def:0, name:v2RaidWeaponDisplayName('garras_vazio','Garras do Vazio',classesOnlyRebootEnabled()) },
+espada_eclipse: { category:'weapon', atk:54, def:0, name:v2RaidWeaponDisplayName('espada_eclipse','Espada do Eclipse',classesOnlyRebootEnabled()) },
 martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
-excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
-katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
+excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:v2RaidWeaponDisplayName('excalibur','Excalibur',classesOnlyRebootEnabled()) },
+katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:v2RaidWeaponDisplayName('katana_divina','Katana Divina',classesOnlyRebootEnabled()) },
 sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
 lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
 espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
-lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
-machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
-foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
+lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:v2RaidWeaponDisplayName('lamina_caos','Lâmina do Caos',classesOnlyRebootEnabled()) },
+machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:v2RaidWeaponDisplayName('machado_tita','Machado do Titã',classesOnlyRebootEnabled()) },
+foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:v2RaidWeaponDisplayName('foice_abismo','Foice do Abismo',classesOnlyRebootEnabled()) },
 foice_eclipse_mistico_20261030: {category:'weapon',atk:140,def:0,hp:0,spd:10,crit:.04,name:'Foice do Eclipse'},
-espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
-exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
+espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:v2RaidWeaponDisplayName('espada_aurora','Espada da Aurora',classesOnlyRebootEnabled()) },
+exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:v2RaidWeaponDisplayName('exterminadora_eclipse','Exterminadora do Eclipse',classesOnlyRebootEnabled()) },
 armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
 armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
 armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
@@ -2391,6 +2398,7 @@ return eq ? {...eq,itemId} : null
 const EQUIPMENT_MAX_LEVEL=10
 export const FORGE_STAR_MATERIALS=Object.freeze([0,30,50,80,120])
 export const RAID_WEAPON_FORGE_ORIGINS=Object.freeze({
+...v2RaidWeaponOrigins(classesOnlyRebootEnabled()),
 foice_carmesim:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
 lanca_solar:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
 garras_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
@@ -2484,6 +2492,31 @@ LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventor
 WHERE jid=inv.jid AND item_id=inv.item_id) bound ON TRUE
 LEFT JOIN inventories mat ON mat.jid=inv.jid AND mat.item_id=
 CASE inv.item_id
+WHEN 'raid_v2_martelo_brasa' THEN 'escama_vulcanica'
+WHEN 'raid_v2_katana_vulcanica' THEN 'escama_vulcanica'
+WHEN 'raid_v2_machado_erupcao' THEN 'escama_vulcanica'
+WHEN 'raid_v2_foice_profundeza' THEN 'olho_abissal'
+WHEN 'raid_v2_katana_mares' THEN 'olho_abissal'
+WHEN 'raid_v2_machado_devorador' THEN 'olho_abissal'
+WHEN 'raid_v2_martelo_ferro' THEN 'nucleo_titan'
+WHEN 'raid_v2_foice_engrenagens' THEN 'nucleo_titan'
+WHEN 'raid_v2_machado_colosso' THEN 'nucleo_titan'
+WHEN 'raid_v2_martelo_trono' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_foice_rei_abissal' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_machado_ruina' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_martelo_serafim' THEN 'fragmento_celestial'
+WHEN 'raid_v2_foice_anjo_caido' THEN 'fragmento_celestial'
+WHEN 'raid_v2_machado_querubim' THEN 'fragmento_celestial'
+WHEN 'raid_v2_martelo_juizo' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_foice_almas_divinas' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_machado_furia_divina' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_martelo_entalpia' THEN 'fragmento_caos'
+WHEN 'raid_v2_foice_entropia' THEN 'fragmento_caos'
+WHEN 'raid_v2_katana_aurora' THEN 'coroa_abissal'
+WHEN 'raid_v2_machado_imperador' THEN 'coroa_abissal'
+WHEN 'raid_v2_martelo_eclipse_supremo' THEN 'essencia_eclipse'
+WHEN 'raid_v2_foice_colheita_final' THEN 'essencia_eclipse'
+WHEN 'raid_v2_machado_frenesi_eclipse' THEN 'essencia_eclipse'
 WHEN 'foice_carmesim' THEN 'escama_vulcanica'
 WHEN 'lanca_solar' THEN 'olho_abissal'
 WHEN 'garras_vazio' THEN 'nucleo_titan'
