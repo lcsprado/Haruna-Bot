@@ -1578,6 +1578,7 @@ async function paidGearHistory(client,jid,itemIds){
  if(!itemIds.length)return new Map()
  const {rows}=await client.query(`SELECT type,note,amount,split_part(note,' ',1) AS item_id
  FROM transactions WHERE split_part(note,' ',1)=ANY($2::text[])
+ AND id>COALESCE((SELECT MAX(id) FROM transactions WHERE from_jid=$1 AND type IN ('owner_reset_total','owner_reset_inventory')),0)
  AND ((from_jid=$1 AND type IN ('equipment_upgrade','equipment_star_forge','equipment_star_forge_shield','equipment_star_forge_collab_fragments','equipment_shop_forge5','equipment_inventory_auto_forge'))
  OR (to_jid=$1 AND from_jid='shop' AND type IN ('sale','sale_batch'))) ORDER BY id`,[jid,itemIds])
  const history=new Map()
@@ -3887,6 +3888,7 @@ await client.query(
 'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
 [jid]
 )
+if(classesOnlyRebootEnabled())await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'owner',0,'owner_reset_inventory','admin inventory reset')",[jid])
 return { removed }
 })
 }
