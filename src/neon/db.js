@@ -597,14 +597,15 @@ starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do 
 starterItems.push(['insignia_primeiros_conquistadores_20261102','👑 Insígnia dos Primeiros Conquistadores','Relíquia da primeira Guerra de Clãs. +7% dano Boss/Raid, +3 p.p. CRIT Boss/Raid, -2% dano recebido Raid. Sem PvP.','special',0,'event'])
 starterItems.push(...v2RaidWeaponItemRows(classesOnlyRebootEnabled()))
 // O banco V2 nasce sem itens dos 7 Pecados; nenhuma exclusão em banco legado.
-for (const item of filterRebootStarterItems(starterItems)) {
+for (const sourceItem of filterRebootStarterItems(starterItems)) {
+const item=[sourceItem[0],v2RaidWeaponDisplayName(sourceItem[0],sourceItem[1],classesOnlyRebootEnabled()),...sourceItem.slice(2)]
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
 VALUES ($1,$2,$3,$4,$5,$6)
 ON CONFLICT(id) DO UPDATE
 SET name=EXCLUDED.name, description=EXCLUDED.description,
 category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
-`, candidateShopCatalogItem([item[0],v2RaidWeaponDisplayName(item[0],item[1],classesOnlyRebootEnabled()),...item.slice(2)]))
+`, candidateShopCatalogItem(item))
 }
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
