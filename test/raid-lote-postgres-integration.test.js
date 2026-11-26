@@ -254,6 +254,26 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       assert.equal(Number(final.won_count),1)
       assert.equal(Number(final.total_paid),4400)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),13995)
+      // Restart after the last paid combat finished, with the session already expired.
+      const secondStart=gameStart+60000
+      await db.query("UPDATE raid_lote_attempts SET status='active',raid_started_at_ms=$2,reward_summary=$3::jsonb WHERE id=$1",
+        [nextImmediate.attempt.id,secondStart,JSON.stringify({rewards:[{cash:2200,exp:360}]})])
+      await db.query('INSERT INTO trevo_games(chat_jid,game_type,state) VALUES($1,$2,$3::jsonb)',
+        [nextImmediate.attempt.raid_chat,'raid:10',JSON.stringify({status:'completed',mode:'lote',loteAttemptId:nextImmediate.attempt.id,startedAt:secondStart})])
+      await db.query("UPDATE raid_lote_jobs SET session_ends_at=NOW()-INTERVAL '1 second' WHERE id=$1",[plan.job.id])
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})).status,'resume')
+      const ending=await settleRaidLoteAttempt(db,nextImmediate.attempt.id)
+      assert.equal(ending.jobStatus,'completed')
+      const finished=(await db.query('SELECT status,finished_at,current_attempt_id,won_count,total_paid FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
+      assert.equal(finished.status,'completed')
+      assert.ok(finished.finished_at instanceof Date,'completed session must persist its finish time')
+      assert.equal(finished.current_attempt_id,null)
+      assert.equal(Number(finished.won_count),2)
+      assert.equal(Number(finished.total_paid),4400)
+      assert.equal((await settleRaidLoteAttempt(db,nextImmediate.attempt.id)).status,'already_settled')
+      assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})).status,'inactive')
+      assert.deepEqual((await db.query('SELECT status,finished_at,current_attempt_id,won_count,total_paid FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0],finished)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),13995)
       // Sessões de 4h precisam comportar MAIS DE DEZ tentativas sem estourar
       // os CHECKs legados em started/owned_keys_spent/keys_bought/won_count.
       await db.query('UPDATE raid_lote_jobs SET started=11,won_count=11,keys_bought=11,owned_keys_spent=11 WHERE id=$1',[plan.job.id])
