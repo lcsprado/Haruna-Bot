@@ -635,8 +635,8 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       const {applyV2OwnerEvent,V2_OWNER_EVENT_POLICIES}=await import('../src/neon/reboot-pet-xp-event.js')
       const priorClock=clock
       try{
-        clock=Date.parse('2026-11-26T18:31:00-03:00')
-        const startsAt=parseOwnerEventBrazilDate('26/11','21:00')
+        clock=Date.parse('2026-11-27T18:31:00-03:00')
+        const startsAt=parseOwnerEventBrazilDate('27/11','21:00')
         for(const type of Object.keys(V2_OWNER_EVENT_POLICIES)){
           assert.equal(ownerEventAvailable(type),true)
           const event=await setOwnerEvent(type,{minutes:20,multiplier:2,startsAt,owner:jids[0]})
