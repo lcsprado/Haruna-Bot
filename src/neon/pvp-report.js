@@ -74,7 +74,9 @@ export function formatPvpBattleReport(r){
   }
   lines.push('',`⚔️ *COMBATE — ${roundCount} RODADA(S)*`)
   let previousRound=null
-  for(const e of events){
+  const visibleEvents=events.length>100?[...events.slice(0,24),{omitted:events.length-48},...events.slice(-24)]:events
+  for(const e of visibleEvents){
+    if(e.omitted){lines.push('',`… ${e.omitted} ações intermediárias omitidas no WhatsApp; totais completos abaixo.`);previousRound=null;continue}
     const round=Number(e.round)||1
     if(round!==previousRound){lines.push('',`🔹 *Rodada ${round}*`);previousRound=round}
     if(e.petHeal){
@@ -89,6 +91,7 @@ export function formatPvpBattleReport(r){
       lines.push(`${prefix}${name(e.from)} → ${name(e.to)}: *${fmt(e.dmg)} dano* — ❤️ ${fmt(e.hp)}`)
       if(e.heroTechnique)lines.push(`✨ Técnica: *${name(e.heroTechnique)}* — ${name(e.from)}`)
     }
+    if(Number(e.fatigueDamage)>0)lines.push(`🔥 Fadiga de combate: +${fmt(e.fatigueDamage)} dano inevitável`)
     const classSkills=Array.isArray(e.classTechniques)&&e.classTechniques.length?e.classTechniques:e.classTechnique?[e.classTechnique]:[]
     if(classSkills.length){
       const effects=[]
@@ -122,6 +125,8 @@ export function formatPvpBattleReport(r){
     lines.push(`❤️ HP ao fim das trocas: ${name(attacker.name)} ${fmt(r.ending.attackerHp)} • ${name(defender.name)} ${fmt(r.ending.defenderHp)}`)
   }
   lines.push('ℹ️ Depois do duelo, o perdedor recupera 25% da vida normal. O HP zerado no golpe final é anterior à recuperação exibida no !perfil.')
+  if(r.final?.noRoundLimit)lines.push('🚫 Sem poções durante o duelo • sem limite de rodadas • XP do duelo não cura ao subir de nível.')
+  if(r.final&&attacker&&defender)lines.push(`❤️ HP salvo (sem bônus temporários): ${name(attacker.name)} ${fmt(r.final.attackerHp)}/${fmt(r.final.attackerMaxHp)} • ${name(defender.name)} ${fmt(r.final.defenderHp)}/${fmt(r.final.defenderMaxHp)}`)
   if(r.decidedByLimit){
     const aRate=attacker?Math.max(0,Number(r.ending?.attackerHp||0))/Math.max(1,Number(attacker.maxHp||1)):0
     const bRate=defender?Math.max(0,Number(r.ending?.defenderHp||0))/Math.max(1,Number(defender.maxHp||1)):0
