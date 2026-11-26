@@ -888,19 +888,20 @@ export function getRaidCatalog(){ return filterRebootRaidCatalog(RAID_CONFIGS).m
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
 
-async function raidRows(c,chat,forUpdate=false){
+async function raidRows(c,chat,forUpdate=false,statuses=null){
   const lock=forUpdate?' FOR UPDATE':''
+  const statusFilter=statuses?" AND state->>'status' = ANY($2::text[])":''
   const {rows}=await c.query(
     `SELECT game_type,state,updated_at FROM trevo_games
-     WHERE chat_jid=$1 AND (game_type='raid' OR game_type LIKE 'raid:%')
+     WHERE chat_jid=$1 AND (game_type='raid' OR game_type LIKE 'raid:%')${statusFilter}
      ORDER BY updated_at DESC${lock}`,
-    [chat]
+    statuses?[chat,statuses]:[chat]
   )
   return rows.map(r=>({gameType:r.game_type,...(r.state||{})}))
 }
 
-async function resolveRaidRoom(c,chat,level=null,{host=null,jid=null,lobbyOnly=false}={}){
-  const rows=await raidRows(c,chat,true)
+async function resolveRaidRoom(c,chat,level=null,{host=null,jid=null,lobbyOnly=false,activeOnly=false}={}){
+  const rows=await raidRows(c,chat,true,activeOnly?['active']:null)
   let rooms=rows.filter(raidIsOpen)
   if(lobbyOnly) rooms=rooms.filter(r=>r.status==='lobby')
   if(level) rooms=rooms.filter(r=>Number(r.level)===Number(level))
@@ -939,12 +940,12 @@ async function resolveGlobalPlayerRaid(c,jid){
 
 
 export async function getRaidStatuses(chat){
-  return tx(async c=>(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r)))
+  return tx(async c=>(await raidRows(c,chat,false,['lobby','active'])).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r)))
 }
 
 export async function getRaidStatus(chat,level=null){
   return tx(async c=>{
-    const rooms=(await raidRows(c,chat,false)).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r))
+    const rooms=(await raidRows(c,chat,false,['lobby','active'])).filter(r=>raidIsOpen(r)&&raidEnabledInReboot(r))
     if(level) return rooms.find(r=>Number(r.level)===Number(level))||null
     return rooms[0]||null
   })
@@ -1747,7 +1748,7 @@ export async function getPlayerDamageStats(jid,heroId=null,{historical=false}={}
 
 export async function raidRound(chat,level){
   return tx(async c=>{
-    const rooms=await resolveRaidRoom(c,chat,level||null)
+    const rooms=await resolveRaidRoom(c,chat,level||null,{activeOnly:true})
     const s=rooms.find(r=>r.status==='active'&&(!level||Number(r.level)===Number(level)))
     if(!s) return {reason:'inactive'}
     const gameType=s.gameType
