@@ -274,7 +274,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
           await db.query("INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)",[player])
           for(let i=0;i<3;i++)await db.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame','raid_10')",[player])
           if(owned)await db.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)',[player,v2cfg.keyId])
-          const session=await startTimedRaidLoteSession(db,{jid:player,level:10,durationHours:4,requestKey:'b1-engine-'+player,confirmed:true,usePet:false,quotedPlayerLevel:100},{getCatalog:v2catalog})
+          const session=await startTimedRaidLoteSession(db,{jid:player,level:10,durationHours:4,requestKey:'b1-engine-'+player.split('@')[0],confirmed:true,usePet:false,quotedPlayerLevel:100},{getCatalog:v2catalog})
           if(legacy)await db.query('UPDATE raid_lote_jobs SET reward_rule_version=NULL,reward_player_level=NULL WHERE id=$1',[session.job.id])
           // Mudança de nível durante o pacote nunca muda sua regra.
           await db.query('UPDATE users SET level=101 WHERE jid=$1',[player])
