@@ -31,6 +31,7 @@ import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {createWhatsAppOfflineRecovery} from './whatsapp-offline-recovery.js'
+import {inboundRejection} from './whatsapp-inbound-freshness.js'
 import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
 import {lookupOutboundWithGrace} from './whatsapp-retry-lookup-grace.js'
 import {createGroupRetryStormGuard} from './whatsapp-retry-storm-guard.js'
@@ -2581,6 +2582,8 @@ browser:Browsers.ubuntu('Chrome'),
 printQRInTerminal:!pairingNumber,
 markOnlineOnConnect:false,
 syncFullHistory:false,
+// RPG nao depende de historico; preservar Signal, notificacoes e mensagens novas.
+shouldSyncHistoryMessage:()=>false,
 cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
 mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
@@ -10512,7 +10515,7 @@ await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,
 // Jogadores diferentes no mesmo grupo são atendidos em paralelo.
 // Menus, confirmações e transações de CADA jogador continuam sequenciais.
 const enqueueIncomingByPlayer=createKeyedAsyncQueue()
-sock.ev.on('messages.upsert',({messages,type})=>{
+sock.ev.on('messages.upsert',({messages,type,requestId})=>{
 const diagnosis=trevoHealth.inboundDiagnostics||(trevoHealth.inboundDiagnostics={})
 const tally=name=>{diagnosis[name]=Number(diagnosis[name]||0)+1}
 for(let i=0;i<Math.max(1,messages?.length||0);i++)tally(type==='notify'?'notify':type==='append'?'append':'other')
@@ -10520,7 +10523,16 @@ if(messages?.length)offlineRecovery.onMessage()
 const receivedAt=Date.now()
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
-for(const [playerKey,batch] of groupIncomingByPlayer(messages)){
+// Descarte antes da fila, usando os mesmos limites da recepcao original.
+// PDO tambem recupera comandos recentes: jamais bloquear todo requestId.
+trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
+const fresh=[]
+for(const msg of messages||[]){
+  const reason=inboundRejection(msg,requestId?'append':type,receivedAt)
+  if(reason){tally(reason);continue}
+  fresh.push(msg)
+}
+for(const [playerKey,batch] of groupIncomingByPlayer(fresh)){
   void enqueueIncomingByPlayer(playerKey,()=>processIncomingMessages({messages:batch,type},receivedAt))
     .catch(err=>console.error('[WhatsApp Inbound] falha na fila por jogador',err?.message||err))
 }
