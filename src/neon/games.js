@@ -1,3 +1,4 @@
+import {v2EpicRaidBoxChance} from './v2-raid-epic-box-policy.js'
 import {assertNoActiveMining} from './torre-mineracao-activity.js'
 import {expandV2RaidWeapons,expandedV2GearChance} from './v2-raid-weapon-builds.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
@@ -1529,8 +1530,9 @@ async function finishRaidRewards(c,s,cfg,chat){
     if(cfg.box){
       // Lv15-25: aproximadamente metade da chance antiga.
       // Lv30+: o 1º colocado não recebe mais caixa garantida; base de 55%.
-      let boxChance
-      if(cfg.level>=30 && i===0){
+      let boxChance=v2EpicRaidBoxChance({level:cfg.level,rankIndex:i,share,petDrop:pb.drop,enabled:rebootEconomyEnabled()&&cfg.box==='caixa_epica'})
+      if(boxChance!==null){ /* V2: chances progressivas, antes da reducao RaidLote */ }
+      else if(cfg.level>=30 && i===0){
         boxChance=Math.min(.65,.55+Number(pb.drop||0)*.50)
       }else if(cfg.level>=30){
         boxChance=Math.min(.45,.08+share*.45+Number(pb.drop||0)*.25)
