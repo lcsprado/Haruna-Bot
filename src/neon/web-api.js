@@ -1,3 +1,4 @@
+import {classCombatHp,classCombatStats} from './class-combat-balance.js'
 import {listAppliedStoneUpgrades,upgradeAppliedStone} from './enchantments-alpha.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
@@ -458,11 +459,13 @@ async function groupSnapshot(chatJid){
       db.query(`
         SELECT u.jid,u.level,
                s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd,
-               s.weapon_id,s.armor_id,s.boot_id,
+               s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,
+               COALESCE(cl.level,1)::int AS class_level,
                p.name AS pet_name,p.species AS pet_species,p.level AS pet_level,
                p.hp AS pet_hp,p.max_hp AS pet_max_hp
         FROM users u
         LEFT JOIN stats s ON s.jid=u.jid
+        LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
         LEFT JOIN pets p ON p.jid=u.jid
         WHERE u.jid=ANY($1::text[])
       `,[rosterJids]),
@@ -481,10 +484,14 @@ async function groupSnapshot(chatJid){
       const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id),starFor(row.jid,row.weapon_id)):zero
       const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,levelFor(row.jid,row.armor_id),starFor(row.jid,row.armor_id)):zero
       const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,levelFor(row.jid,row.boot_id)):zero
-      const effectiveMaxHp=Number(row.max_hp||0)+Number(weapon?.hp||0)+Number(armor?.hp||0)
+      const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,levelFor(row.jid,row.helmet_id),starFor(row.jid,row.helmet_id)):zero
+      const reboot=classesOnlyRebootEnabled()
+      const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+(reboot?Number(boots?.hp||0)+Number(helmet?.hp||0):0)
+      const persistentMaxHp=Number(row.max_hp||0)+gearHp
+      const effectiveMaxHp=reboot?classCombatStats(row,row.class_id,row.class_level,Boolean(row.class_applied)).maxHp+gearHp:persistentMaxHp
       return {
         ...row,
-        effective_hp:Math.min(Number(row.hp||0),effectiveMaxHp),
+        effective_hp:reboot?classCombatHp(row.hp,persistentMaxHp,effectiveMaxHp):Math.min(Number(row.hp||0),effectiveMaxHp),
         effective_max_hp:effectiveMaxHp,
         effective_atk:Number(row.atk||0)+Number(weapon?.atk||0)+Number(armor?.atk||0),
         effective_def:Number(row.def||0)+Number(weapon?.def||0)+Number(armor?.def||0),
@@ -798,7 +805,7 @@ async function webItemName(id,fallback='item'){
 }
 
 async function sendWebGroupActivity(session,actionName,body,result){
-  if(!session?.chatJid || !result) return
+  if(!session?.chatJid || !result || (actionName==='battle'&&result.staleHp)) return
   // Web API runs in a separate Render process: persist the group notice for
   // the single WhatsApp worker instead of silently discarding successful actions.
   const send=typeof globalThis.__alphaWebGroupLog==='function'
@@ -1247,7 +1254,7 @@ async function runAction(session,name,body={}){
     }
     case 'battle': {
       const member=await groupTarget(session,body.targetJid)
-      return withTargetMeta(await battle(jid,member.jid),member)
+      return withTargetMeta(await battle(jid,member.jid,{expectedHp:body.expectedHp}),member)
     }
     case 'petduel': {
       const member=await groupTarget(session,body.targetJid)
