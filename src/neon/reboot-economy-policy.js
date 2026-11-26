@@ -52,11 +52,11 @@ export const V2_BUSINESS_ECONOMY=Object.freeze({
  * Active unclaimed events reserve capacity; expired events release it.
  */
 export const V2_GROUP_FLASH=Object.freeze({
-  dailyCashCap:12_000,minCash:300,maxCash:1_000,
+  dailyCashCap:50_000,minCash:1_000,maxCash:5_000,
   ranges:Object.freeze({
-    maleta:Object.freeze([400,850]),
-    pix:Object.freeze([600,1000]),
-    tesouro:Object.freeze([300,650])
+    maleta:Object.freeze([2000,3500]),
+    pix:Object.freeze([3000,5000]),
+    tesouro:Object.freeze([1000,2000])
   })
 });
 export function v2GroupFlashBudgetRemaining(paid,held=0){
