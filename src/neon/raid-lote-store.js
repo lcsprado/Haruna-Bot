@@ -517,7 +517,7 @@ export async function settleRaidLoteAttempt(db,attemptId){
     }
     await c.query(`
       UPDATE raid_lote_jobs SET won_count=$2,current_attempt_id=NULL,status=$3,
-        updated_at=NOW(),finished_at=CASE WHEN $3 IN ('won','lost','cancelled') THEN NOW() ELSE finished_at END
+        updated_at=NOW(),finished_at=CASE WHEN $3 IN ('won','lost','cancelled','completed') THEN NOW() ELSE finished_at END
       WHERE id=$1
     `,[job.id,newWins,jobStatus])
     // Persistir a pendencia na MESMA transacao do encerramento, antes do commit.
