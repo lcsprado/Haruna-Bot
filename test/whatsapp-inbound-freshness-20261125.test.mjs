@@ -20,7 +20,7 @@ test('fresh commands and short offline recovery continue unchanged',()=>{
 test('explicitly disable history sync while preserving existing freshness guard and auth',()=>{
  const s=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  assert.ok(s.includes('shouldSyncHistoryMessage:()=>false'))
- assert.ok(s.includes("if(requestId){tally('onDemandHistory');return}"))
+ assert.ok(s.includes("inboundRejection(msg,requestId?'append':type,receivedAt)"))
  assert.ok(s.includes('groupIncomingByPlayer(fresh)'))
  assert.ok(s.includes("if(!ts || Math.abs(receivedAt-ts)>45000)"))
  assert.ok(s.includes('makeCacheableSignalKeyStore(state.keys'))
