@@ -10524,12 +10524,11 @@ const receivedAt=Date.now()
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
 // Descarte antes da fila, usando os mesmos limites da recepcao original.
-// Um requestId identifica recuperacao de historico sob demanda, nao um novo comando.
+// PDO tambem recupera comandos recentes: jamais bloquear todo requestId.
 trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
-if(requestId){tally('onDemandHistory');return}
 const fresh=[]
 for(const msg of messages||[]){
-  const reason=inboundRejection(msg,type,receivedAt)
+  const reason=inboundRejection(msg,requestId?'append':type,receivedAt)
   if(reason){tally(reason);continue}
   fresh.push(msg)
 }
