@@ -10,7 +10,7 @@ const forge=db.split('export async function forgeEquipmentStar(')[1]?.split('exp
 const upgrade=db.split('export async function upgradeEquipment(')[1]?.split('export async function equipItem(')[0]||''
 
 test('forging keeps the same permanent stone rows and aborts the transaction if they change',()=>{
-  assert.match(forge,/SELECT stone_id,quantity,.*FROM equipment_enchantments e WHERE jid=\$1 AND item_id=\$2 ORDER BY stone_id FOR UPDATE/)
+  assert.match(forge,/SELECT stone_id,quantity,.*FROM equipment_enchantments e WHERE jid=\$1 AND item_id=\$2 AND EXISTS \(SELECT 1 FROM inventories v WHERE v\.jid=e\.jid AND v\.item_id=e\.item_id AND v\.quantity>0\) ORDER BY stone_id FOR UPDATE/)
   assert.match(forge,/await syncEffectiveGear\(c,jid,itemId\)/)
   assert.match(forge,/JSON\.stringify\(enchantments\)!==JSON\.stringify\(enchantmentsBefore\)/)
   assert.match(forge,/forja cancelada sem consumir recursos/)

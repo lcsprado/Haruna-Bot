@@ -77,6 +77,25 @@ test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {sk
     await addGear(1);assert.equal(await enchCount(),0)
     await db.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1)',[jid,itemId,stoneId])
     await db.query('DELETE FROM inventories WHERE jid=$1 AND item_id=$2',[jid,itemId]);assert.equal(await enchCount(),0)
+    // Venda e reaquisição concorrentes do mesmo item: o UPSERT espera a baixa.
+    await addGear(1)
+    await db.query('INSERT INTO equipment_enchantments(jid,item_id,stone_id,quantity) VALUES($1,$2,$3,1)',[jid,itemId,stoneId])
+    const selling=await db.connect(),buying=await db.connect()
+    try{
+      await selling.query('BEGIN')
+      await selling.query('UPDATE inventories SET quantity=0 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+      await buying.query('BEGIN')
+      await buying.query("SET LOCAL statement_timeout='5s'")
+      const acquire=buying.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[jid,itemId])
+      await selling.query('COMMIT')
+      await acquire
+      await buying.query('COMMIT')
+      assert.equal(await enchCount(),0)
+      assert.equal(Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0].quantity),1)
+    }finally{
+      await selling.query('ROLLBACK').catch(()=>{});await buying.query('ROLLBACK').catch(()=>{})
+      selling.release();buying.release()
+    }
     // Recompensas das missões V2: duas solicitações simultâneas, e replay posterior.
     const {initProgression}=await import('../src/neon/progression.js')
     const {getDailyMissionsV2,claimDailyMissionsV2}=await import('../src/neon/daily-v2.js')
