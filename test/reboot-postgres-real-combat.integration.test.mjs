@@ -414,15 +414,20 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         })
         await installed.goto(origin+'/rpg')
         await installed.waitForFunction(()=>Boolean(navigator.serviceWorker.controller),{},{timeout:20000})
-        const cacheInfo=await installed.evaluate(async()=>{
+        const assetVersion=JSON.parse(await readFile(resolve(webRoot,'version.json'),'utf8')).assetVersion
+        assert.match(assetVersion,/^alpha-web-reboot-/)
+        const expectedCache=assetVersion.replace('alpha-web-reboot-','alpha-rpg-pwa-')
+        const cacheInfo=await installed.evaluate(async({expectedCache,assetVersion})=>{
           const names=await caches.keys()
-          const active=await caches.open('alpha-rpg-pwa-20261119-identity-v2')
+          if(!names.includes(expectedCache))return {names,entries:[],current:false}
+          const active=await caches.open(expectedCache)
           const entries=(await active.keys()).map(req=>new URL(req.url).pathname)
-          const js=await (await active.match('/app.js')).text()
-          return {names,entries,current:js.includes('alpha-web-reboot-20261119-identity-v2')&&js.includes("window.addEventListener('hashchange'")}
-        })
+          const response=await active.match('/app.js')
+          const js=response?await response.text():''
+          return {names,entries,current:js.includes(assetVersion)&&js.includes("window.addEventListener('hashchange'")}
+        },{expectedCache,assetVersion})
         assert.ok(!cacheInfo.names.includes('alpha-rpg-pwa-20261116-no-npcs-v1'))
-        assert.ok(cacheInfo.names.includes('alpha-rpg-pwa-20261119-identity-v2'))
+        assert.ok(cacheInfo.names.includes(expectedCache))
         assert.ok(cacheInfo.current)
         for(const path of ['/rpg','/app.js','/styles.css','/manifest.webmanifest','/racing-ui.js','/clan-siege-ui.js'])assert.ok(cacheInfo.entries.includes(path),'missing PWA shell '+path)
         await installed.reload()
