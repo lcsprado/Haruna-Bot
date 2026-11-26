@@ -145,7 +145,21 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     await ensureUser(novice,'Iniciante CI')
     await assert.rejects(battle(novice,jids[1]),/PROTEÇÃO DE INICIANTE/)
     await assert.rejects(battle(jids[1],novice),/PROTEÇÃO DE INICIANTE/)
-    const duel=await battle(jids[1],jids[2])
+    // A stale arena preview must fail closed, before cooldown or any settlement.
+    const {getCombatProfile}=await import('../src/neon/db.js')
+    const pair=[jids[1],jids[2]]
+    const [attackerPreview,defenderPreview]=await Promise.all(pair.map(getCombatProfile))
+    const preview={attackerHp:attackerPreview.effective_hp,attackerMaxHp:attackerPreview.effective_max_hp,defenderHp:defenderPreview.effective_hp,defenderMaxHp:defenderPreview.effective_max_hp}
+    const snapshot=async()=>({
+      stats:(await db.query('SELECT jid,hp,win,loss FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid',[pair])).rows,
+      wallets:(await db.query('SELECT jid,cash,bank FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid',[pair])).rows,
+      cooldown:(await db.query('SELECT expires_at FROM cooldowns WHERE key=$1',['battle:'+pair[0]])).rows,
+      rewards:(await db.query("SELECT count(*)::int AS n FROM transactions WHERE type='battle_reward'")).rows[0].n
+    })
+    const beforeStale=await snapshot()
+    assert.deepEqual(await battle(pair[0],pair[1],{expectedHp:{...preview,defenderHp:preview.defenderHp===41?42:41}}),{ok:false,staleHp:true})
+    assert.deepEqual(await snapshot(),beforeStale)
+    const duel=await battle(pair[0],pair[1],{expectedHp:preview})
     assert.equal(duel.ok,true)
     assert.equal(duel.eventMultiplier,1)
     assert.ok(duel.reward>=600&&duel.reward<=1200)
