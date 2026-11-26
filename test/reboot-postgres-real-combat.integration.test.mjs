@@ -305,11 +305,13 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     // The actual Web endpoint uses the same stale-HP guard and roster HP scale.
     await db.query('UPDATE web_sessions SET chat_jid=$1 WHERE token_hash=$2',[chat,webTokenHash(token)])
     await db.query("INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,1) ON CONFLICT DO NOTHING",[chat,jids[1]])
+    // Raid fixtures can rename the player between the earlier PvP and this API test.
+    await db.query('UPDATE users SET push_name=$2 WHERE jid=$1',[jids[1],'CI duel preview target'])
+    const freshOpponent=await getCombatProfile(jids[1])
     const linked=await request('GET',root+'/me/bootstrap',undefined,token)
     assert.equal(linked.status,200)
-    const opponent=linked.body.data.group.roster.find(r=>r.push_name===attackerPreview.push_name)
-    assert.ok(opponent)
-    const freshOpponent=await getCombatProfile(jids[1])
+    const opponent=linked.body.data.group.roster.find(r=>r.push_name===freshOpponent.push_name)
+    assert.ok(opponent,'Synthetic opponent must appear in the linked roster')
     assert.equal(opponent.effective_hp,freshOpponent.effective_hp)
     assert.equal(opponent.effective_max_hp,freshOpponent.effective_max_hp)
     const freshMe=linked.body.data.combatProfile
