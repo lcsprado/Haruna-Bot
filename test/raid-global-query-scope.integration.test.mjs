@@ -8,6 +8,10 @@ const open=source.match(/^const raidIsOpen=.*$/m)?.[0]
 const fn=source.match(/^async function resolveGlobalPlayerRaid\(c,jid\)\{[\s\S]*?^\}/m)?.[0]
 assert.ok(open && fn)
 const resolveGlobalPlayerRaid=new Function(open+'\n'+fn+'\nreturn resolveGlobalPlayerRaid')()
+const groupRows=source.match(/^async function raidRows\(c,chat,forUpdate=false,statuses=null\)\{[\s\S]*?^\}/m)?.[0]
+assert.ok(groupRows)
+const raidRows=new Function(groupRows+'\nreturn raidRows')()
+
 
 test('global raid lookup preserves membership and does not lock unrelated rows',{skip:!process.env.ALPHA_RAID_SCOPE_TEST_URL},async()=>{
   const url=process.env.ALPHA_RAID_SCOPE_TEST_URL
@@ -25,6 +29,15 @@ test('global raid lookup preserves membership and does not lock unrelated rows',
       ['legacy','raid',{status:'lobby',expiresAt:now+600000,players:{carol:{}}},now],
       ['not-raid','boss',{status:'active',players:{alice:{}}},now+4]
     ]) await a.query('INSERT INTO trevo_games VALUES($1,$2,$3,$4)',[chat,type,JSON.stringify(state),updated])
+    await a.query("INSERT INTO trevo_games VALUES('mine','raid:25',$1,$2),('mine','raid:40',$3,$4)",[JSON.stringify({status:'completed',players:{alice:{}}}),now+5,JSON.stringify({status:'lobby',expiresAt:now+600000,players:{bob:{}}}),now+6])
+    assert.deepEqual((await raidRows(a,'mine',false,['lobby','active'])).map(r=>r.gameType),['raid:40','raid:30'])
+    await a.query('BEGIN')
+    assert.deepEqual((await raidRows(a,'mine',true,['active'])).map(r=>r.gameType),['raid:30'])
+    await b.query('BEGIN')
+    await b.query("SET LOCAL lock_timeout='300ms'")
+    await b.query("SELECT 1 FROM trevo_games WHERE chat_jid='mine' AND game_type IN ('raid:25','raid:40') FOR UPDATE")
+    await b.query('ROLLBACK')
+    await a.query('ROLLBACK')
     await a.query('BEGIN')
     assert.equal((await resolveGlobalPlayerRaid(a,'alice')).chatJid,'mine')
     await b.query('BEGIN')
