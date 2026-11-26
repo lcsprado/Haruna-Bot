@@ -158,7 +158,7 @@ import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
 import {
   OWNER_EVENT_TYPES,getOwnerEvent,setOwnerEvent,stopOwnerEvent,listOwnerEvents,
-  parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions
+  parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions,ownerEventAvailable
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {initMadrugada,scheduleMadrugada,handleMadrugadaCommand} from './madrugada-amaldicoada.js'
@@ -1274,10 +1274,10 @@ const ownerEventAliases=Object.freeze({
 async function showOwnerEventsMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'admin_events',{},5*60*1000)
   await reply('🎪 *ADMIN — CENTRAL DE EVENTOS*\n\n'+
-    ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
+    ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label+(ownerEventAvailable(type)?'':' — indisponível na V2')).join('\n')+
     '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
     '\n📊 Todos: *!eventoadm status*'+
-    '\n9️⃣ Outros: Boss Global / 2x Geral / Mimics'+
+    (classesOnlyRebootEnabled()?'\n9️⃣ Outros eventos V2 (consulta)':'\n9️⃣ Outros: Boss Global / 2x Geral / Mimics')+
     '\n\n0️⃣ Sair')
 }
 
@@ -1285,7 +1285,7 @@ async function runOwnerEventAction({type,minutes,multiplier=2,startsAt=Date.now(
   const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
   await refreshOwnerEventTimers()
   await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
-    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'🐾 Até '+event.budgetPerPlayer+' XP extra por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
     (event.scheduled?'📅 Início: '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
     '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
 }
@@ -5685,6 +5685,10 @@ const adminEventsMenu=async()=>showOwnerEventsMenu(chat,sender,reply)
 
 const adminMoreEventsMenu=async()=>{
   setQuickFlow(chat,sender,'admin_more_events',{},5*60*1000)
+  if(classesOnlyRebootEnabled()){
+    await reply('🎪 *OUTROS EVENTOS V2*\n\nOs eventos históricos Boss Global, 2x geral e Mimics não podem ser reativados na nova temporada.\nConsulte !evento, !boss, !leilao e !cartela.\n9️⃣ Voltar\n0️⃣ Sair')
+    return
+  }
   await reply('🎪 *CENTRAL — OUTROS EVENTOS*\n\n'+
     '1️⃣ 👹 Boss Global — ativar, consultar e encerrar\n'+
     '2️⃣ 🔥 Evento 2x geral — dinheiro e XP\n'+
@@ -5700,11 +5704,12 @@ const adminDoubleEventMenu=async()=>{
   await reply('🔥 *EVENTO 2X GERAL*\n\n1️⃣ Ativar por 20 minutos\n2️⃣ Consultar status\n3️⃣ Encerrar\n9️⃣ Voltar\n0️⃣ Sair')
 }
 const adminEventDetailMenu=async(type)=>{
+  if(!ownerEventAvailable(type)){await reply('⚪ Este evento legado está indisponível na V2. Nenhum bônus foi alterado.');return adminEventsMenu()}
   const d=OWNER_EVENT_TYPES[type]
   const s=await getOwnerEvent(type)
   setQuickFlow(chat,sender,'admin_event_detail',{type},5*60*1000)
   const status=s.active?'🟢 ATIVO':s.scheduled?'📅 AGENDADO':'⚪ INATIVO'
-  await reply('🎪 *'+d.label+'*\n'+status+
+  await reply('🎪 *'+d.label+'*\n'+status+(s.budgetPerPlayer?'\nV2: até 1.000 XP extra por jogador cadastrado com classe ativa ao agendar. Manual: pets, Raids e Boss; sem Raidlote ou PvP.':'')+
     '\n\n1️⃣ Ativar 20 minutos (2x)'+
     '\n2️⃣ Ativar 60 minutos (2x)'+
     '\n3️⃣ Consultar status'+
@@ -5715,7 +5720,7 @@ const activateAdminEvent=async(type,minutes,multiplier=2,startsAt=Date.now())=>{
   const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
   await refreshOwnerEventTimers()
   await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
-    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+(event.budgetPerPlayer?'🐾 Até '+event.budgetPerPlayer+' XP extra por jogador • '+event.eligiblePlayers+' participantes elegíveis.\n':'')+
     (event.scheduled?'📅 Agendado para '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
     '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
 }
@@ -6395,6 +6400,7 @@ if(flow.stage==='admin_events'){
 
 if(flow.stage==='admin_more_events'){
   if(input==='9')return await adminEventsMenu(),true
+  if(classesOnlyRebootEnabled()){await adminMoreEventsMenu();return true}
   if(input==='1')return await adminBossEventMenu(),true
   if(input==='2')return await adminDoubleEventMenu(),true
   if(input==='3'){
@@ -6405,7 +6411,7 @@ if(flow.stage==='admin_more_events'){
   return true
 }
 if(flow.stage==='admin_event_boss'){
-  if(input==='9')return await adminMoreEventsMenu(),true
+  if(input==='9'||classesOnlyRebootEnabled())return await adminMoreEventsMenu(),true
   if(input==='2'){
     const status=await getBossEventStatus(chat)
     await reply(status?'👹 *BOSS GLOBAL ATIVO*\n\n'+status.name+'\n❤️ HP: '+fmt(status.hp)+'/'+fmt(status.maxHp):'👹 *BOSS GLOBAL INATIVO*')
@@ -6425,7 +6431,7 @@ if(flow.stage==='admin_event_boss'){
   return true
 }
 if(flow.stage==='admin_event_double'){
-  if(input==='9')return await adminMoreEventsMenu(),true
+  if(input==='9'||classesOnlyRebootEnabled())return await adminMoreEventsMenu(),true
   if(input==='1'){
     await startDoubleRewardEvent(20,sender)
     if(neonEcoMode){void updateDoubleRewardAnnouncements();void refreshEcoScheduledEvents()}
@@ -6450,7 +6456,7 @@ if(flow.stage==='admin_event_double'){
 if(flow.stage==='admin_event_detail'){
   if(input==='9')return await adminEventsMenu(),true
   const type=flow.data.type
-  if(!OWNER_EVENT_TYPES[type])return await adminEventsMenu(),true
+  if(!OWNER_EVENT_TYPES[type]||!ownerEventAvailable(type))return await adminEventsMenu(),true
   if(input==='1'||input==='2'){
     try{await activateAdminEvent(type,input==='1'?20:60,2)}
     catch(err){await reply('⚠️ '+err.message)}
@@ -6466,7 +6472,7 @@ if(flow.stage==='admin_event_detail'){
   }
   if(input==='5'){
     setQuickFlow(chat,sender,'admin_event_schedule',{type},5*60*1000)
-    await reply('📅 *AGENDAR '+OWNER_EVENT_TYPES[type].label+'*\n\nDigite *data hora duração multiplicador*.\nExemplo: *27/10 19:00 60 2*\n⏱️ Até 180 min, em até 30 dias.\n9️⃣ Voltar')
+    await reply('📅 *AGENDAR '+OWNER_EVENT_TYPES[type].label+'*\n\nDigite *data hora duração multiplicador*.\nExemplo: *27/11 19:00 60 2*\n⏱️ Até 180 min, em até 30 dias.\n9️⃣ Voltar')
     return true
   }
   await reply('🎪 Escolha 1 a 5, 9 para voltar ou 0 para sair.')
@@ -6474,6 +6480,7 @@ if(flow.stage==='admin_event_detail'){
 }
 if(flow.stage==='admin_event_schedule'){
   const type=flow.data.type
+  if(!ownerEventAvailable(type))return await adminEventsMenu(),true
   if(input==='9')return await adminEventDetailMenu(type),true
   const [dateText,timeText,minutes,multiplier,...extras]=input.split(/\s+/)
   if(extras.length||!dateText||!timeText||!minutes){
