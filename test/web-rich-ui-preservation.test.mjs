@@ -8,6 +8,9 @@ const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8');
 const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
 const manifest=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
 
+const assetVersion=JSON.parse(readFileSync(new URL('../web/version.json',import.meta.url),'utf8')).assetVersion;
+const assetSuffix=assetVersion.slice('alpha-web-reboot-'.length);
+
 test('Garage, events, clan preview and live Boss survive the password release without retired NPCs',()=>{
   for(const needle of ["['racing','🏎️','Garagem Alpha']","['events','🎉','Eventos']",
     "racing:()=>renderRacing(ui)","events:renderEvents","loadRacing(false)","loadEventCenter(false)"])
@@ -36,11 +39,11 @@ test('NPCs removidos não retornam na navegação nem em compras Web',()=>{
 test('uma única interface oficial: versão de assets sincronizada e NPC aposentado',()=>{
   const metadata=JSON.parse(readFileSync(new URL('../web/version.json',import.meta.url),'utf8'));
   const version=metadata.assetVersion;
-  assert.equal(version,'alpha-web-reboot-20261124-fortress-v2');
+  assert.match(version,/^alpha-web-reboot-\d{8}-[a-z0-9-]+$/);
   assert.ok(ui.includes("const WEB_ASSET_ID='"+version+"'"),'App e metadados precisam ser a mesma versão');
-  assert.ok(html.includes('src="/app.js?v=20261124-fortress-v2"'),'HTML deve invalidar JS antigo');
-  assert.ok(html.includes('href="/styles.css?v=20261124-fortress-v2"'),'HTML deve invalidar CSS antigo');
-  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-20261124-fortress-v2'"),'PWA deve invalidar cache antigo');
+  assert.ok(html.includes('src="/app.js?v='+assetSuffix+'"'),'HTML deve invalidar JS antigo');
+  assert.ok(html.includes('href="/styles.css?v='+assetSuffix+'"'),'HTML deve invalidar CSS antigo');
+  assert.ok(manifest.includes("const CACHE='alpha-rpg-pwa-"+assetSuffix+"'"),'PWA deve invalidar cache antigo');
   const nav=ui.slice(ui.indexOf('const navItems = ['),ui.indexOf('];',ui.indexOf('const navItems = [')));
   assert.ok(nav.includes("['clan','🛡️','Clã']"),'Clã precisa continuar disponível');
   assert.ok(nav.includes("['racing','🏎️','Garagem Alpha']"),'Garagem precisa continuar disponível');
@@ -86,7 +89,7 @@ test('login and game stay styled when a mobile WebView cannot load external CSS'
   for(const marker of ['.hidden{display:none!important}', '.login-overlay{', '.login-card{', '.app{', '@media(max-width:820px)']){
     assert.ok(match[1].includes(marker),'Lost login/layout fallback: '+marker);
   }
-  assert.ok(html.includes('href="/styles.css?v=20261124-fortress-v2"'));
+  assert.ok(html.includes('href="/styles.css?v='+assetSuffix+'"'));
 });
 
 test('new !web link cannot restore a previous cached session without a password',()=>{
@@ -99,7 +102,7 @@ test('new !web link cannot restore a previous cached session without a password'
   }
   assert.ok(linkedBranch.indexOf("ui.token='';")<linkedBranch.indexOf('await openWebCode(linked)'),
     'Cached session must be removed BEFORE the code-status request')
-  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-web-reboot-20261124-fortress-v2'"),
+  assert.ok(ui.includes("const WEB_ASSET_ID='"+assetVersion+"'"),
     'Version must invalidate old cached PWA Javascript')
   const hashStart=ui.indexOf("window.addEventListener('hashchange'")
   const hashGuard=ui.slice(hashStart,ui.indexOf('(async function boot(){',hashStart))
