@@ -1,5 +1,5 @@
 import {db,ensureUser,grantExpInTransaction,petMaxHp,petMaxEnergy} from './db.js'
-import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity} from './daily-mission-rotation.js'
+import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity,DAILY_V2_REWARD_START,DAILY_V2_COMPLETION,dailyV2RebalancedRewards} from './daily-mission-rotation.js'
 import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
 
 const TYPES=[...DAILY_MAIN_TYPES,'legend_raid']
@@ -35,6 +35,7 @@ const MONEY=[1,1.5,2,2.5,3],XP=[1,1.25,1.5,1.75,2]
 const levelTier=n=>n>=200?4:n>=150?3:n>=100?2:n>=50?1:0
 const dateValue=x=>x instanceof Date?x.toISOString().slice(0,10):(String(x||'').match(/\d{4}-\d{2}-\d{2}/)?.[0]||null)
 const dateDiff=(a,b)=>Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:00:00Z'))/86400000)
+const rebalancedDay=day=>rebootEconomyEnabled()&&day>=DAILY_V2_REWARD_START
 const nowDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
 const milestone=streak=>{
  const d=((streak-1)%30)+1
@@ -108,22 +109,25 @@ async function ensureRows(c,jid){
      :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
  // A data de hoje não pode ser reescrita: se as seis linhas já existem,
  // ensureRows retorna antes daqui. O novo quadro começa em 14/11.
- const insert=[...(today>=DAILY_V3_START?dailyV3MainMissions(today):dailyRotatedDefinitions(today)),special]
+ const base=[...(today>=DAILY_V3_START?dailyV3MainMissions(today):dailyRotatedDefinitions(today)),special]
+ const rebalanced=rebalancedDay(today)
+ const insert=rebalanced?dailyV2RebalancedRewards(base):base
  for(const m of insert){
    const cash=rebootEconomyEnabled()?V2_EVENT_BUDGET.dailyMissionCash[m.type]
      :Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
-   const xp=Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
+   const missionCash=rebalanced?m.cash:cash
+   const xp=rebalanced?m.xp:Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
    const petXp=Math.round(m.petXp*(m.type==='legend_raid'?1:XP[tier]))
    await c.query(`INSERT INTO daily_missions
      (jid,day_key,mission_type,title,target,reward_cash,reward_xp,reward_pet_xp,reward_box,level_snapshot,money_factor,xp_factor)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,$11)
      ON CONFLICT(jid,day_key,mission_type) DO NOTHING`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,missionCash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],rebalanced?1:XP[tier]])
    // Só migra missões legadas NÃO resgatadas. O snapshot após isso nunca muda.
    await c.query(`UPDATE daily_missions SET title=$4,target=$5,reward_cash=$6,reward_xp=$7,
        reward_pet_xp=$8,level_snapshot=$9,money_factor=$10,xp_factor=$11,reward_box=0
      WHERE jid=$1 AND day_key=$2 AND mission_type=$3 AND claimed=FALSE AND level_snapshot=0`,
-     [jid,today,m.type,m.title,m.target,cash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],XP[tier]])
+     [jid,today,m.type,m.title,m.target,missionCash,xp,petXp,level,rebootEconomyEnabled()?1:MONEY[tier],rebalanced?1:XP[tier]])
  }
  return {today,level,tier}
 }
@@ -139,6 +143,10 @@ export async function getDailyMissionsV2(jid){
      [jid,ctx.today,TYPES])).rows
    const streak=(await c.query('SELECT streak FROM daily_streaks WHERE jid=$1',[jid])).rows[0]?.streak||0
    const already=(await c.query("SELECT 1 FROM daily_reward_claims WHERE jid=$1 AND day_key=$2 AND reward_type='all_five'",[jid,ctx.today])).rowCount>0
+   if(rebalancedDay(ctx.today)){
+     const bonusClaimed=(await c.query("SELECT 1 FROM daily_reward_claims WHERE jid=$1 AND day_key=$2 AND reward_type='all_six'",[jid,ctx.today])).rowCount>0
+     return {day:ctx.today,missions:rows,streak:Number(streak),bonusItem:DAILY_V2_COMPLETION.item,bonusQty:DAILY_V2_COMPLETION.fragments,bonusCash:DAILY_V2_COMPLETION.cash,bonusXp:DAILY_V2_COMPLETION.xp,bonusClaimed,bonusAllSix:true}
+   }
    const prize=[['caixa_rara',1],['caixa_rara',2],['caixa_epica',1],['caixa_epica',2],['caixa_epica',3]][levelTier(Number(rows.find(x=>x.mission_type!=='legend_raid')?.level_snapshot||ctx.level))]
    return {day:ctx.today,missions:rows,streak:Number(streak),bonusItem:prize[0],bonusQty:prize[1],bonusClaimed:already}
  })
@@ -265,9 +273,10 @@ export async function claimDailyMissionsV2(jid){
  await ensureUser(jid)
  return tx(async c=>{
    const ctx=await ensureRows(c,jid)
+   const rebalanced=rebalancedDay(ctx.today)
    const ready=(await c.query(`SELECT * FROM daily_missions WHERE jid=$1 AND day_key=$2
-      AND mission_type=ANY($3::text[]) AND progress>=target AND claimed=FALSE FOR UPDATE`,
-      [jid,ctx.today,TYPES])).rows
+      AND mission_type=ANY($3::text[]) ORDER BY mission_type FOR UPDATE`,
+      [jid,ctx.today,TYPES])).rows.filter(m=>!m.claimed&&Number(m.progress)>=Number(m.target))
    let cash=0,exp=0,petXp=0,claimed=0,boxes=0
    const drops=[]
    for(const m of ready){
@@ -281,7 +290,19 @@ export async function claimDailyMissionsV2(jid){
    }
    const all=(await c.query(`SELECT COUNT(*)::integer AS total FROM daily_missions WHERE jid=$1 AND day_key=$2
      AND mission_type=ANY($3::text[]) AND claimed=TRUE`,[jid,ctx.today,MAIN])).rows[0]?.total===5
-   if(all){
+   if(rebalanced){
+     const complete=Number((await c.query(`SELECT COUNT(*)::integer AS total FROM daily_missions WHERE jid=$1 AND day_key=$2
+       AND mission_type=ANY($3::text[]) AND claimed=TRUE`,[jid,ctx.today,TYPES])).rows[0]?.total)===6
+     if(complete){
+       const mark=await c.query(`INSERT INTO daily_reward_claims(jid,day_key,reward_type)
+         VALUES($1,$2,'all_six') ON CONFLICT DO NOTHING RETURNING jid`,[jid,ctx.today])
+       if(mark.rowCount){
+         cash+=DAILY_V2_COMPLETION.cash;exp+=DAILY_V2_COMPLETION.xp
+         await creditBox(c,jid,DAILY_V2_COMPLETION.item,DAILY_V2_COMPLETION.fragments)
+         drops.push(DAILY_V2_COMPLETION.fragments+'x Fragmento Universal de Raid')
+       }
+     }
+   }else if(all){
      const mark=await c.query(`INSERT INTO daily_reward_claims(jid,day_key,reward_type)
        VALUES($1,$2,'all_five') ON CONFLICT DO NOTHING RETURNING jid`,[jid,ctx.today])
      if(mark.rowCount){

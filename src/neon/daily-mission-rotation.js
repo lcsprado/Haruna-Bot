@@ -65,3 +65,33 @@ export function dailyV3SpecialMission(day,level){
 export function dailySpecialActivity(title){
   return /\(Boss\)|alternativa: Boss/.test(String(title||''))?'boss_damage':'raid_damage';
 }
+
+export const DAILY_V2_REWARD_START='2026-11-27';
+export const DAILY_V2_COMPLETION=Object.freeze({cash:2000,xp:2000,fragments:10,item:'fragmento_universal_raid'});
+const V2_WEIGHTS=Object.freeze({
+ battle:[2000,2000],dungeon:[3000,3000],work:[2000,1500],pet_train:[2000,1500],
+ boss_damage:[4000,4000],raid_damage:[4000,4000],game:[2000,1500],shop:[2000,1500]
+});
+function distribute(weights,total){
+ const sum=weights.reduce((a,b)=>a+b,0);
+ const rows=weights.map((w,i)=>({i,amount:Math.floor(w*total/sum),remainder:(w*total)%sum}));
+ let remaining=total-rows.reduce((n,r)=>n+r.amount,0);
+ for(const r of [...rows].sort((a,b)=>b.remainder-a.remainder||a.i-b.i)){
+   if(remaining<=0)break;
+   r.amount++;remaining--;
+ }
+ return rows.map(r=>r.amount);
+}
+export function dailyV2RebalancedRewards(missions){
+ const main=missions.filter(m=>m.type!=='legend_raid');
+ if(main.length!==5||new Set(main.map(m=>m.type)).size!==5||missions.length!==6||
+    main.some(m=>!V2_WEIGHTS[m.type])||missions.filter(m=>m.type==='legend_raid').length!==1)
+   throw Error('Invalid daily V2 reward roster');
+ const cash=distribute(main.map(m=>V2_WEIGHTS[m.type][0]),13000);
+ const xp=distribute(main.map(m=>V2_WEIGHTS[m.type][1]),12000);
+ return missions.map(m=>{
+   if(m.type==='legend_raid')return {...m,cash:5000,xp:6000};
+   const i=main.indexOf(m);
+   return {...m,cash:cash[i],xp:xp[i]};
+ });
+}
