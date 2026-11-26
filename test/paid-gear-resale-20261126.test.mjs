@@ -34,3 +34,10 @@ test('shop forge excludes purchase component already covered by base resale',()=
  const steps=paidGearSaleSteps({rows,quantity:1,forge:{level:10,stars:5}})
  assert.equal(paidGearRefund(steps,1),59250)
 })
+
+test('V2 stronger forged piece is protected even when its level is lower',()=>{
+ const rows=[up('COPY',1,10,112500),up('COPY',1,10,112500),{type:'equipment_star_forge',note:'garras_vazio ★1->★2; Lv.1',amount:0},up('COPY',1,10,112500)]
+ const steps=paidGearSaleSteps({rows,quantity:2,tiers:[{level:10,quantity:1}],forge:{level:1,stars:2},equipped:true,itemId:'garras_vazio'})
+ assert.equal(paidGearRefund(steps,1),56250)
+ assert.equal(steps[0].kind,'n')
+})
