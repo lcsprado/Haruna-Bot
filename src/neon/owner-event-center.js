@@ -2,6 +2,7 @@
 // As recompensas consultam o banco no momento da ação, sem timers de polling.
 import {db} from './db.js'
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
+import {V2_PET_EVENT_KEY,V2_PET_EVENT_EXTRA_PER_PLAYER,V2_PET_EVENT_MAX_MULTIPLIER,provisionV2PetEventBudgets} from './reboot-pet-xp-event.js'
 
 export const OWNER_EVENT_TYPES=Object.freeze({
   xp:{label:'✨ XP do Jogador',max:3,defaultMinutes:20},
@@ -15,7 +16,9 @@ export const OWNER_EVENT_TYPES=Object.freeze({
 })
 const prefix='owner_event_center:'
 const keys=Object.keys(OWNER_EVENT_TYPES)
-const valueKey=type=>prefix+type
+const valueKey=type=>classesOnlyRebootEnabled()&&type==='pet'?V2_PET_EVENT_KEY:prefix+type
+export const ownerEventAvailable=type=>!classesOnlyRebootEnabled()||type==='pet'
+export const ownerEventMenuTypes=()=>keys.filter(ownerEventAvailable)
 const brazilClock=timestamp=>new Date(timestamp).toLocaleString('pt-BR',{
   timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'
 })
@@ -30,6 +33,7 @@ function windowState(type,value,now=Date.now()){
   const valid=Number.isFinite(startsAt)&&Number.isFinite(endsAt)&&startsAt>0&&endsAt>startsAt
   return {type,...OWNER_EVENT_TYPES[type],startsAt,endsAt,
     multiplier:Math.max(1,Number(v.multiplier||1)),
+    ...(classesOnlyRebootEnabled()&&type==='pet'?{max:V2_PET_EVENT_MAX_MULTIPLIER,budgetPerPlayer:V2_PET_EVENT_EXTRA_PER_PLAYER,budgetTotal:Number(v.budgetTotal||0),eligiblePlayers:Number(v.eligiblePlayers||0)}:{}),
     active:valid&&startsAt<=now&&now<endsAt,
     scheduled:valid&&startsAt>now,
     remainingMs:Math.max(0,endsAt-now),
@@ -44,12 +48,15 @@ export async function getOwnerEventMultiplier(queryable=db,type){
 }
 export async function getOwnerEvent(type){
   type=validType(type)
-  if(classesOnlyRebootEnabled())return windowState(type,null)
+  if(!ownerEventAvailable(type))return windowState(type,null)
   const {rows}=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[valueKey(type)])
   return windowState(type,rows[0]?.value)
 }
 export async function listOwnerEvents(){
-  if(classesOnlyRebootEnabled())return keys.map(type=>windowState(type,null))
+  if(classesOnlyRebootEnabled()){
+    const {rows}=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[V2_PET_EVENT_KEY])
+    return keys.map(type=>windowState(type,type==='pet'?rows[0]?.value:null))
+  }
   const {rows}=await db.query('SELECT key,value FROM trevo_settings WHERE key LIKE $1',[prefix+'%'])
   const byKey=new Map(rows.map(r=>[r.key,r.value]))
   return keys.map(type=>windowState(type,byKey.get(valueKey(type))))
@@ -69,9 +76,10 @@ export function parseOwnerEventBrazilDate(dateText,timeText){
   return utc
 }
 export async function setOwnerEvent(type,{minutes,multiplier=2,startsAt=Date.now(),owner='owner'}={}){
-  if(classesOnlyRebootEnabled())throw new Error('Multiplicadores da central antiga indisponíveis na V2; eventos precisam de orçamento próprio.')
   type=validType(type)
-  const def=OWNER_EVENT_TYPES[type]
+  if(!ownerEventAvailable(type))throw new Error('Multiplicadores da central antiga indisponíveis na V2; eventos precisam de orçamento próprio.')
+  const v2=classesOnlyRebootEnabled()
+  const def=v2?{...OWNER_EVENT_TYPES[type],max:V2_PET_EVENT_MAX_MULTIPLIER}:OWNER_EVENT_TYPES[type]
   minutes=Number(minutes??def.defaultMinutes)
   multiplier=Number(multiplier)
   startsAt=Number(startsAt)
@@ -87,6 +95,11 @@ export async function setOwnerEvent(type,{minutes,multiplier=2,startsAt=Date.now
     if(current.active||current.scheduled)throw new Error('Já existe '+def.label+' ativo/agendado. Encerre ou cancele antes de criar outro.')
     const id=type+':'+startsAt+':'+Math.floor(Math.random()*1000000)
     const raw={id,startsAt,endsAt:startsAt+minutes*60000,multiplier,owner:String(owner).slice(0,100),createdAt:Date.now()}
+    if(v2){
+      raw.eligiblePlayers=await provisionV2PetEventBudgets(c,id)
+      if(!raw.eligiblePlayers)throw new Error('Nenhum jogador com classe ativa para esta edição.')
+      raw.budgetTotal=raw.eligiblePlayers*V2_PET_EVENT_EXTRA_PER_PLAYER
+    }
     await c.query(`INSERT INTO trevo_settings(key,value,updated_at)
       VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
       ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
@@ -98,6 +111,7 @@ export async function setOwnerEvent(type,{minutes,multiplier=2,startsAt=Date.now
 }
 export async function stopOwnerEvent(type,owner='owner'){
   type=validType(type)
+  if(!ownerEventAvailable(type))return {stopped:false}
   const c=await db.connect()
   try{
     await c.query('BEGIN')
@@ -122,6 +136,7 @@ export function ownerEventsStatusText(events){
   const lines=['📊 *CENTRAL DE EVENTOS*']
   if(active.length)lines.push('\n🟢 *ATIVOS*',...active.map(e=>e.label+' • *'+e.multiplier+'x* • termina '+brazilClock(e.endsAt)+' • '+Math.max(1,Math.ceil((e.endsAt-now)/60000))+' min'))
   if(planned.length)lines.push('\n📅 *AGENDADOS*',...planned.map(e=>e.label+' • *'+e.multiplier+'x* • '+brazilClock(e.startsAt)+' • '+Math.round((e.endsAt-e.startsAt)/60000)+' min'))
+  if(events.some(e=>e.budgetPerPlayer&&(e.active||e.scheduled)))lines.push('\n🐾 V2: até 1.000 XP extra por jogador inscrito na edição, somente em atividades manuais de pets, Raid e Boss; sem Raidlote ou PvP.')
   return lines.join('\n')
 }
 export async function announceOwnerEventTransitions(send){
@@ -141,7 +156,7 @@ export async function announceOwnerEventTransitions(send){
       [valueKey(event.type),[flag],event.id,flag])
     if(!claimed.rowCount)continue
     const msg=phase==='start'
-      ?'🎪 *EVENTO ATIVADO!*\n\n'+event.label+' • *'+event.multiplier+'x*\n⏳ Até '+brazilClock(event.endsAt)+' (Brasília).\n📊 Consulte !evento para acompanhar.'
+      ?'🎪 *EVENTO ATIVADO!*\n\n'+event.label+' • *'+event.multiplier+'x*\n⏳ Até '+brazilClock(event.endsAt)+' (Brasília).'+(event.budgetPerPlayer?'\n🐾 Até '+event.budgetPerPlayer+' XP extra por jogador da edição; sem Raidlote ou PvP.':'')+'\n📊 Consulte !evento para acompanhar.'
       :'🏁 *EVENTO ENCERRADO!*\n\n'+event.label+' retornou aos valores normais.'
     try{await send(msg)}catch(err){console.error('[Eventos Owner] falha no anúncio',event.type,err?.message||err)}
   }
