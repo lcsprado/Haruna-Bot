@@ -23,8 +23,12 @@ jobs:
         run: |
           node --check src/neon/db.js
           node --check src/neon/index.js
+          node --check src/neon/paid-gear-resale.js
+          node --check web/app.js
       - name: Targeted sale scenarios (no database connection)
         run: |
+          node --test test/paid-gear-resale-20261126.test.mjs test/star-forge-level-20261021.test.mjs test/shield-forge-integration-20261108.test.mjs test/stone-upgrade-policy.test.mjs
+          node --test --test-name-pattern='Inventário exibe atributos reais' test/web-rich-ui-preservation.test.mjs
           if [ -f test/unequipped-forged-sales-20261113.test.mjs ]; then
             node --test test/unequipped-forged-sales-20261113.test.mjs
           fi
