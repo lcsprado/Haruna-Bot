@@ -108,7 +108,7 @@ test('mineração não bloqueia comandos gerais e Raid manual preserva exclusão
  assert.doesNotMatch(router,/mining&&!mining.ready&&!new Set/)
  assert.match(games,/raid-membership:\$\{host\}\x60\]\)\s*await assertNoActiveMining\(c,host\)/)
  assert.match(games,/raid-membership:\$\{jid\}\x60\]\)\s*await assertNoActiveMining\(c,jid\)/)
- assert.match(games,/for\(const jid of ids\)await assertNoActiveMining\(c,jid\)/)
+ assert.match(games,/for\(const jid of ids\)\s*\{\s*await assertNoActiveMining\(c,jid\)/)
  assert.equal((db.match(/await assertNoActiveMining\(client,jid\)/g)||[]).length,2)
  assert.ok((lote.match(/await assertNoActiveMining\(c,jid\)/g)||[]).length>=2)
 })

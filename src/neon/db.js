@@ -5313,6 +5313,13 @@ const petEnergy=await recoverPetEnergyFromSleep(client,jid,existing.started_at,e
 await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
 return {active:false,woke:true,...existing,xp_reward:reward.xp,level:reward.level,petEnergy}
 }
+// Antes de cobrar aluguel ou criar sono: mesma trava de associação de Raid.
+if(classesOnlyRebootEnabled()){
+ const activeLote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid])).rows[0]
+ if(activeLote)throw new Error('Você tem um Raidlote ativo. Termine ou cancele o pacote antes de dormir.')
+ const activeRaid=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
+ if(activeRaid)throw new Error('Você está participando de uma Raid ativa. Termine antes de dormir.')
+}
 const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
 const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
 const user=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]

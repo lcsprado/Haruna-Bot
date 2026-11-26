@@ -2,14 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import vm from 'node:vm'
+import {assertNoActiveMining,getActiveRest} from '../src/neon/torre-mineracao-activity.js'
 const store=readFileSync(new URL('../src/neon/raid-lote-store.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const wa=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const source=store.slice(store.indexOf('export async function startTimedRaidLoteSession('),store.indexOf('export async function getRaidLoteJob(')).replace('export async','async')
-function fixture(old=null){
+function fixture(old=null,activity=null){
   const writes=[]
   const c={query:async(sql,args)=>{
     if(sql.includes('SELECT * FROM raid_lote_jobs WHERE jid'))return {rows:old?[old]:[]}
+    if(sql.includes('FROM player_sleep'))return {rows:[{activity}]}
     if(sql.includes('SELECT level FROM users'))return {rows:[{level:100}]}
     if(sql.includes('SELECT hp FROM stats'))return {rows:[{hp:100}]}
     if(sql.includes('COUNT(*)'))return {rows:[{n:3}]}
@@ -22,6 +24,7 @@ function fixture(old=null){
     raidLoteDurationPlan:hours=>({hours}),assertRaid70V2Start:()=>{},
     inTransaction:async(db,fn)=>fn(c),RAID_LOTE_V1:{minimumManualWins:3},
     RAID_LOTE_V2_MAX_ATTEMPTS:1000000,raidLoteQuote:()=>({totalPrice:100}),
+    assertNoActiveMining,getActiveRest,
     crypto:{randomUUID:()=> 'job'}
   })
   return {writes,run:(opts={})=>start({},{
@@ -51,4 +54,10 @@ test('migration and combat use durable job mode, not transient command options',
   assert.match(wa,/level,hours:durationPlan\.hours,usePet,/)
   assert.match(wa,/usePet:flow\.data\?\.usePet!==false/)
   assert.match(wa,/job\.use_pet===false/)
+})
+
+test('V2 Raidlote rejeita sono antes de criar ou cobrar o pacote',async()=>{
+ const f=fixture(null,'sleep')
+ await assert.rejects(f.run({usePet:false}),/dormindo/)
+ assert.equal(f.writes.length,0)
 })

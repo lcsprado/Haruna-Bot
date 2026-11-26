@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {reserveNextRaidLoteAttempt} from '../src/neon/raid-lote-store.js'
 
 // Isolamento do banco: não acessa Postgres real nem credita recompensas.
-function fakeDb({cash=5000,bank=0,owned=0,expired=false,attemptId=null}={}){
+function fakeDb({cash=5000,bank=0,owned=0,expired=false,attemptId=null,activity=null}={}){
   const jid='11999999999@s.whatsapp.net'
   const calls=[]
   const job={id:'11111111-1111-4111-8111-111111111111',jid,status:'queued',
@@ -20,6 +20,7 @@ function fakeDb({cash=5000,bank=0,owned=0,expired=false,attemptId=null}={}){
     if(sql.includes('SELECT jid FROM raid_lote_jobs'))return {rows:[{jid}]}
     if(sql.includes('SELECT * FROM raid_lote_jobs WHERE id=$1'))return {rows:[job]}
     if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:[]}
+    if(sql.includes('FROM player_sleep'))return {rows:[{activity}]}
     if(sql.includes('SELECT quantity FROM inventories'))return {rows:owned?[{quantity:owned}]:[]}
     if(sql.includes('SELECT cash,bank FROM wallets'))return {rows:[{cash,bank}]}
     if(sql.includes('UPDATE inventories SET quantity=quantity-1'))return {rows:[{quantity:owned-1}],rowCount:1}
@@ -68,4 +69,13 @@ test('V2 após prazo encerra sem cobrar e sem reservar batalha',async()=>{
   assert.equal(f.walletDebit,0)
   assert.equal(f.attempts,0)
   assert.ok(f.calls.some(x=>x.sql.includes("status='completed'")))
+})
+
+test('V2 não reserva nem cobra nova tentativa se sono ou Carpinar antigo coexistir',async()=>{
+ for(const activity of ['sleep','carpinar']){
+  const f=fakeDb({activity})
+  const result=await reserveNextRaidLoteAttempt(f.db,f.job.id,{getCatalog:()=>[{level:10,keyId:'chave_raid_10'}]})
+  assert.equal(result.status,'player_busy')
+  assert.equal(f.walletDebit,0);assert.equal(f.attempts,0);assert.equal(f.fees,0)
+ }
 })

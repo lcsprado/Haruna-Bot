@@ -216,7 +216,7 @@ test('V2: ativação cria sessão de tempo, sem débito e sem limite de tentativ
   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rows:[]}
   if(sql.includes('pg_advisory_xact_lock'))return {rows:[]}
   if(sql.includes('SELECT * FROM raid_lote_jobs'))return {rows:[]}
-  if(sql.includes('FROM player_carpinar'))return {rows:[]}
+  if(sql.includes('FROM player_carpinar'))return {rows:[{activity:null}]}
   if(sql.includes('SELECT 1 FROM raid_lote_jobs'))return {rows:[]}
   if(sql.includes('SELECT 1 FROM trevo_games'))return {rows:[]}
   if(sql.includes('SELECT level FROM users'))return {rows:[{level:100}]}

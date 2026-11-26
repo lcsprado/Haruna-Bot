@@ -12,7 +12,7 @@ const validate=(env=process.env)=>{
      !/^alpha_homolog_[a-z0-9_]+$/.test(url.pathname.slice(1)))throw new Error('Full boot só permitido no PostgreSQL efêmero localhost.')
   return url
 }
-test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {skip:process.env.ALPHA_MINING_E2E_PG!=='1'},async()=>{
+test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {skip:process.env.ALPHA_MINING_E2E_PG!=='1'},async(t)=>{
   const origin=validate()
   const adminUrl=new URL(origin);adminUrl.pathname='/postgres'
   const uniqueDb='alpha_homolog_fullboot'
@@ -57,6 +57,36 @@ test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {sk
     await assert.rejects(upgradeAppliedStone(jid,{...next[1],token:randomUUID()}),/Saldo insuficiente/)
     assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0].cash),400)
     assert.equal(Number((await db.query("SELECT count(*) FROM transactions WHERE from_jid=$1 AND type='stone_upgrade'",[jid])).rows[0].count),1)
+    // Recompensas das missões V2: duas solicitações simultâneas, e replay posterior.
+    const {initProgression}=await import('../src/neon/progression.js')
+    const {getDailyMissionsV2,claimDailyMissionsV2}=await import('../src/neon/daily-v2.js')
+    const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
+    await initPlayableHeroes()
+    await initProgression()
+    const dailyJid='daily-audit-test@s.whatsapp.net'
+    await base.ensureUser(dailyJid,'Daily test')
+    t.mock.timers.enable({apis:['Date'],now:new Date('2026-11-27T15:00:00Z')})
+    try{
+      const board=await getDailyMissionsV2(dailyJid)
+      assert.equal(board.missions.length,6);assert.equal(board.bonusAllSix,true)
+      const cashBefore=Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[dailyJid])).rows[0].cash)
+      const inventory=async id=>Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[dailyJid,id])).rows[0]?.quantity||0)
+      const boxesBefore=await inventory('caixa_epica'),fragBefore=await inventory('fragmento_universal_raid')
+      // Primeiro resgate só das cinco normais; bônus não deve cair antecipadamente.
+      await db.query("UPDATE daily_missions SET progress=target WHERE jid=$1 AND day_key=$2 AND mission_type<>'legend_raid'",[dailyJid,board.day])
+      const first=await claimDailyMissionsV2(dailyJid)
+      assert.equal(first.cash,13000);assert.equal(first.exp,12000)
+      assert.equal(await inventory('fragmento_universal_raid'),fragBefore)
+      await db.query("UPDATE daily_missions SET progress=target WHERE jid=$1 AND day_key=$2 AND mission_type='legend_raid'",[dailyJid,board.day])
+      const two=await Promise.all([claimDailyMissionsV2(dailyJid),claimDailyMissionsV2(dailyJid)])
+      assert.equal(two.reduce((n,x)=>n+x.cash,0),7000)
+      assert.equal(two.reduce((n,x)=>n+x.exp,0),8000)
+      assert.equal((await claimDailyMissionsV2(dailyJid)).cash,0)
+      assert.equal(await inventory('caixa_epica'),boxesBefore+1)
+      assert.equal(await inventory('fragmento_universal_raid'),fragBefore+10)
+      assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[dailyJid])).rows[0].cash),cashBefore+20000)
+      assert.equal((await getDailyMissionsV2(dailyJid)).bonusClaimed,true)
+    }finally{t.mock.timers.reset()}
     process.env.ALPHA_REBOOT_MODE=''
 
   }finally{

@@ -40,3 +40,20 @@ export async function assertNoActiveMining(client,jid,now=Math.floor(Date.now()/
   )).rows[0]
   if(current)throw new Error('⛏️ Você está minerando. Aguarde a expedição terminar ou use !minerar cancelar.')
 }
+
+// Compartilhado por abertura/entrada de Raid e reserva do Raidlote.
+// Chamadores de novas atividades já detêm a trava raid-membership do jogador.
+export async function getActiveRest(client,jid,now=Math.floor(Date.now()/1000)){
+  const row=(await client.query(`
+    SELECT CASE
+      WHEN EXISTS(SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>$2) THEN 'sleep'
+      WHEN EXISTS(SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>$2) THEN 'carpinar'
+      ELSE NULL END AS activity
+  `,[jid,now])).rows[0]
+  return row?.activity||null
+}
+export async function assertNoActiveRest(client,jid){
+  const activity=await getActiveRest(client,jid)
+  if(activity==='sleep')throw new Error('Você está dormindo. Termine o sono antes de iniciar uma Raid.')
+  if(activity==='carpinar')throw new Error('Você está carpindo. Termine a jornada antes de iniciar uma Raid.')
+}
