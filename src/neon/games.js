@@ -924,9 +924,12 @@ async function resolveGlobalPlayerRaid(c,jid){
   const {rows}=await c.query(
     `SELECT chat_jid,game_type,state,updated_at
      FROM trevo_games
-     WHERE game_type='raid' OR game_type LIKE 'raid:%'
+     WHERE (game_type='raid' OR game_type LIKE 'raid:%')
+       AND state->'players'->($1::text) IS NOT NULL
+       AND state->>'status' IN ('lobby','active')
      ORDER BY updated_at DESC
-     FOR UPDATE`
+     FOR UPDATE`,
+    [jid]
   )
   return rows
     .map(r=>({chatJid:r.chat_jid,gameType:r.game_type,...(r.state||{})}))
