@@ -84,9 +84,9 @@ test('dormir bloqueia Raidlote antes de alterar carteira e estado de sono',async
   if(q.includes('FROM raid_lote_jobs'))return {rows:[{active:true}]}
   throw Error('Consulta após bloqueio: '+q)
  }}
- const start=new Function('ensureUser','SLEEP_CHOICES','transaction','miningActivityLock','assertNoActiveMining',
+ const start=new Function('ensureUser','SLEEP_CHOICES','transaction','miningActivityLock','assertNoActiveMining','classesOnlyRebootEnabled',
    sleepSource+'\nreturn startPlayerSleep'
- )(async()=>{},[1,4,8],async fn=>fn(client),miningActivityLock,assertNoActiveMining)
+ )(async()=>{},[1,4,8],async fn=>fn(client),miningActivityLock,assertNoActiveMining,()=>true)
  await assert.rejects(start('player@s.whatsapp.net',1),/Raidlote ativo/)
  assert.ok(sql[0].includes('pg_advisory_xact_lock'))
  assert.ok(sql.every(q=>!/INSERT|UPDATE wallets/.test(q)))

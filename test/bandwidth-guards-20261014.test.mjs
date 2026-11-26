@@ -142,6 +142,9 @@ test('unrelated progression and daily data remain frozen while approved hero mec
   assert.match(runtime,/const calcanharEnd=Date\.parse\('2026-10-16T21:30:00-03:00'\)/)
   assert.match(runtime,/if\(Date\.now\(\)<calcanharEnd\+60000\)datedEventStops\.push/,'old Calcanhar scheduler must be time-gated and cannot reactivate')
   assert.match(runtime,/syncFullHistory:false/)
-  assert.doesNotMatch(runtime,/shouldSyncHistoryMessage:\(\)=>false/)
+  // PR #448: histórico antigo desabilitado; recuperação offline recente continua filtrada.
+  assert.match(runtime,/shouldSyncHistoryMessage:\(\)=>false/)
+  assert.ok(runtime.includes("inboundRejection(msg,requestId?'append':type,receivedAt)"))
+  assert.ok(runtime.includes('groupIncomingByPlayer(fresh)'))
   assert.doesNotMatch(runtime.slice(runtime.indexOf("sock.ev.on('messages.upsert'")),/cacheIncomingMessage\(sock,msg\)/)
 })

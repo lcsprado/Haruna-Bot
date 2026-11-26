@@ -60,6 +60,8 @@ test('inicialização completa de esquema do Alpha Bot em PostgreSQL local', {sk
     // Recompensas das missões V2: duas solicitações simultâneas, e replay posterior.
     const {initProgression}=await import('../src/neon/progression.js')
     const {getDailyMissionsV2,claimDailyMissionsV2}=await import('../src/neon/daily-v2.js')
+    const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
+    await initPlayableHeroes()
     await initProgression()
     const dailyJid='daily-audit-test@s.whatsapp.net'
     await base.ensureUser(dailyJid,'Daily test')

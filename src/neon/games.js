@@ -14,6 +14,7 @@ import { db, ensureUser, claimCooldown, equipmentStatsAtLevel, getEquipmentStarL
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
+import {raidLiveCombatHp} from './v2-pvp-hp-policy.js'
 import {classesOnlyRebootEnabled,raidEnabledInReboot,filterRebootRaidCatalog,eligiblePlayableHero} from './reboot-classes-policy.js'
 import {candidateRaidConfig,assertRaid70V2Start,raid70V2Contributors,raidCashSharesV2,raidV2EligibleRewards,rebootEconomyEnabled,V2_ROULETTE,assertV2RouletteBet} from './reboot-economy-policy.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
@@ -1769,6 +1770,22 @@ export async function raidRound(chat,level){
     // Mantém apenas um débito automático por pet por rodada (inclusive reanimação prévia).
     const preRoundPetHeals=new Map()
     const classFinalRoundHealing=new Map()
+    // V2: read live HP under the same row lock used by PvP and potions.
+    // Keep the lock until round settlement; a stale room cannot resurrect HP.
+    if(rebootEconomyEnabled()){
+      const active=Object.values(s.players||{}).filter(p=>p.alive&&!p.heroId).sort((a,b)=>a.jid.localeCompare(b.jid))
+      if(active.length){
+        const ids=active.map(p=>p.jid)
+        await c.query('SELECT jid FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[ids])
+        const live=(await c.query('SELECT jid,hp FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[ids])).rows
+        for(const p of active){
+          const row=live.find(x=>x.jid===p.jid)
+          if(!row)throw new Error('HP do participante indisponível.')
+          p.hp=raidLiveCombatHp(p.hp,p.maxHp,p.heroPersistentMaxHp||p.maxHp,row.hp)
+          if(p.hp<=0)p.alive=false
+        }
+      }
+    }
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)

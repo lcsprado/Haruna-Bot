@@ -41,6 +41,7 @@ import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
+import {pvpFatigueDamage,pvpLevelUpHp} from './v2-pvp-hp-policy.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -2385,7 +2386,7 @@ if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
 const st=(await client.query(`
-SELECT s.max_hp,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,
+SELECT s.hp,s.max_hp,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,
 COALESCE(uw.level,1)::int AS weapon_level,
 COALESCE(ua.level,1)::int AS armor_level,
 COALESCE(ub.level,1)::int AS boot_level,
@@ -2410,7 +2411,7 @@ const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,st.armor_level,st.arm
 const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,st.boot_level,st.boot_stars):null
 const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,st.helmet_level,st.helmet_stars):null
 const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
-const restoredHp=Math.max(1,Number(st?.max_hp||100)+levels*8+gearHp)
+const restoredHp=pvpLevelUpHp(st?.hp,Number(st?.max_hp||100)+levels*8+gearHp,Boolean(options.preserveHp))
 await client.query(`
 UPDATE stats
 SET max_hp=max_hp+$1,
@@ -3488,6 +3489,7 @@ vitalPulseRate:Number(fighter.vitalPulseRate||0)
 }
 const opening={attacker:snapshot(A),defender:snapshot(B)}
 const log=[]
+const unlimited=classesOnlyRebootEnabled()
 let first=A.spd>=B.spd?A:B
 let second=first===A?B:A
 const hit=(from,to)=>{
@@ -3538,11 +3540,13 @@ const withoutPetClassDamage=noPetAttack===attack?classDamage:
 if(to.heroId)to.heroState=defense.state;
 else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
+const fatigueDamage=unlimited?pvpFatigueDamage(from.attackIndex,to.maxHp):0
+const normalDamage=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
+const dmg=normalDamage+fatigueDamage
+const noPetDmg=(dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense))))+fatigueDamage
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
-const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
+const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-normalDamage)
 const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
 const hpAfterHit=to.hp
@@ -3557,7 +3561,7 @@ const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,
+actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,fatigueDamage:Math.max(0,Math.min(fatigueDamage,targetHpBefore-normalDamage)),
 petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
   ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
   ...(!from.heroId&&attack.techniques?.length?{classTechniques:attack.techniques,classSkillBonusPct:attack.skillBonusPct,classShieldCreated:attack.shieldCreated}:{}),
@@ -3575,7 +3579,7 @@ log.push({round:from.attackIndex,petHeal:true,from:from.name,fromJid:from.jid,to
 }
 }
 }
-for(let round=1;round<=20 && A.hp>0 && B.hp>0;round++){
+for(let round=1;(unlimited||round<=20) && A.hp>0 && B.hp>0;round++){
 hit(first,second)
 if(second.hp<=0) break
 hit(second,first)
@@ -3627,14 +3631,16 @@ VALUES('system',$1,$2,'battle_reward','pvp victory')
 `,[winner.jid,reward])
 const winXpGain=Math.round(40*xpMultiplier)
 const loseXpGain=Math.round(15*xpMultiplier)
-const winExp=await applyExp(client,winner.jid,winXpGain)
-const loseExp=await applyExp(client,loser.jid,loseXpGain)
+const winExp=await applyExp(client,winner.jid,winXpGain,{preserveHp:unlimited})
+const loseExp=await applyExp(client,loser.jid,loseXpGain,{preserveHp:unlimited})
+const saved=(await client.query('SELECT jid,hp,max_hp FROM stats WHERE jid=ANY($1::text[])',[ids])).rows
+const finalHp=f=>Math.max(0,Number(saved.find(row=>row.jid===f.jid)?.hp??0))
+const finalMax=f=>Math.max(1,f.heroPersistentMaxHp+8*Number((f===winner?winExp:loseExp)?.levels||0))
 return {
 ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
-attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(A.heroPersistentMaxHp*0.25)),
-defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(B.heroPersistentMaxHp*0.25))
+attackerHp:finalHp(A),defenderHp:finalHp(B),attackerMaxHp:finalMax(A),defenderMaxHp:finalMax(B),noPotions:true,noRoundLimit:unlimited
 }
 }
 })
@@ -5308,10 +5314,12 @@ await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
 return {active:false,woke:true,...existing,xp_reward:reward.xp,level:reward.level,petEnergy}
 }
 // Antes de cobrar aluguel ou criar sono: mesma trava de associação de Raid.
-const activeLote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid])).rows[0]
-if(activeLote)throw new Error('Você tem um Raidlote ativo. Termine ou cancele o pacote antes de dormir.')
-const activeRaid=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
-if(activeRaid)throw new Error('Você está participando de uma Raid ativa. Termine antes de dormir.')
+if(classesOnlyRebootEnabled()){
+ const activeLote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid])).rows[0]
+ if(activeLote)throw new Error('Você tem um Raidlote ativo. Termine ou cancele o pacote antes de dormir.')
+ const activeRaid=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status' IN ('lobby','active') AND COALESCE(state->'players','{}'::jsonb) ? $1 LIMIT 1",[jid])).rows[0]
+ if(activeRaid)throw new Error('Você está participando de uma Raid ativa. Termine antes de dormir.')
+}
 const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
 const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
 const user=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
