@@ -536,6 +536,57 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
       clock=beforeQuizClock
       console.log('ALPHA_V2_LEVEL_QUIZ_OK',JSON.stringify({legacyMarkerIgnored:true,rewardPaidOnce:true,auditStillBlocks:true,quizConcurrentCap:10,rollingHour:true,crossChat:true}))
     }
+    // Weekly Siege V6: settle an expired match after an overnight restart.
+    // Synthetic 3+5 roster, two actions per participant required, fixed prizes.
+    {
+      const {ensureClanSiegeSchema,settleClanSiege}=await import('../src/neon/clan-siege.js')
+      const {siegeV6ActivePlayers}=await import('../src/neon/clan-siege-v6-roster.js')
+      const priorClock=clock
+      const priorEnabled=process.env.ALPHA_CLAN_SIEGE_ENABLED
+      const priorGroup=process.env.ALPHA_CLAN_SIEGE_GROUP_JID
+      const siegeChat='5511999999000@g.us'
+      const siegeJids=Array.from({length:8},(_,n)=>'55119999990'+String(n+1).padStart(2,'0')+'@s.whatsapp.net')
+      try{
+        await ensureClanSiegeSchema()
+        process.env.ALPHA_CLAN_SIEGE_ENABLED='1'
+        process.env.ALPHA_CLAN_SIEGE_GROUP_JID=siegeChat
+        clock=Date.parse('2026-11-29T02:00:00-03:00')
+        const created=Date.parse('2026-11-28T21:30:00-03:00')
+        for(const jid of siegeJids)await ensureUser(jid,'CI siege')
+        const blue=(await db.query("INSERT INTO clans(name,owner_jid) VALUES('CI Siege Blue',$1) RETURNING id",[siegeJids[0]])).rows[0].id
+        const red=(await db.query("INSERT INTO clans(name,owner_jid) VALUES('CI Siege Red',$1) RETURNING id",[siegeJids[3]])).rows[0].id
+        const matchId=(await db.query("INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,round,round_ends_at,blue_hp,red_hp,created_at,updated_at) VALUES($1,$2,$3,'system:siege-daily-20h','active',6,6,$4,1800,1200,$5,$5) RETURNING id",[siegeChat,blue,red,created+30*60000,created])).rows[0].id
+        const absent=siegeJids[7]
+        for(const [team,roster] of [[blue,siegeJids.slice(0,3)],[red,siegeJids.slice(3)]]){
+          for(const jid of roster)await db.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',[matchId,jid,team])
+          for(let round=1;round<=5;round++)for(const jid of siegeV6ActivePlayers(roster,round)){
+            if(jid===absent)continue
+            await db.query("INSERT INTO alpha_siege_moves(match_id,round,jid,clan_id,action,target,submitted_at) VALUES($1,$2,$3,$4,'defend','castle',$5)",[matchId,round,jid,team,created+round*60000])
+          }
+        }
+        const readXp=async()=> (await db.query("SELECT u.jid,u.level,u.exp,COALESCE((SELECT (value->>'used')::bigint FROM trevo_settings WHERE key='reboot_xp_daily:'||u.jid),0) AS used FROM users u WHERE jid=ANY($1::text[]) ORDER BY jid",[siegeJids])).rows
+        assert.equal(await settleClanSiege(siegeChat),1)
+        const match=(await db.query('SELECT status,winner_clan_id FROM alpha_siege_matches WHERE id=$1',[matchId])).rows[0]
+        assert.equal(match.status,'completed')
+        assert.equal(String(match.winner_clan_id),String(blue))
+        const rewards=(await db.query('SELECT jid,xp FROM alpha_siege_weekly_xp WHERE match_id=$1 ORDER BY jid',[matchId])).rows
+        assert.equal(rewards.length,7)
+        const after=await readXp()
+        for(const row of after){
+          const expected=row.jid===absent?0:siegeJids.slice(0,3).includes(row.jid)?150000:70000
+          assert.equal(Number(row.used),expected,'actual XP must match fixed prize even after midnight')
+          assert.equal(Number(rewards.find(x=>x.jid===row.jid)?.xp||0),expected)
+        }
+        assert.equal(await settleClanSiege(siegeChat),0)
+        assert.deepEqual(await readXp(),after,'settlement must not pay twice')
+        assert.equal(Number((await db.query('SELECT count(*) FROM alpha_siege_weekly_xp WHERE match_id=$1',[matchId])).rows[0].count),7)
+        console.log('ALPHA_V2_SIEGE_SETTLEMENT_OK',JSON.stringify({roster:'3+5',paid:7,excludedInactive:1,overnight:true,idempotent:true}))
+      }finally{
+        clock=priorClock
+        if(priorEnabled===undefined)delete process.env.ALPHA_CLAN_SIEGE_ENABLED;else process.env.ALPHA_CLAN_SIEGE_ENABLED=priorEnabled
+        if(priorGroup===undefined)delete process.env.ALPHA_CLAN_SIEGE_GROUP_JID;else process.env.ALPHA_CLAN_SIEGE_GROUP_JID=priorGroup
+      }
+    }
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpTracked:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))
   }finally{
     Date.now=realNow;Math.random=realRandom
