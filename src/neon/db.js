@@ -1,5 +1,5 @@
 import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from './pvp-equipment-counter-policy.js'
-import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins} from './v2-raid-weapon-builds.js'
+import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins,v2RaidWeaponDisplayName} from './v2-raid-weapon-builds.js'
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing} from './reboot-assets-policy.js'
@@ -604,7 +604,7 @@ VALUES ($1,$2,$3,$4,$5,$6)
 ON CONFLICT(id) DO UPDATE
 SET name=EXCLUDED.name, description=EXCLUDED.description,
 category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
-`, candidateShopCatalogItem(item))
+`, candidateShopCatalogItem([item[0],v2RaidWeaponDisplayName(item[0],item[1],classesOnlyRebootEnabled()),...item.slice(2)]))
 }
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
@@ -2176,22 +2176,22 @@ katana_sombria: { category:'weapon', atk:28, def:0, name:'Katana Sombria' },
 espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
 tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
 lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
-foice_carmesim: { category:'weapon', atk:43, def:0, name:'Foice Carmesim' },
-lanca_solar: { category:'weapon', atk:46, def:0, name:'Lança Solar' },
-garras_vazio: { category:'weapon', atk:51, def:0, name:'Garras do Vazio' },
-espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
+foice_carmesim: { category:'weapon', atk:43, def:0, name:v2RaidWeaponDisplayName('foice_carmesim','Foice Carmesim',classesOnlyRebootEnabled()) },
+lanca_solar: { category:'weapon', atk:46, def:0, name:v2RaidWeaponDisplayName('lanca_solar','Lança Solar',classesOnlyRebootEnabled()) },
+garras_vazio: { category:'weapon', atk:51, def:0, name:v2RaidWeaponDisplayName('garras_vazio','Garras do Vazio',classesOnlyRebootEnabled()) },
+espada_eclipse: { category:'weapon', atk:54, def:0, name:v2RaidWeaponDisplayName('espada_eclipse','Espada do Eclipse',classesOnlyRebootEnabled()) },
 martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
-excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
-katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
+excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:v2RaidWeaponDisplayName('excalibur','Excalibur',classesOnlyRebootEnabled()) },
+katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:v2RaidWeaponDisplayName('katana_divina','Katana Divina',classesOnlyRebootEnabled()) },
 sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
 lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
 espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
-lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
-machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
-foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
+lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:v2RaidWeaponDisplayName('lamina_caos','Lâmina do Caos',classesOnlyRebootEnabled()) },
+machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:v2RaidWeaponDisplayName('machado_tita','Machado do Titã',classesOnlyRebootEnabled()) },
+foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:v2RaidWeaponDisplayName('foice_abismo','Foice do Abismo',classesOnlyRebootEnabled()) },
 foice_eclipse_mistico_20261030: {category:'weapon',atk:140,def:0,hp:0,spd:10,crit:.04,name:'Foice do Eclipse'},
-espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
-exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
+espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:v2RaidWeaponDisplayName('espada_aurora','Espada da Aurora',classesOnlyRebootEnabled()) },
+exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:v2RaidWeaponDisplayName('exterminadora_eclipse','Exterminadora do Eclipse',classesOnlyRebootEnabled()) },
 armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
 armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
 armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
