@@ -141,3 +141,35 @@ test('WhatsApp equip menu calculates each independent copy and labels the active
   assert.match(comparison,/forgeStarsIcon\(selectedStars\)/)
   assert.doesNotMatch(comparison,/up\?\.activeStars/)
 })
+
+test('V2: cada nível/estrela preserva a força anterior e o teto antigo',async()=>{
+ const {equipmentGrowthMultiplier,shieldGrowthMultiplier}=await import('../src/neon/equipment-growth-v2.js')
+ const {ANTI_CRIT_SHIELDS,antiCritShieldStats}=await import('../src/neon/anti-crit-shields.js')
+ for(let stars=1;stars<=5;stars++){
+  assert.ok(Math.abs(equipmentGrowthMultiplier(10,stars,true)-equipmentGrowthMultiplier(10,stars,false))<1e-10)
+  assert.ok(Math.abs(shieldGrowthMultiplier(10,stars,true)-shieldGrowthMultiplier(10,stars,false))<1e-10)
+  for(let level=1;level<10;level++){
+   assert.ok(equipmentGrowthMultiplier(level+1,stars,true)>equipmentGrowthMultiplier(level,stars,true))
+   assert.ok(shieldGrowthMultiplier(level+1,stars,true)>shieldGrowthMultiplier(level,stars,true))
+  }
+  if(stars>1){
+   assert.ok(equipmentGrowthMultiplier(1,stars,true)>equipmentGrowthMultiplier(10,stars-1,true))
+   assert.deepEqual(selectEffectiveGear(10,1,stars,'garras_vazio',true),{level:1,stars})
+   assert.ok(equipmentGrowthMultiplier(1,stars,true)>=equipmentGrowthMultiplier(1,stars,false))
+  }
+  if(stars>=3)for(const shield of ANTI_CRIT_SHIELDS){
+   const old=antiCritShieldStats(shield.id,10,stars-1,true),next=antiCritShieldStats(shield.id,1,stars,true)
+   assert.ok(next.critResist>=old.critResist&&next.critGuard>=old.critGuard)
+  }
+ }
+ assert.deepEqual(selectEffectiveGear(10,1,2,'garras_vazio',false),{level:10,stars:1})
+ // First shield fusion accepts Lv.1 copies; it must not displace a stronger ordinary piece.
+ assert.deepEqual(selectEffectiveGear(10,1,2,'escudo_runico',true),{level:10,stars:1})
+ assert.deepEqual(selectEffectiveGear(1,1,2,'escudo_runico',true),{level:1,stars:2})
+ assert.equal(Math.round(51*equipmentGrowthMultiplier(10,1,true)),128)
+ assert.equal(Math.round(51*equipmentGrowthMultiplier(1,2,true)),128)
+ assert.equal(Math.round(51*equipmentGrowthMultiplier(6,2,true)),131)
+ assert.equal(Math.round(51*equipmentGrowthMultiplier(10,5,true)),148)
+ assert.match(db,/equipmentGrowthMultiplier\(level,starLevel,true\)/)
+ assert.match(db,/V2: reselect effective forged tiers/)
+})
