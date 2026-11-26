@@ -1,4 +1,5 @@
 import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from './pvp-equipment-counter-policy.js'
+import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins} from './v2-raid-weapon-builds.js'
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing} from './reboot-assets-policy.js'
@@ -594,6 +595,7 @@ starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragment
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
 starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 31/10 18h. '+g.short,g.category,0,'legendary']))
 starterItems.push(['insignia_primeiros_conquistadores_20261102','👑 Insígnia dos Primeiros Conquistadores','Relíquia da primeira Guerra de Clãs. +7% dano Boss/Raid, +3 p.p. CRIT Boss/Raid, -2% dano recebido Raid. Sem PvP.','special',0,'event'])
+starterItems.push(...v2RaidWeaponItemRows(classesOnlyRebootEnabled()))
 // O banco V2 nasce sem itens dos 7 Pecados; nenhuma exclusão em banco legado.
 for (const item of filterRebootStarterItems(starterItems)) {
 await db.query(`
@@ -2151,6 +2153,7 @@ LIMIT $1
 return rows
 }
 const EQUIPMENT = {
+...v2RaidWeaponStats(classesOnlyRebootEnabled()),
 ...Object.fromEntries(ANTI_CRIT_SHIELDS.map(({id,rarity,price,description,...gear})=>[id,gear])),
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
@@ -2391,6 +2394,7 @@ return eq ? {...eq,itemId} : null
 const EQUIPMENT_MAX_LEVEL=10
 export const FORGE_STAR_MATERIALS=Object.freeze([0,30,50,80,120])
 export const RAID_WEAPON_FORGE_ORIGINS=Object.freeze({
+...v2RaidWeaponOrigins(classesOnlyRebootEnabled()),
 foice_carmesim:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
 lanca_solar:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
 garras_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
@@ -2484,6 +2488,31 @@ LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventor
 WHERE jid=inv.jid AND item_id=inv.item_id) bound ON TRUE
 LEFT JOIN inventories mat ON mat.jid=inv.jid AND mat.item_id=
 CASE inv.item_id
+WHEN 'raid_v2_martelo_brasa' THEN 'escama_vulcanica'
+WHEN 'raid_v2_katana_vulcanica' THEN 'escama_vulcanica'
+WHEN 'raid_v2_machado_erupcao' THEN 'escama_vulcanica'
+WHEN 'raid_v2_foice_profundeza' THEN 'olho_abissal'
+WHEN 'raid_v2_katana_mares' THEN 'olho_abissal'
+WHEN 'raid_v2_machado_devorador' THEN 'olho_abissal'
+WHEN 'raid_v2_martelo_ferro' THEN 'nucleo_titan'
+WHEN 'raid_v2_foice_engrenagens' THEN 'nucleo_titan'
+WHEN 'raid_v2_machado_colosso' THEN 'nucleo_titan'
+WHEN 'raid_v2_martelo_trono' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_foice_rei_abissal' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_machado_ruina' THEN 'essencia_rei_abissal'
+WHEN 'raid_v2_martelo_serafim' THEN 'fragmento_celestial'
+WHEN 'raid_v2_foice_anjo_caido' THEN 'fragmento_celestial'
+WHEN 'raid_v2_machado_querubim' THEN 'fragmento_celestial'
+WHEN 'raid_v2_martelo_juizo' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_foice_almas_divinas' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_machado_furia_divina' THEN 'nucleo_alpha_corrompido'
+WHEN 'raid_v2_martelo_entalpia' THEN 'fragmento_caos'
+WHEN 'raid_v2_foice_entropia' THEN 'fragmento_caos'
+WHEN 'raid_v2_katana_aurora' THEN 'coroa_abissal'
+WHEN 'raid_v2_machado_imperador' THEN 'coroa_abissal'
+WHEN 'raid_v2_martelo_eclipse_supremo' THEN 'essencia_eclipse'
+WHEN 'raid_v2_foice_colheita_final' THEN 'essencia_eclipse'
+WHEN 'raid_v2_machado_frenesi_eclipse' THEN 'essencia_eclipse'
 WHEN 'foice_carmesim' THEN 'escama_vulcanica'
 WHEN 'lanca_solar' THEN 'olho_abissal'
 WHEN 'garras_vazio' THEN 'nucleo_titan'
