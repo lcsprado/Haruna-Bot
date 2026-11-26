@@ -11751,7 +11751,7 @@ else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 esp
 if(classesOnlyRebootEnabled()){
 const reward=profileCombatPetBonuses(p1,team).active
 const percent=n=>Number((Number(n||0)*100).toFixed(2)).toLocaleString('pt-BR')
-text+=`🍀 *Lucky Drop da equipe:* +${percent(reward.drop)}%\n✨ *XP do personagem:* +${percent(reward.xp)}%\n📊 Principal 100% • Suporte 50% • Reserva 25% (sem exigir sinergia).\n\n`
+text+=`📊 *BÔNUS PASSIVOS DA EQUIPE — BOSS/RAID*\n⚔️ Dano: +${percent(reward.damage)}% • 🛡️ Defesa: +${percent(reward.defense)}%\n❤️ HP: +${percent(reward.hp)}% • 🎯 CRIT: +${percent(reward.crit)} p.p.\n🌀 Esquiva: +${percent(reward.dodge)} p.p.\n🍀 Lucky Drop: +${percent(reward.drop)}%\n✨ XP do personagem: +${percent(reward.xp)}%\nPrincipal 100% • Suporte 50% • Reserva 25% (sem exigir sinergia).\n\n`
 }
 text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n🛟 O Suporte concede bônus passivos.\n👉 Use *!equiparpet* para montar o time.'
 return await reply(text)
