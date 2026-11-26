@@ -1829,13 +1829,14 @@ let out='📋 *MISSÕES DIÁRIAS*\n'+(rotating?'🔄 *Quadro rotativo do dia —
 for(const m of board.missions||[]){
 const done=Number(m.progress)>=Number(m.target)
 const xp=Number(m.reward_xp||0),petXp=Number(m.reward_pet_xp||0)
-const extras=xp?' + '+money(xp)+' EXP':petXp?' + '+money(petXp)+' EXP de pet':''
+const extras=(xp?' + '+money(xp)+' EXP':'')+(petXp?' + '+money(petXp)+' EXP de pet':'')
 const special=m.mission_type==='legend_raid'
 if(special)out+='\n🌟 *MISSÃO ESPECIAL — '+(rotating?'DESAFIO DO DIA':'CAÇADOR DE LENDAS')+'*\n'
 out+=(done?'✅ ':'⬜ ')+m.title+' — *'+money(m.progress)+'/'+money(m.target)+'*\n'
 out+='🎁 R$ '+money(m.reward_cash)+extras+(special?' + 1 Caixa Épica':'')+(m.claimed?' _(resgatada)_':'')+'\n\n'
 }
-out+='🎁 *BÔNUS DAS 5 MISSÕES:* '+Number(board.bonusQty||0)+' '+(board.bonusItem==='caixa_rara'?'Caixa(s) Rara(s)':'Caixa(s) Épica(s)')+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
+if(board.bonusAllSix)out+='🏆 *BÔNUS DO QUADRO COMPLETO:* R$ '+money(board.bonusCash)+' + '+money(board.bonusXp)+' EXP + '+money(board.bonusQty)+' Fragmentos Universais de Raid'+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
+else out+='🎁 *BÔNUS DAS 5 MISSÕES:* '+Number(board.bonusQty||0)+' '+(board.bonusItem==='caixa_rara'?'Caixa(s) Rara(s)':'Caixa(s) Épica(s)')+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
 out+='🔥 *Sequência Daily:* '+Number(board.streak||0)+' dia(s)\n\n'
 out+='Use *'+prefix+'resgatarmissoes* para coletar as recompensas concluídas.'
 return out

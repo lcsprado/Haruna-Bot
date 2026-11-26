@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity}
+import {DAILY_V3_START,DAILY_MAIN_TYPES,dailyV3MainMissions,dailyV3SpecialMission,dailySpecialActivity,dailyV2RebalancedRewards,DAILY_V2_COMPLETION,DAILY_V2_REWARD_START}
   from '../src/neon/daily-mission-rotation.js';
 
 const source=readFileSync(new URL('../src/neon/daily-v2.js',import.meta.url),'utf8');
@@ -79,4 +79,22 @@ test('already generated day remains immutable and all 8 new categories can gain 
  assert.match(source,/level_snapshot/);
  assert.match(source,/ON CONFLICT\(jid,day_key,mission_type\) DO NOTHING/);
  assert.match(progression,/CREATE TABLE IF NOT EXISTS daily_missions/);
+});
+
+test('V2 daily budget is exactly 20k cash and XP for every rotation',()=>{
+ assert.equal(DAILY_V2_REWARD_START,'2026-11-27');
+ for(let n=0;n<365;n++){
+   const day=addDays(DAILY_V2_REWARD_START,n);
+   for(const lv of [1,50,100,200,500]){
+     const raw=[...dailyV3MainMissions(day),dailyV3SpecialMission(day,lv)];
+     const board=dailyV2RebalancedRewards(raw);
+     assert.equal(board.reduce((v,m)=>v+m.cash,DAILY_V2_COMPLETION.cash),20000);
+     assert.equal(board.reduce((v,m)=>v+m.xp,DAILY_V2_COMPLETION.xp),20000);
+     assert.deepEqual(board.map(m=>[m.type,m.title,m.target]),raw.map(m=>[m.type,m.title,m.target]));
+     assert.ok(board.every(m=>m.cash>0&&m.xp>0));
+   }
+ }
+ assert.equal(DAILY_V2_COMPLETION.fragments,10);
+ assert.match(source,/reward_type='all_six'/);
+ assert.match(source,/creditBox\(c,jid,DAILY_V2_COMPLETION.item,DAILY_V2_COMPLETION.fragments\)/);
 });

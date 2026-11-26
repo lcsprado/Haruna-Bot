@@ -1445,7 +1445,7 @@ function renderHome(){
     statCard('CRÍTICO',Math.round(Number(p.effective_crit||0)*100)+'%','VEL '+num(p.effective_spd||p.spd))+
   '</div>'+
   '<div class="section grid two">'+
-    '<div class="card"><div class="section-title"><h3>Missões diárias</h3><small>'+missions.length+' missões</small></div>'+renderMissionList(missions)+'</div>'+
+    '<div class="card"><div class="section-title"><h3>Missões diárias</h3><small>'+ (Array.isArray(missions)?missions.length:(missions.missions||[]).length)+' missões</small></div>'+renderMissionList(missions)+'</div>'+
     '<div class="card"><div class="section-title"><h3>Estado compartilhado</h3><small>Neon</small></div>'+
       '<div class="list">'+
         '<div class="list-row"><span>Grupo</span><small>'+(group?'Vinculado':'Use !web no grupo')+'</small></div>'+
@@ -1463,12 +1463,14 @@ function renderHome(){
   '<div class="section card"><div class="section-title"><h3>Últimas movimentações</h3><small>WhatsApp + Web</small></div>'+renderTransactions(8)+'</div>';
 }
 
-function renderMissionList(missions){
+function renderMissionList(board){
+  const missions=Array.isArray(board)?board:(board?.missions||[]);
+  const bonus=board?.bonusAllSix?'<div class="list-row"><div><strong>Bônus do quadro completo</strong><small>R$ '+num(board.bonusCash)+' • '+num(board.bonusXp)+' EXP • '+num(board.bonusQty)+' Fragmentos Universais de Raid</small></div><span class="tag '+(board.bonusClaimed?'good':'')+'">'+(board.bonusClaimed?'RESGATADO':'6 MISSÕES')+'</span></div>':'';
   if(!missions.length) return '<div class="empty">Nenhuma missão diária carregada.</div>';
   return '<div class="list">'+missions.map(m=>{
     const done=Number(m.progress||0)>=Number(m.target||1);
-    return '<div class="list-row"><div><strong>'+esc(m.title)+'</strong><small>'+num(m.progress)+'/'+num(m.target)+'</small></div><span class="tag '+(done?'good':'')+'">'+(m.claimed?'RESGATADA':done?'PRONTA':'ATIVA')+'</span></div>';
-  }).join('')+'</div>';
+    return '<div class="list-row"><div><strong>'+esc(m.title)+'</strong><small>'+num(m.progress)+'/' +num(m.target)+' • R$ '+num(m.reward_cash)+' • '+num(m.reward_xp)+' EXP'+(m.reward_pet_xp?' • '+num(m.reward_pet_xp)+' EXP pet':'')+(m.mission_type==='legend_raid'?' • 1 Caixa Épica':'')+'</small></div><span class="tag '+(done?'good':'')+'">'+(m.claimed?'RESGATADA':done?'PRONTA':'ATIVA')+'</span></div>';
+  }).join('')+bonus+'</div>';
 }
 
 function specialtyText(p){
