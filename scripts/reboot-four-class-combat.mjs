@@ -11,6 +11,7 @@ import {antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultipli
 import {applyVitalCombatHp,vitalPulseHeal} from '../src/neon/vital-pets.js';
 import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from '../src/neon/pvp-equipment-counter-policy.js';
 import {pvpWinnerByHealth} from '../src/neon/pvp-outcome-policy.js';
+import {pvpFatigueDamage} from '../src/neon/v2-pvp-hp-policy.js';
 import {REBOOT_CLASS_IDS,classesOnlyRebootEnabled} from '../src/neon/reboot-classes-policy.js';
 const IDS=['paladin','necromancer','samurai','berserker'];
 const LEVELS=[1,25,50,75,100];
@@ -23,15 +24,15 @@ function rng(seed){
 }
 export function compileClassDuel(dbSource){
  if(!classesOnlyRebootEnabled())throw Error('Execute a auditoria em classes_only.');
- const start=dbSource.indexOf('const log=[]\nlet first=A.spd');
+ const start=dbSource.indexOf('const log=[]\nconst unlimited=classesOnlyRebootEnabled()\nlet first=A.spd');
  const end=dbSource.indexOf('const roundCount=Math.max(A.attackIndex,B.attackIndex)',start);
  if(start<0||end<=start)throw Error('Trecho do motor mudou: revisar auditoria.');
  const body=dbSource.slice(start,end);
- if(!body.includes('classPvpAttack(')||!body.includes('classPvpDefense(')||!body.includes('round<=20')||
+ if(!body.includes('classPvpAttack(')||!body.includes('classPvpDefense(')||!body.includes('(unlimited||round<=20)')||!body.includes('pvpFatigueDamage(')||
     /await\s|\.query\(|process\.|require\(|import\s|fetch\(/.test(body))throw Error('Trecho de combate não é puro ou mudou.');
- const deps={classPvpAttack,classPvpDefense,vitalPulseHeal,effectiveShieldedCritChance,shieldedCriticalMultiplier,pvpWinnerByHealth,pvpDefenseCoefficient,v2PvpMatchupAdjustment};
+ const deps={classPvpAttack,classPvpDefense,vitalPulseHeal,effectiveShieldedCritChance,shieldedCriticalMultiplier,pvpWinnerByHealth,pvpDefenseCoefficient,v2PvpMatchupAdjustment,pvpFatigueDamage,classesOnlyRebootEnabled};
  // Fonte local versionada, trecho sem I/O. A ramificação de herói nunca é executada.
- const duel=new Function(...Object.keys(deps),'A','B','Math',body+'\nreturn {winner:pvpWinnerByHealth(A,B,Math.random()).classId,ending:[A.hp,B.hp],rounds:Math.max(A.attackIndex,B.attackIndex)}');
+ const duel=new Function(...Object.keys(deps),'A','B','Math',body+'\nif(A.hp>0&&B.hp>0)throw Error("Duelo V2 sem nocaute");return {winner:pvpWinnerByHealth(A,B,Math.random()).classId,ending:[A.hp,B.hp],rounds:Math.max(A.attackIndex,B.attackIndex)}');
  return (a,b,random)=>{const math=Object.create(Math);math.random=random;return duel(...Object.values(deps),a,b,math)};
 }
 export function buildClassFighter(id,level,stage,scenario,gearScale=1){
