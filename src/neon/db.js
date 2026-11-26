@@ -36,6 +36,7 @@ import {dungeonCashV2} from './reboot-pve-policy.js'
 import {activeCombatPetTeam} from './reboot-pet-team.js'
 import {raidLoteRelativeXp} from './raid-lote-policy.js'
 import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-combat-progression.js'
+import {applyV2PetXpEvent} from './reboot-pet-xp-event.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -6407,7 +6408,7 @@ for(const row of rows){
 const trait=petExpeditionTrait(row.species)
 const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-const awardedPetXp=classesOnlyRebootEnabled()?Number(row.pet_xp||0):Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
+const awardedPetXp=classesOnlyRebootEnabled()?await applyV2PetXpEvent(client,jid,Number(row.pet_xp||0),row.xp):Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
 const rawXp=Number(row.xp||0)+awardedPetXp
 const level=Math.min(100,1+Math.floor(rawXp/100))
 const xp=level>=100?9900:rawXp
@@ -6520,7 +6521,7 @@ const oldLevel=Number(pet.level||1)
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
 const relicXP=await getRelicPetXpBonus(client,jid)
-const actionXp=classesOnlyRebootEnabled()?Math.floor(Math.max(0,Number(a.xp||0))*.6):Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
+const actionXp=classesOnlyRebootEnabled()?await applyV2PetXpEvent(client,jid,Math.floor(Math.max(0,Number(a.xp||0))*.6),pet.xp):Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
 const rawXp=Number(pet.xp)+actionXp
 const level=Math.min(100,1+Math.floor(rawXp/100))
 const xp=level>=100?9900:rawXp
@@ -6571,7 +6572,7 @@ const fullAdventureCash=13000+Math.floor(Math.random()*5001)
 const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
 const cash=classesOnlyRebootEnabled()?petAdventureCash(baseCash):Math.round(baseCash*moneyMultiplier)
 const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
-const xpGain=classesOnlyRebootEnabled()?baseAdventureXp:Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
+const xpGain=classesOnlyRebootEnabled()?await applyV2PetXpEvent(client,jid,baseAdventureXp,pet.xp):Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
 const rawXp=Number(pet.xp||0)+xpGain
 const nextLevel=Math.min(100,1+Math.floor(rawXp/100))
 const xp=nextLevel>=100?9900:rawXp
