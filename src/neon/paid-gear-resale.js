@@ -61,7 +61,7 @@ export function paidGearSaleSteps({rows=[],quantity,tiers=[],forge=null,equipped
  if(basic<0)return []
  const {normal,star}=replayPaidGear(rows)
  const highest=ordered.at(-1)?.level||1
- const effective=forge&&equipped?selectEffectiveGear(highest,forge.level,forge.stars,itemId):null
+ const effective=forge&&equipped?selectEffectiveGear(highest,forge.level,forge.stars,itemId,true):null
  const keepForge=Boolean(effective&&effective.level===Number(forge.level)&&(effective.stars>1||effective.level!==highest))
  const keepTier=equipped&&!keepForge&&ordered.length?highest:null
  const keepBasic=equipped&&!keepForge&&keepTier===null?1:0
