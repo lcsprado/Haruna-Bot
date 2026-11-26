@@ -123,9 +123,10 @@ test('unrelated progression and daily data remain frozen while approved hero mec
   // Revisão V2 de 18/11: apenas a apresentação de nextMark usa os valores da nova política.
   // Revisão 19/11: init diário V2 sem reparo histórico; validação dos marcos da temporada.
   // SHA confirmado na regressão d83e0f4, com teste real de PostgreSQL aprovado.
+  // Revisão autorizada de 26/11: orçamento fixo V2 de 20 mil, somente quadros a partir de 27/11.
   // A proteção continua estrita: qualquer alteração futura exige revisão do teste.
   const expected={
-    'daily-v2.js':'51f55c4fff5fe932cfced143bd6885f1027eb7df5e7b5df6f37b2eb41c993566'
+    'daily-v2.js':'509ee042cba27a3f24610ddf429948c8b06c03da6d05408d6709474264f015c9'
   }
   // A mudança em progression.js é autorizada SOMENTE no caminho opt-in da V2.
   const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
