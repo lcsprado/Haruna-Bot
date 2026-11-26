@@ -36,7 +36,7 @@ import {dungeonCashV2} from './reboot-pve-policy.js'
 import {activeCombatPetTeam} from './reboot-pet-team.js'
 import {raidLoteRelativeXp} from './raid-lote-policy.js'
 import {reserveV2DailyXp,v2DailyXpStatus,assertV2PvpAccess} from './reboot-combat-progression.js'
-import {applyV2PetXpEvent} from './reboot-pet-xp-event.js'
+import {applyV2PetXpEvent,applyV2OwnerEvent} from './reboot-pet-xp-event.js'
 import {effectivePetAltar,assertV2PetAltarAccess,petSummonStartLevel,petDuplicateCash,petAdventureCash,effectiveExpeditionPlans,petExpeditionLimit} from './reboot-pet-economy.js'
 import {equipmentUpgradeBase,equipmentUpgradeRefund} from './reboot-gear-economy.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -1215,7 +1215,8 @@ const roll=Math.random()
 if(roll<.08){event=classesOnlyRebootEnabled()?'🌟 Excelente desempenho! Bônus de 15%.':'🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
 else if(roll<.15){event=classesOnlyRebootEnabled()?'⏰ Hora extra! Bônus de 15%.':'⏰ Hora extra! Bônus de 25%.';factor=1.25}
 else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-const gross=careerWorkGross({level,legacyPayCap:payCap,careerMultiplier:newRank.mult,performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
+const baseGross=careerWorkGross({level,legacyPayCap:payCap,careerMultiplier:newRank.mult,performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
+const gross=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro'],baseGross):baseGross
 const taxRate=classesOnlyRebootEnabled()?10:Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
 const tax=Math.floor(gross*(taxRate/100))
 const amount=gross-tax
@@ -1226,7 +1227,7 @@ await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) V
 if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
 const promoted=newRank.name!==oldRank.name
 const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:classesOnlyRebootEnabled()?1:Math.max(moneyMultiplier,xpMultiplier)}
+return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:classesOnlyRebootEnabled()?gross/Math.max(1,baseGross):Math.max(moneyMultiplier,xpMultiplier)}
 })
 }
 export async function deposit(jid, amount) {
@@ -4384,10 +4385,11 @@ exp+=min+Math.floor(Math.random()*(max-min+1))
 continue
 }
 const roll=Math.random()
-const legendaryChance=Math.min(1,config.legendary*luckyMultiplier)
-const epicChance=Math.min(1,config.epic*luckyMultiplier)
-const rareChance=Math.min(1,config.rare*luckyMultiplier)
-const uncommonChance=Math.min(1,config.uncommon*luckyMultiplier)
+const rollMultiplier=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['sorte'],1,{roll:true}):luckyMultiplier
+const legendaryChance=Math.min(1,config.legendary*rollMultiplier)
+const epicChance=Math.min(1,config.epic*rollMultiplier)
+const rareChance=Math.min(1,config.rare*rollMultiplier)
+const uncommonChance=Math.min(1,config.uncommon*rollMultiplier)
 let rarity='common'
 if(roll<legendaryChance) rarity='legendary'
 else if(roll<epicChance) rarity='epic'
@@ -4565,12 +4567,15 @@ php=Math.max(0,php-blocked.damage+Number(blocked.healAfter||0))
 if(php<=0||(classesOnlyRebootEnabled()&&mhp>0)){
 const recover=php>0?php:Math.max(1,Math.floor(effectiveMaxHp*.30))
 await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[classPersistentHp(recover,effectiveMaxHp,Number(row.max_hp)+gearHp),jid])
-const lossExp=Math.round(10*xpMultiplier)
+const baseLossExp=Math.round(10*xpMultiplier)
+const lossExp=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['xp'],baseLossExp):baseLossExp
 const expRes=await applyExp(client,jid,lossExp)
 return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
 }
-const cash=classesOnlyRebootEnabled()?dungeonCashV2(m.mult,Math.random()):Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
-const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
+const baseCash=classesOnlyRebootEnabled()?dungeonCashV2(m.mult,Math.random()):Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
+const cash=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro'],baseCash):baseCash
+const baseExp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
+const exp=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['xp'],baseExp):baseExp
 await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,classPersistentHp(php,effectiveMaxHp,Number(row.max_hp)+gearHp)),jid])
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
 await client.query(`
