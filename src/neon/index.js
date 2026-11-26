@@ -872,7 +872,7 @@ console.error('[Raid Auto] falha no watchdog',err?.message||err)
 async function announceStartedRaid(chat,sender,r,catalog,reply){
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
 await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas funcionam para quem participa com pets.${r.players?.[sender]?.usePet===false?'\n🛡️ Você está sem pets nesta Raid.':''}\n🏆 Recompensas serão proporcionais à colaboração.`)
-runRaidCombat(chat,Number(r.level),reply)
+runRaidCombat(chat,Number(r.level),text=>raidAutoReply?raidAutoReply(chat,text):false)
 }
 async function runRaidCombat(chat,level,reply){
 const runKey=`${chat}|${Number(level)}`
@@ -4519,6 +4519,7 @@ await reply(
 '3️⃣ 🪖 Elmos — '+count('helmet')+' tipos\n'+
 '4️⃣ 👢 Botas — '+count('boots')+' tipos\n'+
 '5️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+'   🐾 Poções de pet: '+potions.filter(i=>String(i.item_id).startsWith('pocao_pet_')).reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
 '6️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
 '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
 '8️⃣ 💰 Vender / descartar itens\n'+
@@ -10737,12 +10738,15 @@ altDigits.includes(configuredOwnerDigits) ||
 (!isGroup && String(chat||'').endsWith('@s.whatsapp.net') &&
 String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
 )
-const identityKey=sender+'|'+[...new Set(senderIdentity.aliases||[])].sort().join('|')
+// Reutiliza somente a consolidacao bem-sucedida da MESMA identidade verificada.
+// A verificacao LID/PN e de administrador continua em cada mensagem.
+const identityCacheMs=neonEcoMode?30*60*1000:classesOnlyRebootEnabled()?60*1000:0
+const identityKey=JSON.stringify([sender,[...new Set(senderIdentity.aliases||[])].sort(),msg.pushName||''])
 const identityAt=alphaIdentityMergeChecked.get(identityKey)||0
-if(!neonEcoMode || Date.now()-identityAt>30*60*1000){
+if(!identityCacheMs || Date.now()-identityAt>identityCacheMs){
 try{
 await consolidateUserIdentity(sender,senderIdentity.aliases,msg.pushName||'')
-if(neonEcoMode){
+if(identityCacheMs){
 if(alphaIdentityMergeChecked.size>5000)alphaIdentityMergeChecked.clear()
 alphaIdentityMergeChecked.set(identityKey,Date.now())
 }
@@ -13835,7 +13839,7 @@ text+=requestedRoom.host===sender
  :'\n👥 Esta sala já foi aberta por '+String(requestedRoom.hostName||'outro jogador').replace(/[\r\n*]/g,' ').slice(0,60)+'. Use *!entrar '+requestedRoom.level+'* para participar; somente o host pode iniciar.'
 }else{
 text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
-runRaidCombat(chat,Number(requestedRoom.level),reply)
+runRaidCombat(chat,Number(requestedRoom.level),text=>raidAutoReply?raidAutoReply(chat,text):false)
 }
 return await reply(text)
 }
