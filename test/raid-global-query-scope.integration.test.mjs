@@ -9,7 +9,7 @@ const fn=source.match(/^async function resolveGlobalPlayerRaid\(c,jid\)\{[\s\S]*
 assert.ok(open && fn)
 const resolveGlobalPlayerRaid=new Function(open+'\n'+fn+'\nreturn resolveGlobalPlayerRaid')()
 
-test('global raid lookup preserves membership and does not lock unrelated rows',async()=>{
+test('global raid lookup preserves membership and does not lock unrelated rows',{skip:!process.env.ALPHA_RAID_SCOPE_TEST_URL},async()=>{
   const url=process.env.ALPHA_RAID_SCOPE_TEST_URL
   assert.ok(url && new URL(url).hostname==='127.0.0.1' && new URL(url).pathname==='/raid_scope_ci','disposable local DB required')
   const pool=new pg.Pool({connectionString:url})
