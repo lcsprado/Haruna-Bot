@@ -18,7 +18,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
   const {initRelics}=await import('../src/neon/relics.js')
   const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
   const {initGames,getRaidCatalog,createRaid,startRaid,raidRound}=await import('../src/neon/games.js')
-  const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt}=await import('../src/neon/raid-lote-store.js')
+  const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt,startTimedRaidLoteSession,cancelRaidLote}=await import('../src/neon/raid-lote-store.js')
   const {createRaidLoteWorker}=await import('../src/neon/raid-lote-worker.js')
   try{
     // Primeiro init prepara users/group_settings e catálogo; a migração antiga
@@ -258,6 +258,57 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
         "SELECT COUNT(*)::int AS n FROM transactions WHERE from_jid=$1 AND type='raid_key_auto'",
         [manualJid])
       assert.equal(manualTransactions.rows[0].n,1)
+
+      // Motor real V2: compara vitória legada (job sem regra) com B1.
+      const priorMode=process.env.ALPHA_REBOOT_MODE
+      process.env.ALPHA_REBOOT_MODE='classes_only'
+      try{
+        const {initProgression}=await import('../src/neon/progression.js')
+        await initProgression()
+        const {raidLoteRelativePolicy,raidLoteRelativeCash,raidLoteRelativeXp}=await import('../src/neon/raid-lote-policy.js')
+        const v2cfg=getRaidCatalog().find(x=>x.level===10)
+        const v2catalog=getRaidCatalog
+        async function playV2(player,legacy,owned){
+          await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,100,'Teste B1')",[player])
+          await db.query("INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)",[player])
+          await db.query("INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)",[player])
+          for(let i=0;i<3;i++)await db.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame','raid_10')",[player])
+          if(owned)await db.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)',[player,v2cfg.keyId])
+          const session=await startTimedRaidLoteSession(db,{jid:player,level:10,durationHours:4,requestKey:'b1-engine-'+player.split('@')[0],confirmed:true,usePet:false,quotedPlayerLevel:100},{getCatalog:v2catalog})
+          if(legacy)await db.query('UPDATE raid_lote_jobs SET reward_rule_version=NULL,reward_player_level=NULL WHERE id=$1',[session.job.id])
+          // Mudança de nível durante o pacote nunca muda sua regra.
+          await db.query('UPDATE users SET level=101 WHERE jid=$1',[player])
+          const attempt=(await reserveNextRaidLoteAttempt(db,session.job.id,{getCatalog:v2catalog})).attempt
+          clock+=9000
+          await startRaid(attempt.raid_chat,player,10,{loteAttemptId:attempt.id})
+          clock+=9000
+          const win=await raidRound(attempt.raid_chat,10)
+          assert.equal(win.victory,true)
+          const summary=(await db.query('SELECT reward_summary FROM raid_lote_attempts WHERE id=$1',[attempt.id])).rows[0].reward_summary
+          assert.equal(summary.rewards.length,1)
+          if(!legacy){assert.equal(summary.rewardRuleVersion,'v2-relative-b1');assert.equal(summary.rewardPlayerLevel,100)}
+          else assert.equal(summary.rewardRuleVersion,undefined)
+          const paid=Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[player])).rows[0].cash)
+          assert.equal(paid,500000-session.firstPrice.totalPrice+summary.rewards[0].cash)
+          assert.equal((await settleRaidLoteAttempt(db,attempt.id)).status,'won')
+          assert.equal((await settleRaidLoteAttempt(db,attempt.id)).status,'already_settled')
+          assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[player])).rows[0].cash),paid)
+          await cancelRaidLote(db,player)
+          return summary.rewards[0]
+        }
+        const legacy=await playV2('5511999000051@s.whatsapp.net',true,false)
+        const b1=await playV2('5511999000052@s.whatsapp.net',false,true)
+        const b1Bought=await playV2('5511999000053@s.whatsapp.net',false,false)
+        const policy=raidLoteRelativePolicy(100,10)
+        assert.equal(b1.cash,raidLoteRelativeCash(legacy.cash,v2cfg.keyPrice,policy))
+        assert.equal(b1Bought.cash,b1.cash)
+        assert.equal(b1.exp,raidLoteRelativeXp(legacy.exp,0,policy.xpBasisPoints).total)
+        assert.equal(b1Bought.exp,b1.exp)
+        for(const k of ['material','box','gear','petXp'])assert.deepEqual(b1[k],legacy[k])
+      }finally{
+        if(priorMode===undefined)delete process.env.ALPHA_REBOOT_MODE
+        else process.env.ALPHA_REBOOT_MODE=priorMode
+      }
 
     }finally{
       Date.now=originalNow

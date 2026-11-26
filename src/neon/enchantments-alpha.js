@@ -9,12 +9,42 @@ export {STONES}
 const fm=n=>Number(n).toLocaleString('pt-BR')
 const itemRows=Object.entries(STONES).map(([id,v])=>[id,v.name,'Encantamento permanente: '+v.label+'. Até 3 pedras por equipamento.','consumable',0,v.rarity])
 
+// AFTER (não BEFORE): ON CONFLICT DO UPDATE de uma cópia existente não é uma reaquisição.
+ // O lock da linha do inventário serializa venda, drop, compra e transferência.
+ // Não varre nem apaga resíduos antigos no bootstrap.
+export async function initEnchantmentInventoryLifecycle(queryable){
+  await queryable.query(`
+    CREATE OR REPLACE FUNCTION alpha_clear_orphan_equipment_enchants() RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN
+        DELETE FROM equipment_enchantments WHERE jid=OLD.jid AND item_id=OLD.item_id;
+      ELSIF TG_OP='INSERT' THEN
+        DELETE FROM equipment_enchantments WHERE jid=NEW.jid AND item_id=NEW.item_id;
+      ELSIF NEW.quantity<=0 OR OLD.quantity<=0 THEN
+        DELETE FROM equipment_enchantments WHERE jid=NEW.jid AND item_id=NEW.item_id;
+      END IF;
+      RETURN NULL;
+    END
+    $fn$
+  `)
+  await queryable.query(`
+    DO $trigger$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='inventories'::regclass
+        AND tgname='alpha_equipment_enchant_lifecycle' AND NOT tgisinternal) THEN
+        CREATE TRIGGER alpha_equipment_enchant_lifecycle
+          AFTER INSERT OR UPDATE OF quantity OR DELETE ON inventories
+          FOR EACH ROW EXECUTE FUNCTION alpha_clear_orphan_equipment_enchants();
+      END IF;
+    END $trigger$
+  `)
+}
 let initPromise=null
 export async function initEnchantments(){
   if(initPromise)return initPromise
   initPromise=(async()=>{
   await db.query('CREATE TABLE IF NOT EXISTS equipment_enchantments (jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, item_id TEXT NOT NULL REFERENCES items(id), stone_id TEXT NOT NULL REFERENCES items(id), quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 3), PRIMARY KEY(jid,item_id,stone_id))')
   await db.query("ALTER TABLE equipment_enchantments ADD COLUMN IF NOT EXISTS upgrade_levels jsonb NOT NULL DEFAULT '[]'::jsonb")
+  await initEnchantmentInventoryLifecycle(db)
   await db.query('CREATE TABLE IF NOT EXISTS equipment_stone_attempts (token uuid PRIMARY KEY, jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now())')
   for(const [id,name,description,category,price,rarity] of itemRows){
     await db.query('INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,$5,$6,TRUE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,rarity=EXCLUDED.rarity,sellable=TRUE',
@@ -43,6 +73,7 @@ export async function getEquippedEnchants(queryable,jid,itemIds=[]){
   const result=await queryable.query(`
     SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e
       WHERE jid=$1 AND item_id=ANY($2::text[])
+        AND EXISTS (SELECT 1 FROM inventories v WHERE v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0)
     UNION ALL
     SELECT NULL::text AS item_id,$3::text AS stone_id,1::integer AS quantity,'[]'::jsonb AS upgrade_levels
       FROM inventories WHERE jid=$1 AND item_id=$3 AND quantity>0
@@ -139,7 +170,7 @@ async function equipmentChoices(jid,stoneId){
   if(!eligible.length)return []
   const ids=eligible.map(r=>r.item_id)
   const [enchantResult,starLevels]=await Promise.all([
-    db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[jid,ids]),
+    db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[]) AND EXISTS (SELECT 1 FROM inventories v WHERE v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0)`,[jid,ids]),
     getEquipmentStarLevels(jid,ids)
   ])
   const enchanted=enchantResult.rows
@@ -314,7 +345,7 @@ export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearF
   const gear=items.filter(x=>['weapon','armor','boots','helmet'].includes(x.category))
   const stones=items.filter(x=>Boolean(STONES[x.item_id]))
   const ids=gear.map(x=>x.item_id)
-  const enchanted=ids.length?(await db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[])`,[sender,ids])).rows:[]
+  const enchanted=ids.length?(await db.query(`SELECT item_id,stone_id,quantity,COALESCE(to_jsonb(e)->'upgrade_levels','[]'::jsonb) AS upgrade_levels FROM equipment_enchantments e WHERE jid=$1 AND item_id=ANY($2::text[]) AND EXISTS (SELECT 1 FROM inventories v WHERE v.jid=e.jid AND v.item_id=e.item_id AND v.quantity>0)`,[sender,ids])).rows:[]
   let out='✨ *ENCANTAMENTOS ALPHA*\n\n💎 *Suas pedras:*\n'
   out+=stones.length?stones.map(x=>'• '+x.name+' ×'+fm(x.quantity)+' — '+STONES[x.item_id].label).join('\n'):'Nenhuma pedra no inventário.'
   out+='\n\n⚙️ *Encantamentos nos equipamentos:*\n'

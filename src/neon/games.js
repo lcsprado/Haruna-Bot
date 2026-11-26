@@ -2,7 +2,7 @@ import {v2EpicRaidBoxChance} from './v2-raid-epic-box-policy.js'
 import {assertNoActiveMining,assertNoActiveRest} from './torre-mineracao-activity.js'
 import {expandV2RaidWeapons,expandedV2GearChance} from './v2-raid-weapon-builds.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
-import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance,raidLoteCashPayout,raidLoteRelativePolicy,raidLoteRelativeCash} from './raid-lote-policy.js'
 import {raidLoteAutoPotionNeeded,raidLoteAutoPotionTargetHeal} from './raid-lote-auto-potion-policy.js'
 import {raidGoUnavailableMessage,raidJoinUnavailableMessage,RAID_LOBBY_TTL_MS} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
@@ -1245,7 +1245,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const row=(await c.query(`
         SELECT a.id,a.job_id,a.seq,a.status AS attempt_status,a.raid_chat,a.level,
                j.jid,j.status AS job_status,j.current_attempt_id,
-               j.auction_pass_manual_rewards,j.use_pet
+               j.auction_pass_manual_rewards,j.use_pet,j.key_price,j.billing_mode,a.reward_rule_version,a.reward_player_level
         FROM raid_lote_attempts a JOIN raid_lote_jobs j ON j.id=a.job_id
         WHERE a.id=$1 FOR UPDATE OF a
       `,[loteAttemptId])).rows[0]
@@ -1268,6 +1268,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const now=Date.now()
       s={gameType,status:'lobby',mode:'lote',loteAttemptId,loteJobId:row.job_id,
          auctionPassManualRewards:row.auction_pass_manual_rewards===true,
+         ...(row.billing_mode==='per_attempt'&&row.reward_rule_version?{loteRewardRuleVersion:row.reward_rule_version,loteRewardPlayerLevel:Number(row.reward_player_level),loteNominalKeyPrice:Number(row.key_price)}:{}),
         level:Number(level),name:raidConfig(level)?.name||'Raid',host,hostName:'Jogador',
         hp:0,maxHp:0,atk:0,players:{[host]:{jid:host,name:'Jogador',damage:0,alive:true,...(row.use_pet===false?{usePet:false}:{})}},
         round:0,createdAt:now,expiresAt:now+5*60*1000}
@@ -1393,6 +1394,7 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Somente lotes adquiridos com o Passe Supremo mantêm a tabela base manual.
   // O identificador é persistido na sala após a validação do job no PostgreSQL.
   const loteReduced=lote&&(rebootEconomyEnabled()||s.auctionPassManualRewards!==true)
+  const relative=lote&&s.loteRewardRuleVersion?raidLoteRelativePolicy(s.loteRewardPlayerLevel,cfg.level,s.loteRewardRuleVersion):null
   const ranked=raidV2EligibleRewards(Object.values(s.players||{})).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
@@ -1458,13 +1460,14 @@ async function finishRaidRewards(c,s,cfg,chat){
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
     const normalCash=v2RaidCash?v2RaidCash.payouts.get(p.jid):Math.round(Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier)
-    const cash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
+    const originalCash=loteReduced?raidLoteCashPayout(normalCash,cfg.keyPrice):normalCash
+    const cash=relative?raidLoteRelativeCash(originalCash,s.loteNominalKeyPrice,relative):originalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     const normalExp=lote?baseRaidExp:await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
     const exp=loteReduced?raidLoteReward(normalExp,'playerXp'):normalExp
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
-      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems,skipNightRate:true}
+      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems,skipNightRate:true,...(relative?{raidLoteXpBasisPoints:relative.xpBasisPoints}:{})}
       :{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const petXp=loteReduced?raidLoteReward(baseRaidPetXp,'petXp'):(baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0)
@@ -1692,7 +1695,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:lote?1:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp:relative?Number(expCredit?.eventGain??exp):exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:lote?1:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
@@ -1992,6 +1995,7 @@ export async function raidRound(chat,level){
       if(s.mode==='lote'){
         const report={level:cfg.level,round:s.round,raidStartedAt:s.startedAt,
           passManualRewards:s.auctionPassManualRewards===true,
+          ...(s.loteRewardRuleVersion?{rewardRuleVersion:s.loteRewardRuleVersion,rewardPlayerLevel:s.loteRewardPlayerLevel,nominalKeyPrice:s.loteNominalKeyPrice}:{}),
           rewards:rewards.map(p=>({damage:p.damage,cash:p.cash,exp:p.awardedExp,
             baseExp:p.exp,xpBoostBonus:p.xpBoostBonus,
             hero:p.activeHeroId,masteryXp:p.masteryReport?.earned||0,petXp:p.petXp,

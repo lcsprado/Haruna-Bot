@@ -76,3 +76,25 @@ test('caixas no combate real usam apenas 25% da chance manual',async()=>{
   assert.match(src,/boxChance=Math\.min\(\.85,loteReduced\?raidLoteGearChance\(boxChance\):\(lote\?boxChance:boxChance\*ownerDrop\)\)/)
   assert.equal(raidLoteGearChance(.55),.1375)
 })
+
+
+import {raidLoteRelativePolicy,raidLoteRelativeCash,raidLoteRelativeXp,RAID_LOTE_RELATIVE_VERSION} from '../src/neon/raid-lote-policy.js'
+test('V2 B1: faixa inicial, meio nível, teto, Raid25 e Raid40',()=>{
+  assert.equal(raidLoteRelativePolicy(30,10).xpBasisPoints,10000)
+  assert.equal(raidLoteRelativePolicy(31,10).xpBasisPoints,8900)
+  assert.equal(raidLoteRelativePolicy(100,10).xpBasisPoints,4000)
+  assert.deepEqual([10,25,30,40].map(l=>raidLoteRelativePolicy(100,l).xpBasisPoints),[4000,7000,8000,10000])
+  assert.deepEqual([10,25,30,40].map(l=>raidLoteRelativePolicy(100,l).marginBasisPoints),[4000,10000,8000,10000])
+  assert.equal(raidLoteRelativePolicy(100,10,null).xpBasisPoints,10000)
+  assert.equal(raidLoteRelativePolicy(40,20).xpBasisPoints,10000)
+  assert.throws(()=>raidLoteRelativePolicy(100,10,'unknown'),/inválida/)
+})
+test('B1: preserva principal da chave e taxa, reduz somente margem e EXP total uma vez',()=>{
+  const policy=raidLoteRelativePolicy(100,10)
+  assert.equal(policy.version,RAID_LOTE_RELATIVE_VERSION)
+  assert.equal(raidLoteRelativeCash(3200,2000,policy),2600)
+  assert.equal(raidLoteRelativeCash(2100,2000,policy),2100)
+  assert.equal(raidLoteRelativeCash(3200,2000,raidLoteRelativePolicy(100,25)),3200)
+  assert.deepEqual(raidLoteRelativeXp(100,20,4000),{base:40,bonus:8,total:48})
+  assert.equal(raidLoteRelativeXp(1,1,7000).total,1)
+})

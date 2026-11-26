@@ -188,7 +188,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     try{
       const v2Jid='5511999000042@s.whatsapp.net'
       const v2Catalog=()=>[{level:10,minLevel:10,keyPrice:2000,keyId:'chave_raid_10'}]
-      await db.query('INSERT INTO users VALUES($1,13)',[v2Jid])
+      await db.query('INSERT INTO users VALUES($1,100)',[v2Jid])
       await db.query('INSERT INTO stats VALUES($1,172)',[v2Jid])
       await db.query('INSERT INTO wallets VALUES($1,18395,0)',[v2Jid])
       for(let i=0;i<3;i++)await db.query(
@@ -204,12 +204,16 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       await assert.rejects(startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog}),/dormindo/)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),18395)
       await db.query('DELETE FROM player_sleep WHERE jid=$1',[v2Jid])
-      const plan=await startTimedRaidLoteSession(db,req,{getCatalog:v2Catalog})
+      await assert.rejects(startTimedRaidLoteSession(db,{...req,quotedPlayerLevel:99},{getCatalog:v2Catalog}),/nível mudou/)
+      const plan=await startTimedRaidLoteSession(db,{...req,quotedPlayerLevel:100},{getCatalog:v2Catalog})
       assert.equal(plan.firstPrice.totalPrice,2200)
       assert.equal(plan.job.duration_hours,4)
       const row=(await db.query('SELECT * FROM raid_lote_jobs WHERE id=$1',[plan.job.id])).rows[0]
       assert.equal(row.billing_mode,'per_attempt')
       assert.equal(row.use_pet,false)
+      assert.equal(row.reward_rule_version,'v2-relative-b1')
+      assert.equal(row.reward_player_level,100)
+      await db.query('UPDATE users SET level=101 WHERE jid=$1',[v2Jid])
       await assert.rejects(startTimedRaidLoteSession(db,{...req,usePet:true},{getCatalog:v2Catalog}),/parâmetros divergentes/)
       assert.equal(Number(row.requested),1000000)
       assert.ok(row.next_attempt_at instanceof Date)
@@ -226,6 +230,10 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
       const next=await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})
       assert.equal(next.status,'reserved')
       assert.equal(Number(next.attempt.seq),1)
+      assert.equal(next.attempt.reward_player_level,100)
+      assert.equal(next.attempt.reward_rule_version,'v2-relative-b1')
+      const frozen=(await db.query('SELECT reward_rule_version,reward_player_level FROM raid_lote_attempts WHERE id=$1',[next.attempt.id])).rows[0]
+      assert.equal(frozen.reward_player_level,100)
       assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[v2Jid])).rows[0].cash),16195)
       assert.equal((await reserveNextRaidLoteAttempt(db,plan.job.id,{getCatalog:v2Catalog})).status,'resume')
       const gameStart=1700000000123

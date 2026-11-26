@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import vm from 'node:vm'
+import {raidLoteRelativePolicy,RAID_LOTE_RELATIVE_VERSION} from '../src/neon/raid-lote-policy.js'
 import {assertNoActiveMining,getActiveRest} from '../src/neon/torre-mineracao-activity.js'
 const store=readFileSync(new URL('../src/neon/raid-lote-store.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -24,7 +25,7 @@ function fixture(old=null,activity=null){
     raidLoteDurationPlan:hours=>({hours}),assertRaid70V2Start:()=>{},
     inTransaction:async(db,fn)=>fn(c),RAID_LOTE_V1:{minimumManualWins:3},
     RAID_LOTE_V2_MAX_ATTEMPTS:1000000,raidLoteQuote:()=>({totalPrice:100}),
-    assertNoActiveMining,getActiveRest,
+    assertNoActiveMining,getActiveRest,raidLoteRelativePolicy,RAID_LOTE_RELATIVE_VERSION,
     crypto:{randomUUID:()=> 'job'}
   })
   return {writes,run:(opts={})=>start({},{
@@ -39,6 +40,8 @@ test('continuous session persists explicit false and default true',async()=>{
     assert.match(f.writes[0].sql,/next_attempt_at,use_pet/)
     assert.equal(f.writes[0].args[7],usePet!==false)
     assert.equal(result.job.use_pet,usePet!==false)
+    assert.equal(result.job.reward_rule_version,RAID_LOTE_RELATIVE_VERSION)
+    assert.equal(result.job.reward_player_level,100)
   }
 })
 test('duplicate confirmations cannot change the persisted mode',async()=>{
