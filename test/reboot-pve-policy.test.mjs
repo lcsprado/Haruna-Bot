@@ -23,7 +23,8 @@ test('Dungeon V2: emissão máxima de 1000 por vitória, despertar isolado',()=>
  assert.equal(dungeonAwakeningEnabled('dungeon',{enabled:true}),true)
  for(const context of ['boss','raid','pvp'])assert.equal(dungeonAwakeningEnabled(context,{enabled:true}),dungeonAwakeningEnabled(context,{enabled:false}))
  const d=read('db.js')
- assert.match(d,/const cash=classesOnlyRebootEnabled\(\)\?dungeonCashV2\(m.mult,Math.random\(\)\)/)
+ assert.match(d,/const baseCash=classesOnlyRebootEnabled\(\)\?dungeonCashV2\(m.mult,Math.random\(\)\)/)
+ assert.match(d,/const cash=classesOnlyRebootEnabled\(\)\?await applyV2OwnerEvent\(client,jid,\['dinheiro'\],baseCash\):baseCash/)
  assert.match(d,/context:'dungeon',lastProcAttack,awakeningStage,awakeningState/)
 })
 test('Superboss usa HP e ATK V2, não importa salas históricas e registra dano efetivo',()=>{

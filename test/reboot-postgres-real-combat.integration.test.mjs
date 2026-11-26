@@ -139,7 +139,7 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
     assert.equal(await getOwnerEventMultiplier(db,'dinheiro'),1)
     assert.ok((await listOwnerEvents()).every(e=>!e.active&&!e.scheduled))
     await assert.rejects(startDoubleRewardEvent(),/indisponível/)
-    await assert.rejects(setOwnerEvent('xp'),/indisponíveis/)
+    await assert.rejects(setOwnerEvent('xp',{multiplier:10}),/Multiplicador permitido/)
     // Real PvP enforces bilateral rookie protection before charging cooldown.
     const novice='5511000000005@s.whatsapp.net'
     await ensureUser(novice,'Iniciante CI')
@@ -627,6 +627,44 @@ test('V2 manual combat: real schema, equipment, keys, rounds, cash, XP and concu
         assert.equal(await applyV2PetXpEvent(db,jids[1],100,0),100)
         assert.equal(await budget(jids[1]),950)
         console.log('ALPHA_V2_PET_EVENT_OK',JSON.stringify({scheduled:true,manualTraining:true,concurrency:true,capped:true,cancelled:true,legacyIsolated:true}))
+      }finally{clock=priorClock}
+    }
+    // All eight admin categories use the same isolated scheduling and cancellation path.
+    {
+      const {getOwnerEvent,stopOwnerEvent,parseOwnerEventBrazilDate,ownerEventAvailable}=await import('../src/neon/owner-event-center.js')
+      const {applyV2OwnerEvent,V2_OWNER_EVENT_POLICIES}=await import('../src/neon/reboot-pet-xp-event.js')
+      const priorClock=clock
+      try{
+        clock=Date.parse('2026-11-27T18:31:00-03:00')
+        const startsAt=parseOwnerEventBrazilDate('27/11','21:00')
+        for(const type of Object.keys(V2_OWNER_EVENT_POLICIES)){
+          assert.equal(ownerEventAvailable(type),true)
+          const event=await setOwnerEvent(type,{minutes:20,multiplier:2,startsAt,owner:jids[0]})
+          assert.equal(event.scheduled,true)
+          assert.equal(event.budgetPerPlayer,V2_OWNER_EVENT_POLICIES[type].budget)
+          assert.equal((await getOwnerEvent(type)).startsAt,startsAt)
+        }
+        assert.equal((await listOwnerEvents()).filter(e=>e.scheduled).length,8)
+        const credit=(types,base,options={})=>transaction(c=>applyV2OwnerEvent(c,jids[0],types,base,options))
+        assert.equal(await credit(['xp','raid'],100),100)
+        clock=startsAt+1000
+        assert.equal((await listOwnerEvents()).filter(e=>e.active).length,8)
+        // Overlapping categories choose one allowance, never multiply twice.
+        assert.equal(await credit(['xp','raid'],100),200)
+        assert.equal(await credit(['dinheiro','corre'],500),1000)
+        assert.equal(await credit(['pet','raid'],50,{pet:true,limit:20}),70)
+        assert.equal(await credit(['fragmentos'],30),60)
+        assert.equal(await credit(['fragmentos'],30),50)
+        assert.equal(await credit(['fragmentos'],30),30)
+        for(let n=0;n<10;n++)assert.equal(await credit(['drop'],1,{roll:true}),2)
+        assert.equal(await credit(['drop'],1,{roll:true}),1)
+        for(let n=0;n<20;n++)assert.equal(await credit(['sorte'],1,{roll:true}),2)
+        assert.equal(await credit(['sorte'],1,{roll:true}),1)
+        for(const type of Object.keys(V2_OWNER_EVENT_POLICIES))assert.equal((await stopOwnerEvent(type)).stopped,true)
+        assert.equal((await listOwnerEvents()).filter(e=>e.active||e.scheduled).length,0)
+        assert.equal(await credit(['xp','raid'],100),100)
+        assert.equal(await credit(['dinheiro','corre'],500),500)
+        console.log('ALPHA_V2_OWNER_ALL_EVENTS_OK',JSON.stringify({scheduled:8,active:8,noStacking:true,budgeted:true,cancelled:8}))
       }finally{clock=priorClock}
     }
     console.log('ALPHA_V2_REAL_CI',JSON.stringify({rounds,participants:4,damage:active.maxHp,cashPool:9440,xpTracked:quota.used,cooldownClaims:1,soloRaid70Blocked:true,legacyMultipliersBlocked:true,pvpBilateral:true,dungeon:true,potionConsumed:true,realPetEnergyAndVitalSynergy:true}))

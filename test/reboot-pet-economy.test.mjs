@@ -46,5 +46,5 @@ test('invocação em lote e individual compartilham acesso, sem garantia pessoal
  assert.match(db,/\.map\(a=>effectivePetAltar\(a\)\)/)
  const g=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
  assert.match(g,/rebootEconomyEnabled\(\)\?petCombatExperience\(baseGain\)/)
- assert.match(g,/lote\|\|rebootEconomyEnabled\(\)\?baseQty/)
+ assert.match(g,/lote\?baseQty:rebootEconomyEnabled\(\)\?await applyV2OwnerEvent\(c,p.jid,\['fragmentos'\],baseQty\)/)
 })

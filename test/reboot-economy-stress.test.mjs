@@ -88,7 +88,8 @@ test('Raid 70: um ou dois jogadores não começam, bônus coletivo limitado',()=
   assert.throws(()=>raid70V2EmissionEstimate(6),RangeError);
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
   assert.match(games,/const keyReturn=Math\.floor\(cfg\.keyPrice\*1\.08\)/);
-  assert.match(games,/const normalCash=v2RaidCash\?v2RaidCash\.payouts\.get\(p\.jid\)/);
+  assert.match(games,/const baseCash=v2RaidCash\?v2RaidCash\.payouts\.get\(p\.jid\)/);
+  assert.match(games,/const normalCash=v2RaidCash&&!lote\?cfg.keyPrice\+await applyV2OwnerEvent\(c,p.jid,\['dinheiro'\],Math.max\(0,baseCash-cfg.keyPrice\)\):baseCash/);
   assert.match(games,/assertRaid70V2Start\(\{level:cfg\.level,partySize:ids\.length/);
 });
 test('quatro jogadores têm contabilidade fechada mesmo após eventos não reinvestidos',()=>{
