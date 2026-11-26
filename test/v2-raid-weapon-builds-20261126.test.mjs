@@ -73,5 +73,5 @@ test('approved names are unique; V2 renames leave legacy and all existing item I
  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
  for(const id of Object.keys(V2_EXISTING_RAID_WEAPON_NAMES))
   assert.ok(db.includes("v2RaidWeaponDisplayName('"+id+"',"))
- assert.ok(db.includes('v2RaidWeaponDisplayName(item[0],item[1],classesOnlyRebootEnabled())'))
+ assert.ok(db.includes('v2RaidWeaponDisplayName(sourceItem[0],sourceItem[1],classesOnlyRebootEnabled())'))
 })
