@@ -80,7 +80,8 @@ export async function grantSiegeWeeklyXp(conn,match){
     );
     if(!claimed.rowCount)continue;
     await grantExpInTransaction(conn,player.jid,xp,{
-      ignoreXpBoost:true,ignoreGroupProgressionEvent:true
+      // The weekly prize is fixed; delayed settlement after midnight must not discount it.
+      ignoreXpBoost:true,ignoreGroupProgressionEvent:true,skipNightRate:true
     });
     const type=!winner?'draws':winner===String(player.clan_id)?'winners':'losers';
     result[type]++;
