@@ -18,6 +18,7 @@ import {planInventoryAutoForge} from './auto-forge-inventory-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {paidGearSaleSteps,paidGearRefund,paidGearSaleMarker} from './paid-gear-resale.js'
+import {PAID_GEAR_HISTORY_INDEXES,PAID_GEAR_HISTORY_SQL} from './paid-gear-history-sql.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
@@ -650,6 +651,13 @@ SET quantity=inventories.quantity+EXCLUDED.quantity
 await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
 await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
 })
+// Create only the small ledger indexes needed by V2. Serialize concurrent bootstraps.
+if(classesOnlyRebootEnabled()){
+ await transaction(async client=>{
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended('v2-paid-gear-indexes',0))")
+  for(const sql of PAID_GEAR_HISTORY_INDEXES)await client.query(sql)
+ })
+}
 // V2: reselect effective forged tiers after changing the strength curve.
 if(classesOnlyRebootEnabled()){
  await db.query(`INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
@@ -1576,11 +1584,7 @@ return RAID_LEGENDARY_GEAR_SELL_VALUES[item.id]??null
 const PAID_GEAR_CATEGORIES=new Set(['weapon','armor','boots','helmet','shield'])
 async function paidGearHistory(client,jid,itemIds){
  if(!itemIds.length)return new Map()
- const {rows}=await client.query(`SELECT type,note,amount,split_part(note,' ',1) AS item_id
- FROM transactions WHERE split_part(note,' ',1)=ANY($2::text[])
- AND id>COALESCE((SELECT MAX(id) FROM transactions WHERE from_jid=$1 AND type IN ('owner_reset_total','owner_reset_inventory')),0)
- AND ((from_jid=$1 AND type IN ('equipment_upgrade','equipment_star_forge','equipment_star_forge_shield','equipment_star_forge_collab_fragments','equipment_shop_forge5','equipment_inventory_auto_forge'))
- OR (to_jid=$1 AND from_jid='shop' AND type IN ('sale','sale_batch'))) ORDER BY id`,[jid,itemIds])
+ const {rows}=await client.query(PAID_GEAR_HISTORY_SQL,[jid,itemIds])
  const history=new Map()
  for(const row of rows){if(!history.has(row.item_id))history.set(row.item_id,[]);history.get(row.item_id).push(row)}
  return history
