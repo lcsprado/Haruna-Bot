@@ -10,7 +10,7 @@ import {businessV3CatalogPatch,businessV3IntervalGross} from './business-rebalan
 import {businessV4CatalogPatch,businessV4IntervalGross} from './business-rebalance-v4.js';
 
 export const V2_EVENT_BUDGET=Object.freeze({
-  weeklyBossPool:40_000,                       // total coletivo, nunca por jogador
+  weeklyBossPool:300_000,                       // total coletivo, nunca por jogador
   gtWeeklyPrizes:Object.freeze([50_000,30_000,15_000,7_500]),
   gtHeatPrizes:Object.freeze([7_000,5_000,3_500,2_000,1_000]),
   gtXpPercentPerHeat:Object.freeze([15,12,10,8,5]), // máximo 45% do próximo nível/3 vitórias
