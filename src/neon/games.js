@@ -1845,7 +1845,7 @@ export async function raidRound(chat,level){
             client:c,jid:p.jid,pet:p.pet,
             maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),
             choosePotion:raidPetPotion,persistPet:persistRaidCombatPet,
-            context:'raid-revive',imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk)
+            context:'raid-revive',imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode})
           })
           if(healed){
             p.petPotionHealing=Number(p.petPotionHealing||0)+Number(healed.heal)
@@ -2080,7 +2080,7 @@ export async function raidRound(chat,level){
       let petDamage=0,petFainted=false,autoPetHeal=preRoundPetHeals.get(p.jid)||null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
-        petDamage=mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))))
+        petDamage=mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))),{mode:s.mode})
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
         // Autocura preventiva da Raid, igual ao Boss: abaixo de 35% do HP,
@@ -2090,7 +2090,7 @@ export async function raidRound(chat,level){
         if(!petFainted&&!autoPetHeal&&Number(p.pet.hp)/maxPetHp<.35){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
           const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
-            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk),context:'raid-preventive'})
+            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),context:'raid-preventive'})
           if(chosenPet){
             const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-preventive',petName:p.pet.name})
             if(spent.spent){
@@ -2119,7 +2119,7 @@ export async function raidRound(chat,level){
           }else if(!autoPetHeal){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
             const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
-              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk),context:'raid-fainted'})
+              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),context:'raid-fainted'})
             if(chosenPet){
               const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-fainted',petName:p.pet.name})
               if(spent.spent){
