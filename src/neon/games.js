@@ -27,7 +27,7 @@ import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} f
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
-import {V2_WEEKLY_BOSS,commonBossRewardV2} from './reboot-pve-policy.js'
+import {v2WeeklyBossConfig,commonBossRewardV2} from './reboot-pve-policy.js'
 import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount,rebootWeeklyBossReward} from './weekly-golem-payouts.js'
 import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares} from './weekly-boss-prize-pool.js'
 import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
@@ -3234,7 +3234,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
            OR (state->>'mode' IS NULL AND COALESCE((state->>'maxHp')::numeric,0)>=25000))
   `,[GLOBAL_WEEKLY_BOSS_CHAT,weekend.weekendKey])).rows
   const bosses=rows.map(r=>r.state).filter(x=>Number(x.maxHp)>0)
-  const maxHp=rebootEconomyEnabled()?V2_WEEKLY_BOSS.hp:bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
+  const maxHp=rebootEconomyEnabled()?v2WeeklyBossConfig(weekend.weekendKey).hp:bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
   const participants={}
   let totalDamage=0
   for(const boss of bosses){
@@ -3252,7 +3252,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
   }
   const state={
     mode:'weekly',name:'Golem Ancestral do Alpha',
-    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:rebootEconomyEnabled()?V2_WEEKLY_BOSS.atk:200,participants,
+    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:rebootEconomyEnabled()?v2WeeklyBossConfig(weekend.weekendKey).atk:200,participants,
     ...(rebootEconomyEnabled()?{rebootV2:true}:{}),
     startedAt:bosses.length?Math.min(...bosses.map(x=>Number(x.startedAt||Date.now()))):Date.now(),
     weekendKey:weekend.weekendKey,weeklyCompleted:bosses.some(x=>x.weeklyCompleted),
@@ -4148,7 +4148,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             if(commonV2.boxChance>0&&Math.random()<Math.min(.05,commonV2.boxChance+Number(pb.drop||0)*.10))drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
           }else if(v2Reward){
             const boxes={caixa_epica:{name:'Caixa Épica',rarity:'Épico'},caixa_rara:{name:'Caixa Rara',rarity:'Raro'},caixa_sorte:{name:'Caixa da Sorte',rarity:'Comum'}}
-            if(v2Reward.box) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
+            if(v2Reward.box){
+              const qty=v2Reward.boxQty??1
+              if(qty===1) drops.push(await grantBossItem(c,p.jid,{id:v2Reward.box,...boxes[v2Reward.box]}))
+              else if(qty>1){
+                await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,v2Reward.box,qty])
+                drops.push({id:v2Reward.box,...boxes[v2Reward.box],name:boxes[v2Reward.box].name+' ×'+qty,qty})
+              }
+            }
             if(v2Reward.exclusiveChance>0&&Math.random()<v2Reward.exclusiveChance+Math.min(.008,Number(pb.drop||0)*.10)){
               const item=Math.random()<.5
                 ?{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
