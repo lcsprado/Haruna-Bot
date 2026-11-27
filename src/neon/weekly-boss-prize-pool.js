@@ -1,6 +1,7 @@
 // O premio em dinheiro do Superboss a partir de 20/11/2026 e um unico bolo.
 // Nao acumula bonus fixos por colocacao, premio extra de Golem ou multiplicador de dinheiro.
 import {rebootEconomyEnabled,V2_EVENT_BUDGET} from './reboot-economy-policy.js'
+import {V2_WEEKLY_BOSS_REBALANCE_START} from './reboot-pve-policy.js'
 export const WEEKLY_BOSS_POOL_START='2026-11-20'
 export const WEEKLY_BOSS_POOL_CASH=50_000_000
 
@@ -22,7 +23,7 @@ export function weeklyBossCashPoolShares(weekendKey,participants=[]){
  const total=rows.reduce((sum,p)=>sum+p.damage,0n)
  const shares=new Map()
  if(total===0n)return shares
- const pool=BigInt(rebootEconomyEnabled()?V2_EVENT_BUDGET.weeklyBossPool:WEEKLY_BOSS_POOL_CASH)
+ const pool=BigInt(rebootEconomyEnabled()?(String(weekendKey)>=V2_WEEKLY_BOSS_REBALANCE_START?V2_EVENT_BUDGET.weeklyBossPool:40_000):WEEKLY_BOSS_POOL_CASH)
  let distributed=0n
  for(const row of rows){
    const weighted=pool*row.damage
