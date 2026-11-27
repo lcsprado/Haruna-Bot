@@ -2652,6 +2652,7 @@ function renderClan(){
   return '<div class="page-head"><div><h2>Clã</h2><p>Gerencie os integrantes reais do seu clã e participe da Guerra de Clãs.</p></div></div>'+
     '<div class="card"><div class="section-title"><h3>'+esc(clan?.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+
       renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+    renderClanLevelProgress(clan)+
     renderClanSiegePreview(ui)+
     (clan?'<div class="section"><div class="section-title"><h3>Membros do meu clã</h3><small>'+members.length+' registrado(s)</small></div>'+
       '<div class="grid three">'+(members.length?rows:'<div class="empty">Sincronizando integrantes do clã...</div>')+'</div>'+invite+'</div>':'')+
@@ -3199,6 +3200,27 @@ function renderClanSummary(clan){
     statCard('COFRE',money(clan.treasury||0),'tesouraria')+
   '</div><p class="muted">Seu cargo: <strong>'+esc(clan.role==='leader'?'Líder':'Membro')+'</strong></p>';
 }
+
+function renderClanLevelProgress(clan){
+  if(!clan)return '';
+  // Mirrors progression.js: each donated real adds 1 clan XP, 25,000 XP per level.
+  // Clan-level combat bonuses are not implemented; fortress bonuses are separate.
+  const xp=Math.max(0,Math.floor(Number(clan.xp)||0));
+  const level=1+Math.floor(xp/25000),next=level+1;
+  const remaining=level*25000-xp;
+  const percent=Math.floor((xp%25000)/25000*100);
+  const rows=Array.from({length:50},(_,i)=>i+1).map(lv=>
+    '<div class="list-row"><div><strong>Nível '+num(lv)+'</strong><small>'+ (lv===1?'Nível inicial':money(25000)+' em novas doações')+'</small></div><div><strong>'+num((lv-1)*25000)+' XP</strong><small>'+(lv===level?'Nível atual':lv<level?'Alcançado':'XP acumulado necessário')+'</small></div></div>'
+  ).join('');
+  return '<div class="section card"><div class="section-title"><h3>🛡️ Progressão e bônus do clã</h3><span class="tag">Lv. '+num(level)+'</span></div>'+
+    '<p>O nível do clã ainda não concede bônus de EXP ou dano. As melhorias de Muralhas, Arsenal e Defesas são específicas da Guerra de Clãs e aparecem no painel da fortaleza abaixo.</p>'+
+    '<div class="grid stats">'+statCard('EXP EXTRA','0%','por nível do clã')+statCard('DANO EXTRA','0%','por nível do clã')+
+    statCard('PRÓXIMO NÍVEL',num(next),num(level*25000)+' XP acumulado')+statCard('FALTA DOAR',money(remaining),'1 real = 1 XP do clã')+'</div>'+
+    '<p class="muted">Progresso para o próximo nível: '+num(percent)+'% • '+num(xp%25000)+' / 25.000 XP</p>'+
+    '<progress aria-label="Progresso do nível do clã" value="'+percent+'" max="100" style="width:100%"></progress>'+
+    '<details class="section"><summary>Ver tabela de evolução — níveis 1 a 50</summary><p class="muted">Valores acumulados de XP; cada nível exige mais R$ 25.000 em doações. A tabela termina no nível 50 apenas para consulta, não é um limite do jogo.</p><div class="list">'+rows+'</div></details></div>';
+}
+
 function renderClanList(clans){
   if(!clans.length) return '<div class="empty">Nenhum clã cadastrado.</div>';
   return '<div class="list">'+clans.map((x,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(x.name||'Clã')+'</strong><small>Lv.'+num(x.level||1)+' • '+num(x.members||0)+' membros • '+num(x.xp||0)+' XP</small></div><strong>'+money(x.treasury||0)+'</strong></div>').join('')+'</div>';
