@@ -38,6 +38,8 @@ export function weeklyGolemLegendaryBoxCount({weekendKey,position,damage}={}){
   return [3,2,1][rank-1];
 }
 
+import {V2_WEEKLY_BOSS_REBALANCE_START} from './reboot-pve-policy.js'
+
 // Temporada 2.0: XP proporcional ao dano, bônus de posição limitado e
 // no máximo uma caixa por jogador qualificado. Não consulta nem altera banco.
 export function rebootWeeklyBossReward({position,damage,totalDamage,weekendKey}={}){
@@ -47,6 +49,13 @@ export function rebootWeeklyBossReward({position,damage,totalDamage,weekendKey}=
     !Number.isSafeInteger(damage)||damage<=0||
     !Number.isSafeInteger(totalDamage)||totalDamage<damage)return empty;
  const share=damage/totalDamage;
+ if(String(weekendKey)>=V2_WEEKLY_BOSS_REBALANCE_START){
+   const qualified=damage>=10_000&&share>=.05;
+   const rankBonus=qualified?([5000,4000,3000,2000,1000][position-1]||0):0;
+   const boxQty=qualified?Math.min(8,Math.max(1,Math.floor(damage/500_000))):0;
+   return {xp:Math.floor(30_000*share)+rankBonus,box:boxQty?'caixa_epica':null,boxQty,
+     exclusiveChance:qualified?([.05,.03,.02][position-1]||0):0};
+ }
  const qualified=damage>=10_000&&share>=.05;
  const rankBonus=qualified?([1000,750,500,250,100][position-1]||0):0;
  const box=qualified?(['caixa_epica','caixa_rara','caixa_rara','caixa_sorte','caixa_sorte'][position-1]||null):null;
