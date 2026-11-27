@@ -1,6 +1,10 @@
 // Política de PvE V2: valores candidatos, sem I/O ou mudanças na V1.
 import {classesOnlyRebootEnabled} from './reboot-classes-policy.js'
-export const V2_WEEKLY_BOSS=Object.freeze({hp:150000,atk:45})
+export const V2_WEEKLY_BOSS_REBALANCE_START='2026-12-04'
+export const V2_WEEKLY_BOSS=Object.freeze({hp:5000000,atk:180})
+export function v2WeeklyBossConfig(weekendKey){
+ return String(weekendKey||'')>=V2_WEEKLY_BOSS_REBALANCE_START?V2_WEEKLY_BOSS:{hp:150000,atk:45}
+}
 export const V2_COMMON_BOSS=Object.freeze({cashPool:2500,xpPool:120,minShare:.02,boxChance:.03})
 export function commonBossRewardV2(damage,total){
  if(!Number.isSafeInteger(damage)||!Number.isSafeInteger(total)||damage<=0||total<damage||damage/total<V2_COMMON_BOSS.minShare)
