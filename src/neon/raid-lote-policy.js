@@ -139,5 +139,15 @@ export function raidLoteRelativeXp(base,bonus,basisPoints){
   return {base:adjustedBase,bonus:total-adjustedBase,total}
 }
 export function raidLoteRelativeText(policy){
-  return '✨ EXP: '+(policy.xpBasisPoints/100)+'% da regra atual • 💰 Margem nominal: '+(policy.marginBasisPoints/100)+'% (chave e taxa preservadas na vitória)'
+  // Mostra o percentual efetivo sobre a Raid manual, não o fator adicional B1.
+  const pct=bp=>String(bp/100).replace('.',',')+'%'
+  const xp=pct(RAID_LOTE_V1.playerXpBasisPoints*policy.xpBasisPoints/10000)
+  const margin=pct(RAID_LOTE_V1.cashNetProfitBasisPoints*policy.marginBasisPoints/10000)
+  return [
+    '📊 Recompensas em relação à Raid manual (sem eventos):',
+    '✨ EXP: '+xp+' • 💰 Lucro antes de poções: '+margin,
+    '🐾 EXP dos pets: '+pct(RAID_LOTE_V1.petXpBasisPoints)+' • 🧩 Fragmentos: '+pct(RAID_LOTE_V1.fragmentBasisPoints),
+    '🎁 Chance de drops: '+pct(RAID_LOTE_V1.gearChanceBasisPoints)+' da original',
+    '🔑 Chave e taxa recuperadas somente na vitória.'
+  ].join('\n')
 }
