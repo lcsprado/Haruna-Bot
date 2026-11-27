@@ -3158,6 +3158,8 @@ if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete P
 const max=petMaxEnergy(pet.level,pet.species)
 const before=Number(pet.energy||0)
 if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
+// Evita gastar uma recarga completa quando o pet ainda tem energia suficiente.
+if(before>Math.floor(max*.20)) throw new Error(`Energético preservado: ${pet.name} está com ${before}/${max} de energia. Use quando restarem ${Math.floor(max*.20)} pontos ou menos (20%).`)
 await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[max,jid])
 await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[max,jid])
