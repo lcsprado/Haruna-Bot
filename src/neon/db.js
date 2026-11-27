@@ -5958,8 +5958,20 @@ const sphinxKey='raid65_esfinge_once_20261017:'+jid
 const sphinxEligible=!classesOnlyRebootEnabled()&&jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
 const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
 const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
-const forcedSpecies=scheduled?.forcedSpecies||(sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')))
+// V2: concessão administrativa individual, restrita ao altar 50 e ao Guardião.
+ // O marcador é consumido na mesma transação da invocação e fica para auditoria.
+const v2AwardKey='v2_forced_summon:'+jid+':'+altar.materialId
+const v2Award=classesOnlyRebootEnabled()&&altar.materialId==='nucleo_alpha_corrompido'
+  ?(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[v2AwardKey])).rows[0]?.value
+  :null
+const v2AwardSpecies=v2Award?.state==='pending'&&v2Award?.species==='guardiao_nucleo_vital'
+  ?'guardiao_nucleo_vital':null
+const forcedSpecies=v2AwardSpecies||scheduled?.forcedSpecies||(sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')))
 let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
+if(v2AwardSpecies&&chosen?.species===v2AwardSpecies){
+ await client.query("UPDATE trevo_settings SET value=value||$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key=$1",
+  [v2AwardKey,JSON.stringify({state:'consumed',consumedAt:Date.now()})])
+}
 if(specialGuaranteeActive){
 await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
 specialGuaranteeKey,JSON.stringify({species:'dragao_corrompido',materialId:altar.materialId,at:Date.now()})
