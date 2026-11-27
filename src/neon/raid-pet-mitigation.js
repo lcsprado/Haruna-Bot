@@ -8,8 +8,9 @@ export function raidPlayerDefenseCoefficient(level,{enabled=classesOnlyRebootEna
 }
 export const V2_RAID70_PET_DAMAGE_MULTIPLIER=.08
 
-export function raidPetDamageMultiplier(level,{enabled=classesOnlyRebootEnabled()}={}){
-  if(enabled&&Number(level)===40)return .35
+export function raidPetDamageMultiplier(level,{enabled=classesOnlyRebootEnabled(),mode='manual'}={}){
+  // Long solo Raidlote Lv.40 fights: reduce pet wear, without touching manual raids.
+  if(enabled&&Number(level)===40)return mode==='lote'?.15:.35
   if(enabled&&Number(level)===50)return .30
   if(enabled&&Number(level)===70)return V2_RAID70_PET_DAMAGE_MULTIPLIER
   return Number(level)===70||Number(level)===75
