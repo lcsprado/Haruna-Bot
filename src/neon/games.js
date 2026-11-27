@@ -1165,7 +1165,7 @@ async function raidPetXp(c,jid,gain,{lote=false,raid=false}={}){
   const newMax=petMaxHp(level,xp,p.species)
   const oldMax=Math.max(1,Number(p.max_hp||petMaxHp(p.level,p.xp,p.species)))
   const hp=Math.min(newMax,Math.max(0,Number(p.hp??oldMax)+Math.max(0,newMax-oldMax)))
-  const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE jid=$7 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,jid])).rows[0]
+  const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=LEAST($8,GREATEST(0,energy+$4)),hp=$5,max_hp=$6 WHERE jid=$7 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,jid,petMaxEnergy(level,p.species)])).rows[0]
   if(r) await c.query('UPDATE pet_collection SET level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6 WHERE jid=$7 AND active=TRUE',[r.level,r.xp,r.power,r.energy,r.hp,r.max_hp,jid])
   return r?{name:r.name,xp:gain,creditedXp,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
@@ -1197,7 +1197,7 @@ async function grantTeamPetXp(c,jid,baseGain,{lote=false,raid=false}={}){
     const newMax=petMaxHp(level,xp,pet.species)
     const oldMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
     const hp=Math.min(newMax,Math.max(0,Number(pet.hp??oldMax)+Math.max(0,newMax-oldMax)))
-    const r=(await c.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE id=$7 AND jid=$8 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,pet.id,jid])).rows[0]
+    const r=(await c.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,energy=LEAST($9,GREATEST(0,energy+$4)),hp=$5,max_hp=$6 WHERE id=$7 AND jid=$8 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,pet.id,jid,petMaxEnergy(level,pet.species)])).rows[0]
     if(r) awards.push({slot,name:r.name,xp:gain,creditedXp,level:Number(r.level)})
   }
   return awards
@@ -1215,7 +1215,7 @@ function raidCombatPetState(pet,slot=1){
   return {
     collectionId:Number(pet.id||0)||null,teamSlot:Number(slot)||1,
     name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),
-    energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),
+    energy:Math.min(petMaxEnergy(pet.level,pet.species),Math.max(0,Number(pet.energy)||0)),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),
     maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
     bonus:petBossBonus(pet),extraDamage:0,turns:0
   }
@@ -1228,14 +1228,27 @@ async function raidReservePet(c,jid){
   return raidCombatPetState(r,3)
 }
 
-async function persistRaidCombatPet(c,jid,pet){
-  if(!pet) return
-  if(Number(pet.teamSlot)===3&&pet.collectionId){
-    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
-  }else{
-    await c.query('UPDATE pets SET hp=$1,energy=$2 WHERE jid=$3',[pet.hp,pet.energy,jid])
-    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
+// Persist by pet identity, never by the current slot alone. A combat snapshot
+// may predate a team change; only the matching species/collection receives it.
+async function persistIdentifiedCombatPet(c,jid,pet){
+  if(!pet?.species) return
+  const base=petMaxEnergy(1,pet.species)
+  const hp=Math.max(0,Number(pet.hp)||0),energy=Math.max(0,Number(pet.energy)||0)
+  if(Number(pet.teamSlot)!==1&&pet.collectionId){
+    await c.query('UPDATE pet_collection SET hp=LEAST(max_hp,$1),energy=LEAST($5+GREATEST(0,level-1)*2,$2) WHERE id=$3 AND jid=$4 AND species=$6',[hp,energy,pet.collectionId,jid,base,pet.species])
+    return
   }
+  const mirror=await c.query('UPDATE pets SET hp=LEAST(max_hp,$1),energy=LEAST($4+GREATEST(0,level-1)*2,$2) WHERE jid=$3 AND species=$5 RETURNING jid',[hp,energy,jid,base,pet.species])
+  if(mirror.rowCount){
+    await c.query('UPDATE pet_collection SET hp=LEAST(max_hp,$1),energy=LEAST($4+GREATEST(0,level-1)*2,$2) WHERE jid=$3 AND species=$5 AND active=TRUE',[hp,energy,jid,base,pet.species])
+  }else{
+    // A legacy in-flight snapshot may refer to a pet now in the collection.
+    // Only update an unambiguous original pet; never overwrite the new primary.
+    await c.query('UPDATE pet_collection SET hp=LEAST(max_hp,$1),energy=LEAST($4+GREATEST(0,level-1)*2,$2) WHERE jid=$3 AND species=$5 AND active=FALSE AND (SELECT COUNT(*) FROM pet_collection WHERE jid=$3 AND species=$5)=1',[hp,energy,jid,base,pet.species])
+  }
+}
+async function persistRaidCombatPet(c,jid,pet){
+  return persistIdentifiedCombatPet(c,jid,pet)
 }
 function raidPetPotion(rows,missingHp,context={}){
   return chooseEconomicPetPotion(rows,missingHp,context)
@@ -3541,13 +3554,7 @@ async function loadBossCombatPet(c,jid,slot=1){
 }
 
 async function persistBossCombatPet(c,jid,pet){
-  if(!pet) return
-  if(Number(pet.teamSlot)===1){
-    await c.query('UPDATE pets SET hp=$1,energy=$2 WHERE jid=$3',[pet.hp,pet.energy,jid])
-    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
-  }else if(pet.collectionId){
-    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
-  }
+  return persistIdentifiedCombatPet(c,jid,pet)
 }
 function healBossCombatPet(c,jid,pet,bossAtk=0){
   return autoHealBossCombatPet({
