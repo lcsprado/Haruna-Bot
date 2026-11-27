@@ -5721,7 +5721,7 @@ const oldMax=Math.max(1,Number(p.max_hp||100))
 const oldHp=Math.max(0,Number(p.hp??oldMax))
 const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
 const max_energy=petMaxEnergy(p.level,p.species)
-return {...p,hp,max_hp:desired,max_energy}
+return {...p,hp,max_hp:desired,max_energy,energy:Math.min(max_energy,Math.max(0,Number(p.energy)||0))}
 }
 const PET_SPEED_BASE={guepardo:5,gaviao:4,gazela_mistica:4,cavalo_guerra:3,manticora_eclipse_20261030:5}
 export function petSpeedBonus(species,level=1){
@@ -6165,6 +6165,7 @@ if(!pet) throw new Error('Pet não encontrado. Use !meuspets.')
 if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados são heróis jogáveis. Use !heroi, não !equiparpet.')
 const away=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
 if(away) throw new Error('Esse pet está em expedição e não pode entrar no time agora.')
+await assertPetTeamChangeAllowed(client,jid)
 await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=$2 OR pet_id=$3)',[jid,slot,petId])
 await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
 return {...normalizedPetHp(pet),slot}
@@ -6172,14 +6173,18 @@ return {...normalizedPetHp(pet),slot}
 }
 export async function removePetTeamSlot(jid,slot){
 slot=Number(slot); if(![2,3].includes(slot)) throw new Error('Só as posições 2 e 3 podem ser removidas. A posição 1 é o pet principal.')
-const {rowCount}=await db.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
+return transaction(async client=>{
+await assertPetTeamChangeAllowed(client,jid)
+const {rowCount}=await client.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
 return rowCount>0
+})
 }
 export async function setPetTeam(jid,petIds=[],replaceAll=true){
 await ensureUser(jid)
 const ids=[...new Set((Array.isArray(petIds)?petIds:[petIds]).map(Number).filter(Number.isInteger))]
 if(!ids.length||ids.length>3) throw new Error('Escolha de 1 a 3 pets para o time.')
 return transaction(async client=>{
+await assertPetTeamChangeAllowed(client,jid)
 const pets=(await client.query(
 'SELECT * FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[]) FOR UPDATE',
 [jid,ids]
@@ -6446,6 +6451,12 @@ results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hou
 return results
 })
 }
+async function assertPetTeamChangeAllowed(client,jid){
+const lote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",[jid])).rows[0]
+if(lote) throw new Error('Aguarde o Raidlote terminar para trocar o time de pets.')
+const raid=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",[jid])).rows[0]
+if(raid) throw new Error('Aguarde a Raid atual terminar para trocar o time de pets.')
+}
 export async function selectPet(jid,id){
 id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
 return transaction(async client=>{
@@ -6457,6 +6468,7 @@ const away=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id
 if(away) throw new Error('Esse pet está em expedição e não pode ser equipado até retornar.')
 const target=normalizedPetHp(rawTarget)
 if(target.active) return {...target,already:true}
+await assertPetTeamChangeAllowed(client,jid)
 const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
 if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
 [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id])
@@ -6532,8 +6544,9 @@ if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.c
 const maxEnergy=petMaxEnergy(pet.level,pet.species)
 if(Number(pet.energy)>=maxEnergy && Number(petHp.hp)>=Number(petHp.max_hp)) throw new Error(`Seu pet já está com energia e HP cheios.`)
 }
-if(!a.rest && now-Number(pet.last_action||0)<(classesOnlyRebootEnabled()?300:60)) throw new Error('Seu pet precisa descansar um pouco.')
-if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
+const actionRemaining=(classesOnlyRebootEnabled()?300:60)-(now-Number(pet.last_action||0))
+if(!a.rest && actionRemaining>0) throw new Error(`Aguarde ${Math.floor(actionRemaining/60)}min ${actionRemaining%60}s para a próxima ação do pet. Intervalo entre ações, independente da energia.`)
+if(a.energy<0 && Number(petHp.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
 const oldLevel=Number(pet.level||1)
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
@@ -6548,9 +6561,9 @@ const levelEnergyGain=levelsGained*3
 const maxEnergyAtLevel=petMaxEnergy(level,pet.species)
 const {rows}=await client.query(`UPDATE pets SET
 hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-energy=LEAST($11,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
+energy=LEAST($11,GREATEST(0,LEAST(energy,$12)+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
 last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
-WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain,maxEnergyAtLevel])
+WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain,maxEnergyAtLevel,petMaxEnergy(oldLevel,pet.species)])
 let updated=rows[0]
 const newMax=petMaxHp(updated.level,updated.xp,updated.species)
 const oldMax=Math.max(1,Number(petHp.max_hp||100))
