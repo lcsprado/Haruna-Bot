@@ -1,7 +1,7 @@
 // Mineração da Torre — integração transacional, habilitação explícita por ambiente.
 // Não executa migração ou comando na importação. Produção exige três flags e banco Aiven verificado.
 import {randomUUID,randomInt} from 'node:crypto'
-import {miningSessionQuote,newMiningSeed,miningSessionOutcome} from './mining-session-v2.js'
+import {miningSessionQuote,newMiningSeed,miningSessionOutcome,MINING_INCOME_VERSION} from './mining-session-v2.js'
 import {MINING_PICKAXES,MINING_STONE_TABLE,miningQuote,miningPurchaseQuote,miningRepairQuote,miningStartQuote,settleMiningExpedition,MINING_DURATION_SECONDS} from './torre-mineracao-4h.js'
 import {ensureUser,grantExpInTransaction} from './db.js'
 import {assertMiningRuntime,miningActivityLock} from './torre-mineracao-activity.js'
@@ -126,7 +126,7 @@ export async function getMiningStatus(db,jid){
   if(!row)return null
   const remainingSeconds=Math.max(0,Number(row.ends_at)-nowSeconds())
   const {roll_seed,...safe}=row
-  return {...safe,remainingSeconds,ready:remainingSeconds===0,progress:Number(row.policy_version)===2?miningSessionOutcome(row,nowSeconds()):null}
+  return {...safe,remainingSeconds,ready:remainingSeconds===0,progress:[2,MINING_INCOME_VERSION].includes(Number(row.policy_version))?miningSessionOutcome(row,nowSeconds()):null}
 }
 export async function buyMiningPickaxe(db,{jid,pickaxeId,key}){
   assertMiningRuntime();const quote=miningPurchaseQuote(pickaxeId)
@@ -244,8 +244,8 @@ export async function startMiningExpedition(db,{jid,pickaxeId,key,durationSecond
     const quote=miningSessionQuote(pickaxeId,Number(owned.uses_remaining),durationSeconds)
     const id=randomUUID()
     await c.query('UPDATE mining_pickaxes SET uses_remaining=$3 WHERE jid=$1 AND pickaxe_id=$2',[jid,pickaxeId,quote.usesAfter])
-    await c.query("INSERT INTO mining_expeditions(id,jid,pickaxe_id,request_key,started_at,ends_at,status,policy_version,roll_seed) VALUES($1,$2,$3,$4,$5,$6,'running',2,$7)",
-      [id,jid,pickaxeId,key,now,now+durationSeconds,newMiningSeed()])
+    await c.query("INSERT INTO mining_expeditions(id,jid,pickaxe_id,request_key,started_at,ends_at,status,policy_version,roll_seed) VALUES($1,$2,$3,$4,$5,$6,'running',$8,$7)",
+      [id,jid,pickaxeId,key,now,now+durationSeconds,newMiningSeed(),MINING_INCOME_VERSION])
     return {id,pickaxe_id:pickaxeId,started_at:now,ends_at:now+durationSeconds,usesAfter:quote.usesAfter,usesCost:quote.usesCost}
   })
 }
@@ -260,7 +260,7 @@ export async function claimMiningExpedition(db,jid,{early=false}={}){
     await miningActivityLock(c,jid)
     const row=(await c.query("SELECT * FROM mining_expeditions WHERE jid=$1 AND status='running' FOR UPDATE",[jid])).rows[0]
     if(!row)return {status:'none'}
-    const now=nowSeconds(),finished=now>=Number(row.ends_at),modern=Number(row.policy_version)===2
+    const now=nowSeconds(),finished=now>=Number(row.ends_at),modern=[2,MINING_INCOME_VERSION].includes(Number(row.policy_version))
     if(!finished&&!early)return {status:'running',remainingSeconds:Number(row.ends_at)-now}
     if(!finished&&early&&!modern){
       await c.query("UPDATE mining_expeditions SET status='cancelled' WHERE id=$1",[row.id])
