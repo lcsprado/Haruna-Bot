@@ -3,6 +3,7 @@ import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins,v2RaidWeaponD
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
 import {assertV2MarketListing,v2MarketQuantityLimit} from './reboot-assets-policy.js'
+import {PET_COLLARS,MYTHIC_COLLAR,MYTHIC_COLLAR_FEE,MYTHIC_COLLAR_MATERIALS,petCollar,seedPetCollars} from './pet-collars.js'
 import {nextScheduledSummon} from './pet-summon-schedule.js'
 import {requireVerifiedAdminWalletJid} from './admin-wallet-identity.js'
 import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
@@ -111,7 +112,7 @@ function marketItemAllowed(itemId,item){
  const tradableRaidMaterial=classesOnlyRebootEnabled()&&raidMaterialId(itemId)
  return item?.sellable===true && itemId!=='elmo_soberano_golem' &&
    (!raidMaterialId(itemId)||tradableRaidMaterial) &&
-   (item.rarity!=='legendary'||Object.hasOwn(STONE_EFFECTS,itemId)||tradableRaidMaterial)
+   (item.rarity!=='legendary'||Object.hasOwn(STONE_EFFECTS,itemId)||tradableRaidMaterial||(classesOnlyRebootEnabled()&&Boolean(petCollar(itemId))))
 }
 async function transaction(fn) {
 const client = await db.connect()
@@ -622,6 +623,7 @@ SET name=EXCLUDED.name, description=EXCLUDED.description,
 category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
 `, candidateShopCatalogItem(item))
 }
+if(classesOnlyRebootEnabled())await seedPetCollars(db)
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
@@ -3921,6 +3923,7 @@ await ensureUser(jid)
 return transaction(async client=>{
 const r=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
 const removed=Number(r.rows[0]?.qty||0)
+await client.query('UPDATE pet_collection SET collar_id=NULL WHERE jid=$1',[jid])
 await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
@@ -3960,6 +3963,7 @@ SET hp=100,max_hp=100,atk=10,def=5,spd=10,
 weapon_id=NULL,armor_id=NULL,win=0,loss=0,updated_at=${nowSql}
 WHERE jid=$1
 `,[jid])
+await client.query('UPDATE pet_collection SET collar_id=NULL WHERE jid=$1',[jid])
 await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
@@ -5079,6 +5083,7 @@ active BOOLEAN NOT NULL DEFAULT FALSE
 ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
 ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
 ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS purchase_price BIGINT;
+ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS collar_id TEXT REFERENCES items(id);
 -- Pets têm nível máximo 100. Corrige registros antigos que ultrapassaram o teto.
 UPDATE pets SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
 UPDATE pet_collection SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
@@ -6135,6 +6140,7 @@ const pet=(await client.query(
 if(!pet) throw new Error('Este pet não existe mais na sua coleção.')
 if(PECADOS_HERO_IDS.includes(pet.species)) throw new Error('Personagens sagrados da collab não podem ser sacrificados.')
 if(pet.active) throw new Error('Troque o pet ativo antes de sacrificá-lo.')
+if(pet.collar_id) throw new Error('Retire a coleira antes de sacrificar esse pet.')
 const team=(await client.query(
 'SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId]
 )).rows[0]
@@ -6465,6 +6471,93 @@ const lote=(await client.query("SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND st
 if(lote) throw new Error('Aguarde o Raidlote terminar para trocar o time de pets.')
 const raid=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",[jid])).rows[0]
 if(raid) throw new Error('Aguarde a Raid atual terminar para trocar o time de pets.')
+}
+// Compra, fabricação e troca de coleiras: mesma transação para carteira, inventário e pet.
+function requirePetCollarsV2(){
+ if(!classesOnlyRebootEnabled())throw new Error('Coleiras disponíveis somente na V2.')
+}
+export function getPetCollarCatalog(){return classesOnlyRebootEnabled()?PET_COLLARS:[]}
+async function lockCollarMembership(client,jid){
+ await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['raid-membership:'+jid])
+}
+async function assertPetCollarChangeAllowed(client,jid){
+ await lockCollarMembership(client,jid)
+ await assertPetTeamChangeAllowed(client,jid)
+ const lobby=(await client.query("SELECT 1 FROM trevo_games WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status'='lobby' AND (state->'players') ? $1 LIMIT 1",[jid])).rows[0]
+ if(lobby)throw new Error('Saia da sala de Raid antes de trocar a coleira.')
+ const boss=(await client.query(`SELECT 1 FROM trevo_games
+ WHERE game_type IN ('boss','boss_event') AND (state->'participants') ? $1
+ AND COALESCE(state->>'active','true')<>'false'
+ AND CASE WHEN jsonb_typeof(state->'hp')='number' THEN (state->>'hp')::numeric>0 ELSE FALSE END
+ AND CASE WHEN jsonb_typeof(state->'endsAt')='number' THEN (state->>'endsAt')::numeric=0 OR (state->>'endsAt')::numeric>$2 ELSE TRUE END
+ LIMIT 1`,[jid,Date.now()])).rows[0]
+ if(boss)throw new Error('Aguarde o Boss atual terminar para trocar a coleira.')
+}
+async function consumeCollarMaterials(client,jid,requirements){
+ const ids=Object.keys(requirements).sort()
+ const rows=(await client.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) ORDER BY item_id FOR UPDATE',[jid,ids])).rows
+ for(const id of ids){
+  const bound=await boundItemQuantity(client,jid,id)
+  if(Number(rows.find(r=>r.item_id===id)?.quantity||0)-bound<requirements[id])
+    throw new Error('Materiais insuficientes: '+(petCollar(id)?.name||id)+'.')
+ }
+ for(const id of ids)await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[requirements[id],jid,id])
+}
+async function giveCollarItem(client,jid,id){
+ await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+ ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,id])
+}
+async function chargeCollar(client,jid,price,note){
+ const w=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+ const cash=Math.max(0,Number(w?.cash||0)),bank=Math.max(0,Number(w?.bank||0))
+ if(!w||cash+bank<price)throw new Error('Saldo insuficiente.')
+ const fromCash=Math.min(cash,price)
+ await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,price-fromCash,jid])
+ await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'shop',$2,'pet_collar',$3)",[jid,price,note])
+}
+export async function buyPetCollar(jid,id){
+ requirePetCollarsV2()
+ const item=petCollar(id)
+ if(!item||item.price<=0)throw new Error('Coleira não disponível para compra. A mítica exige fabricação.')
+ await ensureUser(jid)
+ return transaction(async client=>{
+  await lockCollarMembership(client,jid)
+  await chargeCollar(client,jid,item.price,item.id)
+  await giveCollarItem(client,jid,item.id)
+  return {item,message:'Coleira comprada: '+item.name+'.'}
+ })
+}
+export async function craftPetCollar(jid){
+ requirePetCollarsV2()
+ await ensureUser(jid)
+ return transaction(async client=>{
+  await lockCollarMembership(client,jid)
+  await chargeCollar(client,jid,MYTHIC_COLLAR_FEE,MYTHIC_COLLAR)
+  await consumeCollarMaterials(client,jid,MYTHIC_COLLAR_MATERIALS)
+  await giveCollarItem(client,jid,MYTHIC_COLLAR)
+  return {item:petCollar(MYTHIC_COLLAR),message:'Coleira mítica fabricada.'}
+ })
+}
+export async function equipPetCollar(jid,petId,id=null){
+ requirePetCollarsV2()
+ petId=Number(petId)
+ if(!Number.isSafeInteger(petId)||petId<1)throw new Error('Pet inválido.')
+ const item=id===null?null:petCollar(id)
+ if(id!==null&&!item)throw new Error('Coleira inválida.')
+ await ensureUser(jid)
+ return transaction(async client=>{
+  await assertPetCollarChangeAllowed(client,jid)
+  const pet=(await client.query('SELECT id,name,species,collar_id FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId])).rows[0]
+  if(!pet||PECADOS_HERO_IDS.includes(String(pet.species)))throw new Error('Pet não encontrado.')
+  const trip=(await client.query('SELECT 1 FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=FALSE LIMIT 1',[jid,petId])).rows[0]
+  if(trip)throw new Error('O pet está em expedição.')
+  if((pet.collar_id||null)===(item?.id||null))return {petId,item,message:'Nenhuma alteração necessária.'}
+  // A cópia equipada sai do inventário; a anterior só volta na mesma transação.
+  if(item)await consumeCollarMaterials(client,jid,{[item.id]:1})
+  await client.query('UPDATE pet_collection SET collar_id=$1 WHERE jid=$2 AND id=$3',[item?.id||null,jid,petId])
+  if(pet.collar_id)await giveCollarItem(client,jid,pet.collar_id)
+  return {petId,item,message:item?pet.name+' equipou '+item.name+'.':'Coleira removida de '+pet.name+'.'}
+ })
 }
 export async function selectPet(jid,id){
 id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
