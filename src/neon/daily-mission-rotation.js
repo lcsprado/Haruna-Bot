@@ -95,3 +95,36 @@ export function dailyV2RebalancedRewards(missions){
    return {...m,cash:cash[i],xp:xp[i]};
  });
 }
+
+export const DAILY_V2_SCALED_START='2026-11-28';
+const SCALED_TIERS=Object.freeze([
+ [30,10000,5000,5,'caixa_rara',1,.15,.75],
+ [60,15000,10000,10,'caixa_epica',1,.4,.85],
+ [100,25000,20000,15,'caixa_epica',1,.7,1],
+ [150,35000,30000,20,'caixa_epica',2,1,1],
+ [200,45000,40000,25,'caixa_epica',2,1.3,1.15],
+ [Infinity,55000,50000,30,'caixa_epica',3,1.6,1.3]
+]);
+export function dailyV2ScaledBudget(level){
+ const [max,cash,xp,fragments,boxId,boxQty,damageScale,countScale]=SCALED_TIERS.find(t=>Number(level)<=t[0])||SCALED_TIERS[5];
+ return {cash,xp,fragments,boxId,boxQty,damageScale,countScale,
+  completion:{cash:Math.floor(cash*.1),xp:Math.floor(xp*.1),fragments,item:'fragmento_universal_raid',boxId,boxQty}};
+}
+export function dailyV2ScaledRewards(missions,level){
+ const checked=dailyV2RebalancedRewards(missions);
+ const b=dailyV2ScaledBudget(level),main=checked.filter(m=>m.type!=='legend_raid');
+ const specialCash=Math.floor(b.cash*.25),specialXp=Math.floor(b.xp*.3);
+ const cash=distribute(main.map(m=>V2_WEIGHTS[m.type][0]),b.cash-b.completion.cash-specialCash);
+ const xp=distribute(main.map(m=>V2_WEIGHTS[m.type][1]),b.xp-b.completion.xp-specialXp);
+ return checked.map(m=>{
+  const special=m.type==='legend_raid',i=main.indexOf(m);
+  const damage=special||['boss_damage','raid_damage'].includes(m.type);
+  const target=damage?Math.max(500,Math.round(m.target*b.damageScale/500)*500):Math.max(1,Math.ceil(m.target*b.countScale));
+  return {...m,target,cash:special?specialCash:cash[i],xp:special?specialXp:xp[i]};
+ });
+}
+export const DAILY_V2_SCALED_STREAK=Object.freeze({
+ 3:{cash:5000},7:{cash:15000,item:'caixa_rara',qty:1},
+ 14:{cash:30000,item:'caixa_epica',qty:1},21:{cash:50000,item:'caixa_epica',qty:2},
+ 30:{cash:100000,item:'caixa_epica',qty:3}
+});
