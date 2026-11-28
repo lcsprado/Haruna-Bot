@@ -1491,14 +1491,15 @@ function petPortrait(species){
 }
 const collarRanks=['⚪ Comum','🟢 Incomum','🔵 Rara','🟣 Épica','🟠 Lendária','🔴 Mítica'];
 const collarMaterials=[['coleira_egide_primordial','Égide Primordial',1],['nucleo_pedra','Fragmentos Raid 10',500],['olho_abissal','Fragmentos Raid 20',300],['essencia_rei_abissal','Fragmentos Raid 30',150],['fragmento_caos','Fragmentos Raid 60',50]];
+function collarFree(id){const row=(ui.data?.inventory||[]).find(x=>x.item_id===id);return Math.max(0,Number(row?.quantity||0)-Number(row?.bound_quantity||0))}
 function collarName(c){return c?c.name+' (-'+Number(c.percent)+'%)':'Sem coleira'}
 function petCollarControls(p){
   const catalog=ui.data?.petCollars||[];
   if(!catalog.length||!p.id)return '';
   const equipped=catalog.find(c=>c.id===p.collar_id);
-  const owned=catalog.filter(c=>itemCount(c.id)>0&&c.id!==p.collar_id);
+  const owned=catalog.filter(c=>collarFree(c.id)>0&&c.id!==p.collar_id);
   return '<div class="section"><p>🛡️ <strong>'+esc(collarName(equipped))+'</strong></p>'+
-    (owned.length?'<select data-collar-select="'+Number(p.id)+'" aria-label="Coleira para o pet">'+owned.map(c=>'<option value="'+esc(c.id)+'" '+(ui.collarBought===c.id?'selected':'')+'>'+esc(collarName(c))+' • ×'+itemCount(c.id)+'</option>').join('')+'</select><button class="btn good" data-collar-equip="'+Number(p.id)+'">Equipar</button>':'<small>Nenhuma coleira livre para equipar.</small>')+
+    (owned.length?'<select data-collar-select="'+Number(p.id)+'" aria-label="Coleira para o pet">'+owned.map(c=>'<option value="'+esc(c.id)+'" '+(ui.collarBought===c.id?'selected':'')+'>'+esc(collarName(c))+' • ×'+collarFree(c.id)+'</option>').join('')+'</select><button class="btn good" data-collar-equip="'+Number(p.id)+'">Equipar</button>':'<small>Nenhuma coleira livre para equipar.</small>')+
     (equipped?'<button class="btn" data-collar-remove="'+Number(p.id)+'">Remover coleira</button>':'')+'</div>';
 }
 function petCollarShop(){
@@ -1510,10 +1511,10 @@ function petCollarShop(){
   const nav='<div class="pet-actions">'+tabs.map(([id,label])=>'<button class="btn '+(tab===id?'primary':'')+'" data-collar-tab="'+id+'">'+label+'</button>').join('')+'</div>';
   let content='';
   if(tab==='shop')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • -'+Number(c.percent)+'% dano recebido</small></div>'+(c.price?'<button class="btn primary" data-collar-buy="'+esc(c.id)+'">'+money(c.price)+'</button>':'<button class="btn primary" data-collar-tab="forge">Forja</button>')+'</div>').join('')+'</div>';
-  if(tab==='inventory')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • '+itemCount(c.id)+' livre(s) • '+pets.filter(p=>p.collar_id===c.id).length+' equipada(s)</small></div></div>').join('')+'</div>';
+  if(tab==='inventory')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • '+collarFree(c.id)+' livre(s) • '+pets.filter(p=>p.collar_id===c.id).length+' equipada(s)</small></div></div>').join('')+'</div>';
   if(tab==='forge'){
     const cash=Number(ui.data?.profile?.cash||0)+Number(ui.data?.profile?.bank||0);
-    content='<h4>🔴 Coração de Adamantium • -25%</h4><div class="list">'+collarMaterials.map(([id,label,n])=>'<div class="list-row"><span>'+esc(label)+'</span><strong>'+(itemCount(id)>=n?'✅ ':'❌ ')+num(itemCount(id))+'/'+num(n)+' • faltam '+num(Math.max(0,n-itemCount(id)))+'</strong></div>').join('')+'<div class="list-row"><span>Custo</span><strong>'+money(500000)+' • Saldo '+money(cash)+'</strong></div></div><button class="btn primary" data-collar-craft>Fabricar</button>';
+    content='<h4>🔴 Coração de Adamantium • -25%</h4><div class="list">'+collarMaterials.map(([id,label,n])=>'<div class="list-row"><span>'+esc(label)+'</span><strong>'+(collarFree(id)>=n?'✅ ':'❌ ')+num(collarFree(id))+'/'+num(n)+' • faltam '+num(Math.max(0,n-collarFree(id)))+'</strong></div>').join('')+'<div class="list-row"><span>Custo</span><strong>'+money(500000)+' • Saldo '+money(cash)+'</strong></div></div><button class="btn primary" data-collar-craft>Fabricar</button>';
   }
   if(tab==='equip'||tab==='remove'){
     const slots=petTeamSavedIds(),eligible=pets.filter(p=>tab!=='remove'||p.collar_id).sort((a,b)=>(slots.includes(Number(a.id))?slots.indexOf(Number(a.id)):99)-(slots.includes(Number(b.id))?slots.indexOf(Number(b.id)):99)||Number(a.id)-Number(b.id));
@@ -1521,7 +1522,7 @@ function petCollarShop(){
     content='<div class="list">'+(eligible.slice(page*5,page*5+5).map(p=>'<div class="list-row"><div><strong>'+esc(p.name)+'</strong>'+(tab==='equip'?petCollarControls(p):'<p>'+esc(collarName(catalog.find(c=>c.id===p.collar_id)))+'</p><button class="btn" data-collar-remove="'+Number(p.id)+'">Remover coleira</button>')+'</div></div>').join('')||'<p>Nenhum pet disponível.</p>')+'</div><div class="pet-actions">'+(page>0?'<button class="btn" data-collar-page="'+(page-1)+'">Anterior</button>':'')+'<span>Página '+(page+1)+'/'+pages+'</span>'+(page+1<pages?'<button class="btn" data-collar-page="'+(page+1)+'">Próxima</button>':'')+'</div>';
   }
   if(tab==='info')content='<p>Uma coleira por pet. Reduz somente o dano recebido pelo próprio companheiro nas Raids e Boss. Não transfere atributos ao jogador. Trocas durante atividades bloqueadas pelo sistema.</p>';
-  return '<div class="section card" id="petCollarCentral"><div class="section-title"><h3>🛡️ Central de coleiras</h3><small>'+protectedCount+'/'+pets.length+' pets protegidos • '+(protectedCount+catalog.reduce((n,c)=>n+itemCount(c.id),0))+' coleiras adquiridas</small></div>'+nav+content+'</div>';
+  return '<div class="section card" id="petCollarCentral"><div class="section-title"><h3>🛡️ Central de coleiras</h3><small>'+protectedCount+'/'+pets.length+' pets protegidos • '+(protectedCount+catalog.reduce((n,c)=>n+collarFree(c.id),0))+' coleiras adquiridas</small></div>'+nav+content+'</div>';
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
