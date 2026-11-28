@@ -1,7 +1,8 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
 import {V2_MARKET_MAX_PRICE} from './reboot-assets-policy.js'
-import {MYTHIC_COLLAR_MATERIALS,MYTHIC_COLLAR_FEE,petCollar} from './pet-collars.js'
+import {petCollar} from './pet-collars.js'
+import {collarMenu} from './pet-collar-menu.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled,businessV4Enabled} from './reboot-economy-policy.js'
@@ -2109,7 +2110,7 @@ return petCollectionListText(state.pets,category,petCollectionOptions(state,mode
 }
 function petCollectionDetailMessage(state,id,mode='manage'){
 const pet=state.pets.find(p=>Number(p.id)===Number(id))
-return pet?petCollectionDetailText(pet,petCollectionOptions(state,mode)):null
+return pet?petCollectionDetailText(pet,petCollectionOptions(state,mode))+(getPetCollarCatalog().length&&mode==='manage'?'\n\n🛡️ Coleira: '+(petCollar(pet.collar_id)?.name||'Sem coleira')+'\n3️⃣ Gerenciar coleira':''):null
 }
 function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
 let text=title+'\n\n'
@@ -4838,6 +4839,11 @@ async function openRaidPetVoucherMenu(chat,sender,reply,raidLevel=null){
     ...voucherPetFlowTools(chat,sender),...voucherPetFlowDeps()
   })
 }
+async function openCollarMenu(chat,sender,reply,stage='main',data={},input){
+ return collarMenu({jid:sender,chat,stage,data,input,reply,fmt,
+ setFlow:(s,d,t)=>setQuickFlow(chat,sender,s,d,t),clearFlow:()=>clearQuickFlow(chat,sender),
+ api:{catalog:getPetCollarCatalog,pets:listPets,inventory:getInventory,team:getPetTeam,buy:buyPetCollar,craft:craftPetCollar,equip:equipPetCollar}})
+}
 async function handleQuickGameFlow({sock,chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
 let flow=getQuickFlow(chat,sender)
 if(!flow){
@@ -4865,6 +4871,11 @@ msg?.message?.buttonsResponseMessage?.selectedButtonId ||
 ''
 const rawInput=String(listSelection || body || '').trim()
 const input=rawInput.toLowerCase()
+if(String(flow.stage||'').startsWith('collar_')){
+ if(isGroup&&!isOwner&&!(await groupModuleEnabled(chat,'rpg_enabled'))){clearQuickFlow(chat,sender);await reply('🔒 RPG desativado neste grupo.');return true}
+ await openCollarMenu(chat,sender,reply,flow.stage.slice(7),flow.data,input)
+ return true
+}
 if(flow.stage===RAID_LOTE_NUMERIC_CONFIRM_STAGE){
   const decision=raidLoteNumericDecision(input)
   if(decision==='cancel'||['0','cancelar','cancel','sair'].includes(input)){
@@ -5021,6 +5032,10 @@ if(!pet){
 setQuickFlow(chat,sender,'pet_collection_categories',{mode},5*60*1000)
 await reply('⚠️ Este pet não está mais na coleção.\n\n'+petCollectionMenuText(state.pets,{mode,isLegendary:isCollectionLegendary}))
 return true
+}
+if(input==='3'&&mode==='manage'&&getPetCollarCatalog().length){
+ if(isGroup&&!isOwner&&!(await groupModuleEnabled(chat,'rpg_enabled'))){await reply('🔒 RPG desativado neste grupo.');return true}
+ await openCollarMenu(chat,sender,reply,'main',{petId:pet.id});return true
 }
 if(input==='99'){
 setQuickFlow(chat,sender,'pet_collection_list',{category,mode},5*60*1000)
@@ -11721,20 +11736,11 @@ if(['coleiras','comprarcoleira','fabricarcoleira','equiparcoleira','removercolei
 const catalog=getPetCollarCatalog()
 if(!catalog.length)return await reply('Coleiras disponíveis somente na V2.')
 if(cmd==='coleiras'){
- const [pets,inventory]=await Promise.all([listPets(sender),getInventory(sender)])
- let out='🐾 *COLEIRAS DEFENSIVAS — ALPHA V2*\n\nUma por pet. Reduz somente o dano recebido pelo próprio pet nas Raids e Boss.\n\n'
- for(const [n,c] of catalog.entries()){
-  const owned=Number(inventory.find(x=>x.item_id===c.id)?.quantity||0)
-  out+=(n+1)+'. *'+c.name+'* — -'+c.percent+'% dano recebido • '+(c.price?'R$ '+fmt(c.price):'Mítica — fabricação')+' • livres: '+owned+'\n'
- }
- out+='\n🔨 *Fabricação mítica:* 1 Égide Primordial + 500 fragmentos Raid 10 + 300 Raid 20 + 150 Raid 30 + 50 Raid 60 + R$ '+fmt(MYTHIC_COLLAR_FEE)+'.\n\n🐾 *Seus pets (ID)*\n'
- out+=pets.filter(p=>p.id!=null).map(p=>'#'+p.id+' • '+p.name+' — '+(petCollar(p.collar_id)?.name||'Sem coleira')).join('\n')||'Nenhum pet.'
- out+='\n\n*!comprarcoleira 1*\n*!fabricarcoleira confirmar*\n*!equiparcoleira ID 1*\n*!removercoleira ID*'
- return await reply(out)
+ return await openCollarMenu(chat,sender,reply,'main',{petId:args[0]})
 }
 const selected=n=>catalog[Number(n)-1]?.id
 if(cmd==='comprarcoleira'){
- const id=selected(args[0]);if(!id)return await reply('Escolha o número da coleira em !coleiras.')
+ const id=selected(args[0]);if(!id)return await reply('Escolha o número da coleira na loja de !coleiras.')
  const r=await buyPetCollar(sender,id);return await reply('✅ '+r.message)
 }
 if(cmd==='fabricarcoleira'){
@@ -11743,7 +11749,7 @@ if(cmd==='fabricarcoleira'){
 }
 const petId=Number(args[0])
 const id=cmd==='removercoleira'?null:selected(args[1])
-if(!Number.isSafeInteger(petId)||petId<1||id===undefined)return await reply('Use os IDs e números exibidos em !coleiras.')
+if(!Number.isSafeInteger(petId)||petId<1||id===undefined)return await reply('Use !coleiras para equipar pelo menu, ou informe o ID do pet e o número da loja.')
 const r=await equipPetCollar(sender,petId,id);return await reply('✅ '+r.message)
 }
 if(cmd==='pet'){
@@ -11878,7 +11884,7 @@ return await reply('🏆 *RANKING DE PETS*\n\n'+rows.map((p,i)=>`${i+1}º ${p.na
 if(cmd==='meupet'||cmd==='statuspet'){
 const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!invocarpet* para invocar um lendário.')
 const bonus=petStatusBonus(p)
-return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\nℹ️ Poder influencia duelos de pets, mas não aumenta o dano no Boss/Raid.\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
+return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*${getPetCollarCatalog().length?'\n🛡️ Coleira: '+(petCollar(p.collar_id)?.name||'Consulte a coleção')+' • !coleiras':''}\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\nℹ️ Poder influencia duelos de pets, mas não aumenta o dano no Boss/Raid.\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
 }
 if(cmd==='petaventura'){
 const p=await petAdventure(sender)
