@@ -1,5 +1,6 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
+import {V2_MARKET_MAX_PRICE} from './reboot-assets-policy.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled,businessV4Enabled} from './reboot-economy-policy.js'
@@ -9135,14 +9136,14 @@ clearQuickFlow(chat,sender)
 await reply('✅ Anúncio cancelado.')
 return true
 }
-const qty=parseInt(input,10)
+const qty=Number(input)
 const maxQty=Number(flow.data.maxQty||1)
 if(!Number.isInteger(qty)||qty<1||qty>maxQty){
 await reply(`📦 Digite uma quantidade de *1 a ${maxQty}*.`)
 return true
 }
 const suggestedUnit=Math.max(1,Number(flow.data.suggestedUnit||1))
-const suggestedTotal=suggestedUnit*qty
+const suggestedTotal=classesOnlyRebootEnabled()?Math.min(V2_MARKET_MAX_PRICE,suggestedUnit*qty):suggestedUnit*qty
 setQuickFlow(chat,sender,'market_sell_price',{...flow.data,qty,suggestedTotal},5*60*1000)
 await reply(`🏷️ *${flow.data.name}* ×${qty}\n\n💡 Preço sugerido por unidade: *R$ ${suggestedUnit.toLocaleString('pt-BR')}*\n💰 Sugerido pelo lote: *R$ ${suggestedTotal.toLocaleString('pt-BR')}*\n\n1️⃣ Usar preço sugerido\n✍️ Ou digite outro valor *TOTAL* do anúncio.\nEx.: *20000*\n\n0️⃣ Cancelar`)
 return true
@@ -9158,6 +9159,10 @@ const suggestedTotal=Math.max(1,Number(flow.data.suggestedTotal||1))
 const price=input==='1'?suggestedTotal:parseAmount(rawInput)
 if(!Number.isInteger(price)||price<1){
 await reply('💰 Digite um valor válido maior que zero ou responda *1* para usar o sugerido.')
+return true
+}
+if(classesOnlyRebootEnabled()&&price>V2_MARKET_MAX_PRICE){
+await reply('💰 O limite por anúncio é R$ 5 milhões. Digite outro valor total.')
 return true
 }
 try{
@@ -11929,8 +11934,8 @@ if(!rows.length) return await reply('🏪 O mercado está vazio.')
 return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>{ const sec=Number(x.remaining_seconds||0); const min=Math.max(1,Math.ceil(sec/60)); return `#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}\n⏳ Expira em: *${min} min*` }).join('\n\n')+`\n\n🕐 Anúncios duram *1 hora*. Ao expirar, o item volta ao inventário.\n↩️ Cancelar: *!cancelarvenda ID*\n🛒 Comprar: *!comprar#ID*`)
 }
 if(cmd==='anunciar'){
-const items=(await getInventory(sender)).filter(i=>Number(i.quantity||0)>0)
-if(!items.length) return await reply('🎒 Seu inventário está vazio.')
+const items=(await getInventory(sender)).filter(i=>Number(i.market_max_quantity||0)>0).map(i=>({...i,quantity:i.market_max_quantity}))
+if(!items.length) return await reply('🎒 Você não possui itens disponíveis para anunciar.')
 setQuickFlow(chat,sender,'market_sell_select',{items:items.map(i=>({item_id:i.item_id,name:i.name,quantity:Number(i.quantity||0),rarity:i.rarity,price:Number(i.price||0),sellUnit:Number(i.sell_unit||0)}))},5*60*1000)
 let text='🏪 *ANUNCIAR ITEM*\n\n'
 items.forEach((i,idx)=>{text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}* ×${i.quantity}\n`})
