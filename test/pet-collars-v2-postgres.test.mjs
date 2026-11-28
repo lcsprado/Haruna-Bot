@@ -1,0 +1,85 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {seedPetCollars,PET_COLLARS,MYTHIC_COLLAR,MYTHIC_COLLAR_MATERIALS} from '../src/neon/pet-collars.js';
+const isolated=process.env.ALPHA_COLLAR_TEST_DB;
+test('PostgreSQL integration: conservation of inventory, ownership, activity locks and atomic crafting',{skip:!isolated},async()=>{
+ const url=new URL(isolated);
+ assert.ok(['127.0.0.1','localhost'].includes(url.hostname));
+ assert.equal(url.pathname,'/alpha_reboot_collars_test');
+ process.env.DATABASE_URL=isolated;
+ process.env.ALPHA_REBOOT_MODE='classes_only';
+ process.env.ALPHA_REBOOT_DB_CONFIRMED='isolated-v2';
+ const {db,ensureUser,buyPetCollar,equipPetCollar,craftPetCollar,sacrificePet,createMarketListing,buyMarketListing,cancelMarketListing}=await import('../src/neon/db.js');
+ try{
+  await db.query(`
+   CREATE TABLE users(jid text PRIMARY KEY,push_name text DEFAULT '',updated_at bigint DEFAULT 0);
+   CREATE TABLE wallets(jid text PRIMARY KEY,cash bigint DEFAULT 0,bank bigint DEFAULT 0,updated_at bigint DEFAULT 0);
+   CREATE TABLE stats(jid text PRIMARY KEY,weapon_id text,armor_id text,boot_id text,helmet_id text,shield_id text);
+   CREATE TABLE items(id text PRIMARY KEY,name text,description text,category text,price bigint,rarity text,sellable boolean,stackable boolean);
+   CREATE TABLE inventories(jid text,item_id text REFERENCES items(id),quantity integer CHECK(quantity>=0),PRIMARY KEY(jid,item_id));
+   CREATE TABLE bound_inventory_items(jid text,item_id text,quantity integer);
+   CREATE TABLE transactions(from_jid text,to_jid text,amount bigint,type text,note text);
+   CREATE TABLE pet_collection(id bigserial PRIMARY KEY,jid text,name text,species text,active boolean DEFAULT false,collar_id text REFERENCES items(id));
+   CREATE TABLE pet_expeditions(jid text,pet_id bigint,resolved boolean);
+   CREATE TABLE raid_lote_jobs(jid text,status text);
+   CREATE TABLE trevo_games(game_type text,state jsonb);
+   CREATE TABLE equipment_upgrade_copies(jid text,item_id text,quantity integer);
+   CREATE TABLE equipment_star_forges(jid text,item_id text);
+   CREATE TABLE market_listings(id bigserial PRIMARY KEY,seller_jid text,item_id text,quantity integer CHECK(quantity>0),price bigint CHECK(price>0),status text DEFAULT 'active',buyer_jid text,created_at bigint DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),expires_at bigint,sold_at bigint);
+  `);
+  const jid='collar-test-a',buyer='collar-test-b';
+  await ensureUser(jid);await ensureUser(buyer);
+  await db.query('UPDATE wallets SET cash=3000000');
+  await seedPetCollars(db);await seedPetCollars(db);
+  assert.equal(Number((await db.query("SELECT COUNT(*) n FROM items")).rows[0].n),6);
+  const [p1,p2,foreign]= (await db.query("INSERT INTO pet_collection(jid,name,species) VALUES($1,'Pet 1','golem_ancestral'),($1,'Pet 2','golem_ancestral'),($2,'Outro','golem_ancestral') RETURNING id",[jid,buyer])).rows.map(x=>Number(x.id));
+  const first=PET_COLLARS[0].id,legend=PET_COLLARS[4].id;
+  const qty=async(owner,id)=>Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[owner,id])).rows[0]?.quantity||0);
+  const cash=async(owner)=>Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[owner])).rows[0].cash);
+  const equipped=async(pet)=> (await db.query('SELECT collar_id FROM pet_collection WHERE id=$1',[pet])).rows[0].collar_id;
+  await buyPetCollar(jid,first);assert.equal(await cash(jid),2950000);
+  await assert.rejects(()=>equipPetCollar(jid,foreign,first),/Pet não encontrado/);
+  const competing=await Promise.allSettled([equipPetCollar(jid,p1,first),equipPetCollar(jid,p2,first)]);
+  assert.equal(competing.filter(x=>x.status==='fulfilled').length,1);
+  const active=(await equipped(p1))?p1:p2;
+  assert.equal(await qty(jid,first),0);
+  await assert.rejects(()=>sacrificePet(jid,active),/Retire a coleira/);
+  await assert.rejects(()=>createMarketListing(jid,first,1,50000),/quantidade/);
+  await assert.rejects(()=>equipPetCollar(jid,active,legend),/Materiais insuficientes/);
+  assert.equal(await equipped(active),first);
+  for(const status of ['lobby','active']){
+   await db.query('INSERT INTO trevo_games VALUES($1,$2)',['raid',JSON.stringify({status,players:{[jid]:{}}})]);
+   await assert.rejects(()=>equipPetCollar(jid,active,null),/Raid/);
+   await db.query('DELETE FROM trevo_games');
+  }
+  await db.query("INSERT INTO raid_lote_jobs VALUES($1,'running')",[jid]);
+  await assert.rejects(()=>equipPetCollar(jid,active,null),/Raidlote/);
+  await db.query('DELETE FROM raid_lote_jobs');
+  await db.query('INSERT INTO trevo_games VALUES($1,$2)',['boss',JSON.stringify({hp:1000,participants:{[jid]:{}}})]);
+  await assert.rejects(()=>equipPetCollar(jid,active,null),/Boss/);
+  await db.query('DELETE FROM trevo_games');
+  await Promise.all([equipPetCollar(jid,active,null),equipPetCollar(jid,active,null)]);
+  assert.equal(await qty(jid,first),1);assert.equal(await equipped(active),null);
+  const listing=await createMarketListing(jid,first,1,50000);
+  assert.equal(await qty(jid,first),0);
+  await cancelMarketListing(jid,listing.id);assert.equal(await qty(jid,first),1);
+  const second=await createMarketListing(jid,first,1,50000);
+  await buyMarketListing(buyer,second.id);assert.equal(await qty(buyer,first),1);assert.equal(await qty(jid,first),0);
+  await buyPetCollar(jid,legend);
+  const before=await cash(jid);
+  await assert.rejects(()=>craftPetCollar(jid),/Materiais insuficientes/);
+  assert.equal(await cash(jid),before);assert.equal(await qty(jid,legend),1);
+  for(const [id,n] of Object.entries(MYTHIC_COLLAR_MATERIALS))if(id!==legend){
+   await db.query("INSERT INTO items(id,name,category,price,rarity,sellable,stackable) VALUES($1,$1,'special',0,'rare',true,true)",[id]);
+   await db.query('INSERT INTO inventories VALUES($1,$2,$3)',[jid,id,n]);
+  }
+  const crafting=await Promise.allSettled([craftPetCollar(jid),craftPetCollar(jid)]);
+  assert.equal(crafting.filter(x=>x.status==='fulfilled').length,1);
+  assert.equal(await cash(jid),before-500000);
+  for(const id of Object.keys(MYTHIC_COLLAR_MATERIALS))assert.equal(await qty(jid,id),0);
+  assert.equal(await qty(jid,MYTHIC_COLLAR),1);
+  await equipPetCollar(jid,p1,MYTHIC_COLLAR);
+  assert.equal(await equipped(p1),MYTHIC_COLLAR);
+  assert.equal(await qty(jid,MYTHIC_COLLAR),0);
+ }finally{await db.end()}
+});
