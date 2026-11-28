@@ -8,6 +8,8 @@ on:
       - whatsapp-only
     paths:
       - 'src/neon/pet-collars.js'
+      - 'src/neon/pet-collar-menu.js'
+      - 'web/app.js'
       - 'test/pet-collars-v2*.test.mjs'
   workflow_dispatch:
 permissions:
@@ -37,10 +39,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test test/pet-collars-v2.test.mjs
+      - run: node --test test/pet-collars-v2.test.mjs test/pet-collars-v2-menu.test.mjs
       - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
       - run: npm run check
-      - run: node --check web/app.js && node --check web/sw.js
+      - run: node --check web/app.js && node --check web/sw.js && node --check src/neon/pet-collar-menu.js
       - run: node --test test/regression-smoke.test.mjs test/pet-collection-menu.test.mjs test/pvp-full-report-20261014.test.mjs test/pet-collars-v2-postgres.test.mjs
         env:
           ALPHA_COLLAR_TEST_DB: postgresql://collar_test:collar_test_local@127.0.0.1:5432/alpha_reboot_collars_test
