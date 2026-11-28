@@ -2,7 +2,7 @@ import {pvpDefenseCoefficient,v2PvpMatchupAdjustment} from './pvp-equipment-coun
 import {v2RaidWeaponItemRows,v2RaidWeaponStats,v2RaidWeaponOrigins,v2RaidWeaponDisplayName} from './v2-raid-weapon-builds.js'
 import {miningActivityLock,assertNoActiveMining} from './torre-mineracao-activity.js'
 import crypto from 'node:crypto'
-import {assertV2MarketListing} from './reboot-assets-policy.js'
+import {assertV2MarketListing,v2MarketQuantityLimit} from './reboot-assets-policy.js'
 import {nextScheduledSummon} from './pet-summon-schedule.js'
 import {requireVerifiedAdminWalletJid} from './admin-wallet-identity.js'
 import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
@@ -107,6 +107,12 @@ const nowSql = '(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 const RAID_MATERIAL_IDS=Object.freeze(["nucleo_pedra","escama_vulcanica","olho_abissal","nucleo_titan","essencia_rei_abissal","fragmento_celestial","nucleo_alpha_corrompido","fragmento_caos","coroa_abissal","essencia_eclipse"])
 const RAID_MATERIAL_SELL_VALUE=100
 const raidMaterialId=id=>RAID_MATERIAL_IDS.includes(String(id||''))
+function marketItemAllowed(itemId,item){
+ const tradableRaidMaterial=classesOnlyRebootEnabled()&&raidMaterialId(itemId)
+ return item?.sellable===true && itemId!=='elmo_soberano_golem' &&
+   (!raidMaterialId(itemId)||tradableRaidMaterial) &&
+   (item.rarity!=='legendary'||Object.hasOwn(STONE_EFFECTS,itemId)||tradableRaidMaterial)
+}
 async function transaction(fn) {
 const client = await db.connect()
 try {
@@ -1595,7 +1601,7 @@ async function paidGearHistory(client,jid,itemIds){
 }
 export async function getInventory(jid) {
 const { rows } = await db.query(`
-SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
+SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,it.stackable,
 COALESCE(bi.quantity,0)::int AS bound_quantity,
 COALESCE(eu.level,1)::int AS equipment_level,
 COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
@@ -1700,6 +1706,7 @@ bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
 sellable_quantity:sale.maxSellable,
 regular_sellable_quantity:sale.regularSellable,
+market_max_quantity:marketItemAllowed(r.item_id,r)?Math.min(sale.regularSellable,v2MarketQuantityLimit(r,{enabled:v2})):0,
 can_sell_all:sale.canSellAll,
 upgrade_refund_steps:v2?paidSteps:null,
 upgrade_refund:v2?paidGearRefund(paidSteps,sale.maxSellable):sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
@@ -6849,12 +6856,12 @@ export async function createMarketListing(jid,itemId,qty,price){
 assertRebootItemAllowed(itemId)
 qty=Number(qty); price=Number(price)
 if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
-assertV2MarketListing(qty,price)
 await expireMarketListings()
 return transaction(async client=>{
-const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
-if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || (itemRow.rarity==='legendary'&&!Object.hasOwn(STONE_EFFECTS,itemId)) || itemId==='elmo_soberano_golem')
+const itemRow=(await client.query('SELECT sellable,category,rarity,stackable FROM items WHERE id=$1',[itemId])).rows[0]
+if(!itemRow || itemRow.sellable!==true || !marketItemAllowed(itemId,itemRow))
 throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
+assertV2MarketListing(qty,price,{item:itemRow})
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
 const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1',[jid])
@@ -6905,10 +6912,10 @@ export async function buyMarketListing(buyerJid,id){
 await ensureUser(buyerJid)
 await expireMarketListings()
 return transaction(async client=>{
-const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
+const r=await client.query(`SELECT m.*,i.name,i.sellable,i.category,i.stackable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
 const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
 assertRebootItemAllowed(x.item_id)
-assertV2MarketListing(Number(x.quantity),Number(x.price))
+assertV2MarketListing(Number(x.quantity),Number(x.price),{item:x})
 if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
 throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
 if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
