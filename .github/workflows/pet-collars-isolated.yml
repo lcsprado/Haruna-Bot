@@ -3,6 +3,12 @@ on:
   push:
     branches:
       - feature/pet-collars-v2-20261128
+  pull_request:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/pet-collars.js'
+      - 'test/pet-collars-v2*.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
