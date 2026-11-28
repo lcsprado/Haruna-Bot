@@ -1835,7 +1835,7 @@ if(special)out+='\n🌟 *MISSÃO ESPECIAL — '+(rotating?'DESAFIO DO DIA':'CAÇ
 out+=(done?'✅ ':'⬜ ')+m.title+' — *'+money(m.progress)+'/'+money(m.target)+'*\n'
 out+='🎁 R$ '+money(m.reward_cash)+extras+(special?' + 1 Caixa Épica':'')+(m.claimed?' _(resgatada)_':'')+'\n\n'
 }
-if(board.bonusAllSix)out+='🏆 *BÔNUS DO QUADRO COMPLETO:* R$ '+money(board.bonusCash)+' + '+money(board.bonusXp)+' EXP + '+money(board.bonusQty)+' Fragmentos Universais de Raid'+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
+if(board.bonusAllSix)out+='🏆 *BÔNUS DO QUADRO COMPLETO:* R$ '+money(board.bonusCash)+' + '+money(board.bonusXp)+' EXP + '+money(board.bonusQty)+' Fragmentos Universais de Raid'+(board.bonusBoxQty?' + '+money(board.bonusBoxQty)+'x '+(board.bonusBoxId==='caixa_rara'?'Caixa Rara':'Caixa Épica'):'')+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
 else out+='🎁 *BÔNUS DAS 5 MISSÕES:* '+Number(board.bonusQty||0)+' '+(board.bonusItem==='caixa_rara'?'Caixa(s) Rara(s)':'Caixa(s) Épica(s)')+(board.bonusClaimed?' ✅ Resgatado':'')+'\n'
 out+='🔥 *Sequência Daily:* '+Number(board.streak||0)+' dia(s)\n\n'
 out+='Use *'+prefix+'resgatarmissoes* para coletar as recompensas concluídas.'
@@ -9396,6 +9396,7 @@ clearQuickFlow(chat,sender)
 if(!r.ok) await reply(`⏳ Nova dungeon em ${duration(r.remaining)}.`)
 else{
 if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
+if(r.won&&String(chat).endsWith('@g.us'))await progressGroupMission(chat,sender,'dungeon').catch(err=>console.warn('[GROUP MISSION DUNGEON]',err?.message||err))
 if(r.won){
   await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
   await recordAscensionVeteranActivity(db,sender,'dungeon')
@@ -11844,7 +11845,10 @@ return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou
 }
 const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
 const p=await petAction(sender,action)
-if(cmd==='treinarpet')await creditDailyActivity(sender,'pet_train',1,'pet_train:'+p.last_action,reply)
+if(cmd==='treinarpet'){
+ await creditDailyActivity(sender,'pet_train',1,'pet_train:'+p.last_action,reply)
+ if(isGroup)await progressGroupMission(chat,sender,'pet_train',1,{sourceKey:'pet_train:'+sender+':'+p.last_action}).catch(err=>console.warn('[GROUP MISSION PET]',err?.message||err))
+}
 const actionResult=cmd==='descansar'?'descansou e recuperou energia e HP!':cmd==='banho'?'tomou banho!':'completou a ação!'
 const petVitals=cmd==='descansar'
 ? `❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`
@@ -12393,17 +12397,18 @@ await reply(text.trim())
 } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva','missao','missão','missaostatus','missãostatus','statusmissao','statusmissão'].includes(cmd)){
 if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
 const b=await getGroupMissionLeaderboard(chat), m=b.mission
-const unit=m.mission_type==='quiz'?'acertos':m.mission_type==='battle'?'batalhas':'ações'
+const unit=({quiz:'acertos',battle:'duelos',raid_coop:'Raids',boss_damage:'dano',dungeon:'dungeons',pet_train:'treinos'})[m.mission_type]||'ações'
 const how=m.mission_type==='battle'?`⚔️ *Como fazer:* use *${prefix}batalhar*, marque outro jogador do grupo e conclua a batalha. Cada batalha concluída soma *+1*.`:m.mission_type==='quiz'?`🧠 *Como fazer:* responda corretamente aos quizzes do grupo. Cada acerto soma *+1*.`:`💼 *Como fazer:* conclua trabalhos/entregas válidos no grupo. Cada ação concluída soma *+1*.`
-let out=`🤝 *MISSÃO COLETIVA DA SEMANA*\n\n🎯 ${m.title}\n${how}\n\n📊 Meta: *${m.target} ${unit}*\n📈 Progresso: *${m.progress}/${m.target}*\n💰 Prêmio total: *R$ ${fmt(m.reward_cash)}*\n\n🏆 *CONTRIBUIÇÕES*\n`
+const howNew=({raid_coop:'🐉 *Como fazer:* vença Raids manuais no grupo com pelo menos dois participantes válidos. Cada vitória soma 1 Raid.',boss_damage:'👹 *Como fazer:* cause dano efetivo ao Boss pelo grupo.',dungeon:'🏰 *Como fazer:* vença dungeons pelo grupo.',pet_train:'🐾 *Como fazer:* treine seu pet pelo grupo com !treinarpet.'})[m.mission_type]||how
+let out=`🤝 *MISSÃO COLETIVA DA SEMANA*\n\n🎯 ${m.title}\n${howNew}\n\n📊 Meta: *${m.target} ${unit}*\n📈 Progresso: *${m.progress}/${m.target}*\n💰 Prêmio total: *R$ ${fmt(m.reward_cash)}*\n\n🏆 *CONTRIBUIÇÕES*\n`
 if(!b.rows.length) out+='Ninguém contribuiu ainda.\n'
 else b.rows.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit}${m.completed?' • R$ '+fmt(x.share):''}\n`)
-out+=m.completed?`\n✅ Concluída! Use *${prefix}resgatarmissao*.`:`\n💡 Quanto mais você contribuir, maior será sua parte do prêmio.`
+out+=m.completed?`\n✅ Concluída! Use *${prefix}resgatarmissao*.`:`\n💡 Quanto mais você contribuir, maior será sua parte do prêmio.`+(Number(m.reward_cash)>=100000?'\n👥 Mínimo de dois contribuintes para concluir.':'')
 await reply(out)
 } else if(['resgatarmissao','resgatarmissão'].includes(cmd)){
 if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
 const r=await claimGroupMission(chat,sender)
-const unit=r.mission.mission_type==='quiz'?'acertos':r.mission.mission_type==='battle'?'batalhas':'ações'
+const unit=({quiz:'acertos',battle:'duelos',raid_coop:'Raids',boss_damage:'dano',dungeon:'dungeons',pet_train:'treinos'})[r.mission.mission_type]||'ações'
 let out=`🎉 *RECOMPENSA COLETIVA!*\nSua contribuição: *${r.contribution} ${unit}*\n💰 Você recebeu: *R$ ${fmt(r.share)}*\n\n🏆 *RESULTADO DA MISSÃO*\n`
 r.leaderboard.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit} • *R$ ${fmt(x.share)}*\n`)
 await reply(out)
@@ -14046,6 +14051,7 @@ await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*${selected?'\n🎯 Alvo: *'+S
 const r=await dungeon(sender)
 if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
 if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
+if(r.won&&String(chat).endsWith('@g.us'))await progressGroupMission(chat,sender,'dungeon').catch(err=>console.warn('[GROUP MISSION DUNGEON]',err?.message||err))
 if(r.won){
   await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
   await recordAscensionVeteranActivity(db,sender,'dungeon')
