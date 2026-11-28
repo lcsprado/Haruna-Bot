@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test test/pet-collars-v2.test.mjs
-      - run: npm ci --ignore-scripts
+      - run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
       - run: npm run check
       - run: node --check web/app.js && node --check web/sw.js
       - run: node --test test/regression-smoke.test.mjs test/pet-collection-menu.test.mjs test/pvp-full-report-20261014.test.mjs test/pet-collars-v2-postgres.test.mjs
