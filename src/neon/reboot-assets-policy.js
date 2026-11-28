@@ -13,11 +13,21 @@ export function effectiveAsset(row,{enabled=classesOnlyRebootEnabled()}={}){
  if(!Number.isSafeInteger(price)||price<=0)throw new Error('Patrimônio sem preço V2.');
  return {...row,price};
 }
-export function assertV2MarketListing(quantity,price,{enabled=classesOnlyRebootEnabled()}={}){
+export const V2_MARKET_MAX_PRICE=5000000;
+export const MARKET_MAX_STACK=2147483647; // PostgreSQL INTEGER
+const MARKET_EQUIPMENT_CATEGORIES=new Set(['weapon','armor','boots','helmet','shield','relic']);
+export function v2MarketQuantityLimit(item,{enabled=classesOnlyRebootEnabled()}={}){
+ if(!enabled)return MARKET_MAX_STACK;
+ return item?.stackable===true&&!MARKET_EQUIPMENT_CATEGORIES.has(item.category)
+   ? MARKET_MAX_STACK : 25;
+}
+export function assertV2MarketListing(quantity,price,{enabled=classesOnlyRebootEnabled(),item}={}){
  if(!enabled)return;
- if(!Number.isSafeInteger(quantity)||quantity<1||quantity>25||
-    !Number.isSafeInteger(price)||price<1||price>250000)
-   throw new RangeError('Mercado 2.0: até 25 itens e R$ 250 mil por anúncio.');
+ const max=v2MarketQuantityLimit(item,{enabled});
+ if(!Number.isSafeInteger(quantity)||quantity<1||quantity>max)
+   throw new RangeError(max===25?'Mercado 2.0: até 25 unidades deste item por anúncio.':'Quantidade inválida para anúncio.');
+ if(!Number.isSafeInteger(price)||price<1||price>V2_MARKET_MAX_PRICE)
+   throw new RangeError('Mercado 2.0: valor total de R$ 1 a R$ 5 milhões por anúncio.');
 }
 export function v2DarkContractReward(level,{enabled=classesOnlyRebootEnabled()}={}){
  if(!enabled)return null;
