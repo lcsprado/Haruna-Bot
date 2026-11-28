@@ -1769,20 +1769,36 @@ export async function getPlayerDamageStats(jid,heroId=null,{historical=false}={}
   return out;
 }
 
+// A mesma atividade conta uma vez, independentemente do canal de combate.
+const missionBrazilDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+const scaledCombatMissions=()=>rebootEconomyEnabled()&&missionBrazilDay()>=DAILY_V2_SCALED_START
+const supportTotal=p=>['classHealing','alliedHealing','alliedProtection','curseTeamDamage','petSkillHealing'].reduce((sum,k)=>sum+Math.max(0,Number(p?.[k])||0),0)
+function raidMissionAmounts(events,support){
+ const amounts=new Map()
+ for(const h of events||[])if(h.type==='hit'&&h.jid){
+  const damage=Math.max(0,Math.floor(Number(h.actualDamage??h.damage)||0))
+  amounts.set(h.jid,(amounts.get(h.jid)||0)+damage)
+ }
+ for(const [jid,delta] of Object.entries(support||{}))if(Number(delta)>0)
+  amounts.set(jid,(amounts.get(jid)||0)+Math.floor(Number(delta)))
+ return [...amounts].filter(([,n])=>Number.isSafeInteger(n)&&n>0)
+}
 export async function raidRound(chat,level){
  const r=await raidRoundCore(chat,level)
- if(!rebootEconomyEnabled()||!String(chat).endsWith('@g.us')||!r?.victory)return r
- const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
- const key='raid-victory:'+r.config?.level+':'+r.raidId
- const qualified=(r.rewards||[]).filter(p=>p.jid)
- if(day>=DAILY_V2_SCALED_START){
-  for(const p of qualified){
-   const support=Math.floor(Number(p.classHealing||0)+Number(p.alliedHealing||0)+Number(p.alliedProtection||0)+Number(p.curseTeamDamage||0))
-   if(support>0)await progressDailyMissionV2(p.jid,'raid_damage',support,key+':support:'+chat).catch(e=>console.warn('[MISSIONS V2 SUPPORT]',e?.message||e))
+ if(!rebootEconomyEnabled()||!String(chat).endsWith('@g.us'))return r
+ if(scaledCombatMissions()&&r?.raidId&&r?.round&&r.events){
+  let handled=true
+  for(const [jid,amount] of raidMissionAmounts(r.events,r.missionSupport)){
+   const key='raid:'+chat+':'+Number(r.config?.level||level)+':'+Number(r.raidId)+':'+Number(r.round)+':'+jid
+   try{await progressDailyMissionV2(jid,'raid_damage',amount,key,{skipEnsureUser:true})}
+   catch(e){handled=false;console.warn('[MISSIONS V2 RAID]',e?.message||e)}
   }
+  r.missionDailyHandled=handled
  }
- if(new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START&&qualified.length>=2)
-  await progressGroupMission(chat,qualified.map(p=>p.jid),'raid_coop',1,{sourceKey:key}).catch(e=>console.warn('[GROUP MISSION RAID]',e?.message||e))
+ if(r?.victory&&new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START){
+  const qualified=[...new Set((r.rewards||[]).map(p=>p.jid).filter(Boolean))]
+  if(qualified.length>=2)await progressGroupMission(chat,qualified,'raid_coop',1,{sourceKey:'raid-victory:'+r.config?.level+':'+r.raidId}).catch(e=>console.warn('[GROUP MISSION RAID]',e?.message||e))
+ }
  return r
 }
 async function raidRoundCore(chat,level){
@@ -1816,6 +1832,8 @@ async function raidRoundCore(chat,level){
     // Mantém apenas um débito automático por pet por rodada (inclusive reanimação prévia).
     const preRoundPetHeals=new Map()
     const classFinalRoundHealing=new Map()
+    const missionBefore=scaledCombatMissions()&&s.mode!=='lote'?new Map(Object.values(s.players||{}).map(p=>[p.jid,supportTotal(p)])):null
+    const missionSupport=()=>missionBefore?Object.fromEntries(Object.values(s.players||{}).map(p=>[p.jid,Math.max(0,Math.floor(supportTotal(p)-(missionBefore.get(p.jid)||0)))]).filter(([,n])=>n>0)):{}
     // V2: read live HP under the same row lock used by PvP and potions.
     // Keep the lock until round settlement; a stale room cannot resurrect HP.
     if(rebootEconomyEnabled()){
@@ -2031,7 +2049,7 @@ async function raidRoundCore(chat,level){
         s.status='failed';s.failReason='insufficient_cooperation'
         await saveGame(c,chat,gameType,s)
         return {failed:true,reason:'insufficient_cooperation',config:cfg,raidId:s.startedAt,
-          round:s.round,hp:0,maxHp:s.maxHp,events}
+          round:s.round,hp:0,maxHp:s.maxHp,events,missionSupport:missionSupport()}
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
@@ -2062,7 +2080,7 @@ async function raidRoundCore(chat,level){
         }
       }
       await saveGame(c,chat,gameType,s)
-      return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
+      return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events,missionSupport:missionSupport()}
     }
 
     const special=Math.random()<.22
@@ -2273,10 +2291,10 @@ async function raidRoundCore(chat,level){
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
     if(!survivors){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
-      return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
+      return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,events,missionSupport:missionSupport()}
     }
     await saveGame(c,chat,gameType,s)
-    return {config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
+    return {config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events,missionSupport:missionSupport()}
   })
 }
 
@@ -3586,6 +3604,13 @@ function healBossCombatPet(c,jid,pet,bossAtk=0){
 }
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
  const r=await attackBossCore(chat,jid,name,usePet,options)
+ if(scaledCombatMissions()&&r?.missionSourceKey){
+  const amount=Math.max(0,Math.floor(Number(r.damage||0)+Number(r.missionSupport||0)))
+  if(amount>0){
+   try{r.missionDaily=await progressDailyMissionV2(jid,'boss_damage',amount,r.missionSourceKey,{skipEnsureUser:true});r.missionDailyHandled=true}
+   catch(e){console.warn('[MISSIONS V2 BOSS]',e?.message||e)}
+  }
+ }
  if(rebootEconomyEnabled()&&String(chat).endsWith('@g.us')&&new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START&&Number(r?.damage)>0)
   await progressGroupMission(chat,jid,'boss_damage',Math.floor(r.damage)).catch(e=>console.warn('[GROUP MISSION BOSS]',e?.message||e))
  return r
@@ -3867,6 +3892,8 @@ async function attackBossCore(chat,jid,name,usePet=true,options={}){
       heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState
     }
     let php=Math.min(Number(heroCombatHp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null,vitalPulseEvent=null
+    let missionClassHeal=Math.max(0,Math.floor(php-Number(heroCombatHp)))
+    const missionSourceKey='boss:'+String(s.mode||'common')+':'+String(s.startedAt||s.endsAt||0)+':'+String(bossNow)+':'+attackCount+':'+jid
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
@@ -3878,7 +3905,9 @@ async function attackBossCore(chat,jid,name,usePet=true,options={}){
       if(heroId)s.participants[jid].heroState=defResult.state
       bossDamage=defResult.damage
       s.participants[jid].awakeningState=defResult.awakeningState
+      const missionBeforeDefenseHeal=Math.max(0,php-bossDamage)
       php=Math.max(0,php-bossDamage+Number(defResult.healAfter||0))
+      missionClassHeal+=Math.max(0,Math.floor(Math.min(php,effectiveMaxHp)-missionBeforeDefenseHeal))
       if(pet){
         const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
         pet.hp=Math.max(0,Number(pet.hp)-petTaken)
@@ -4260,9 +4289,9 @@ async function attackBossCore(chat,jid,name,usePet=true,options={}){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,...(s.rebootV2===true?{rebootV2:true}:{}),weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
         await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
+      return {dead:true,mode:s.mode,damage,missionSourceKey,missionSupport:missionClassHeal+Number(petSkillHeal?.heal||0)+Number(vitalPulseEvent?.heal||0),bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     await saveBossAttackProgress(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s,jid)
-    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,missionSourceKey,missionSupport:missionClassHeal+Number(petSkillHeal?.heal||0)+Number(vitalPulseEvent?.heal||0),bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   }),{onRetry:({attempt,waitMs})=>console.warn('[Boss] deadlock SQL 40P01; transação revertida, nova tentativa',attempt,'em',waitMs,'ms')})
 }
