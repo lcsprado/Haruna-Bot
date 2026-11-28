@@ -37,8 +37,10 @@ async function eligible(c){
  await c.query("UPDATE racing_cars_alpha SET upgrades=jsonb_set(upgrades,ARRAY[pending_part],to_jsonb(pending_level),TRUE), pending_part=NULL,pending_level=NULL,pending_until=0 WHERE equipped=TRUE AND pending_part IS NOT NULL AND pending_until>0 AND pending_until<=$1",[nowSec()])
  const rows=(await c.query("SELECT c.id AS car_id,c.jid,c.model_id,c.condition,c.upgrades,c.pending_part,p.xp,u.push_name,u.level AS player_level FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid JOIN users u ON u.jid=c.jid WHERE c.equipped=TRUE ORDER BY c.jid FOR UPDATE OF c")).rows
  // O carro deve estar equipado, com manutenção encerrada e condição mínima.
- return rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
+ const participants=rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
   .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp),playerLevel:Number(r.player_level)}))
+ const ineligible=rows.filter(r=>r.pending_part||Number(r.condition)<RACING_MIN_CONDITION).map(r=>({jid:r.jid,name:gtCleanName(r.push_name),condition:Number(r.condition),workshop:Boolean(r.pending_part)}))
+ return {participants,ineligible}
 }
 // Read-only check using the same condition and workshop rules as the start.
 function gtReadiness(rows,atMs){
@@ -112,6 +114,25 @@ async function finalReadinessNotice(day){
   addNotice(state,'final-readiness','🏁 *GT ALPHA — ÚLTIMA CHAMADA*\n\n'+readiness.text+'\n\n⏳ Largada às 20h30. Regularize o carro antes da largada.',{mentions:readiness.mentions,expiresAt:start})
  })
 }
+// Effective only after approval; no retroactive discipline or points.
+const GT_FAIRNESS_START='2026-11-28'
+function gtFairnessAdjustments({participants,ineligible,priorDays,notified,cancelled}){
+ const prior=new Set(priorDays.flatMap(d=>(d.fairness||[]).filter(x=>x.kind==='warning'||x.kind==='penalty').map(x=>x.jid)))
+ const notices=new Set(notified)
+ const out=[]
+ for(const p of ineligible){
+  if(!notices.has(p.jid))continue
+  const repeat=prior.has(p.jid)
+  out.push({jid:p.jid,name:p.name,kind:repeat?'penalty':'warning',points:repeat?-5:0,reason:p.condition<RACING_MIN_CONDITION?'condição abaixo de 35%':'carro na oficina'})
+ }
+ if(cancelled&&ineligible.length>0)for(const p of participants)
+  out.push({jid:p.jid,name:p.name,kind:'compensation',points:5,reason:'cancelamento por carro inapto'})
+ return out
+}
+function gtFairnessText(rows){
+ return rows.length?'\n\n⚖️ *AJUSTES DO GT*\n'+rows.map(p=>
+  (p.kind==='warning'?'⚠️ '+p.name+' — advertência':p.kind==='penalty'?'🔻 '+p.name+' — -5 pts (reincidência)':'✅ '+p.name+' — +5 pts de compensação')+' • '+p.reason).join('\n'):''
+}
 async function runDay(day){
  const start=gtDayStartMs(day)
  // A oficina pode terminar segundos após 20h30; capturar o carro às 20:30:10.
@@ -126,12 +147,17 @@ async function runDay(day){
     addNotice(s,'missed','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\nO bot não estava pronto no horário das 20h30. Nenhum resultado foi simulado retroativamente.')
     return
    }
-   const participants=await eligible(c)
+   const {participants,ineligible}=await eligible(c)
    s.day=day;s.startedAt=Date.now()
    s.participants=participants.map(p=>({jid:p.jid,name:p.name,carId:p.carId,modelId:p.modelId,playerLevel:p.playerLevel}))
+   if(day>=GT_FAIRNESS_START){
+    const prior=(await c.query("SELECT value FROM trevo_settings WHERE key >= $1 AND key < $2 ORDER BY key",[dayKey(gtWeekStart(day)),dayKey(day)])).rows.map(r=>r.value)
+    const notified=(s.noticeQueue||[]).filter(n=>['preparation','final-readiness'].includes(n.id)&&Number(n.deliveredAt)>0&&Number(n.deliveredAt)<start).flatMap(n=>n.mentions||[])
+    s.fairness=gtFairnessAdjustments({participants,ineligible,priorDays:prior,notified,cancelled:participants.length<GT_MIN_DRIVERS})
+   }
    if(participants.length<GT_MIN_DRIVERS){
     s.phase='cancelled'
-    addNotice(s,'cancel','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\n\nMenos de dois carros equipados e aptos às 20h30. Nenhum ponto distribuído.')
+    addNotice(s,'cancel','🏁 *GT ALPHA BOT — ETAPA NÃO DISPUTADA*\n\nMenos de dois carros equipados e aptos às 20h30. Nenhum ponto de corrida distribuído.'+gtFairnessText(s.fairness||[]))
     return
    }
    s.results=gtRunHeats(participants,Math.random,day)
@@ -140,7 +166,7 @@ async function runDay(day){
     ' pilotos inscritos automaticamente com seus carros principais às *20h30*.\n'+
     '🛣️ '+s.results.heats.map(h=>h.name+' ('+GT_WEATHER_LABELS[h.weather]+')').join(' → ')+'.\n'+
     '⚙️ Melhorias e condições registradas na largada.\n'+
-    '🤖 Corridas automáticas, com dinheiro e XP a cada prova. Consulte *!gttabela*.')
+    '🤖 Corridas automáticas, com dinheiro e XP a cada prova. Consulte *!gttabela*.'+gtFairnessText(s.fairness||[]))
   }
   if(s.phase!=='running')return
   while(s.stage<3&&Date.now()>=Number(s.nextAt)){
@@ -544,15 +570,21 @@ async function restoreGtOriginal20261116(){
 
 async function completedDays(week,c=db){
  const r=(await c.query('SELECT key,value FROM trevo_settings WHERE key BETWEEN $1 AND $2 ORDER BY key',[dayKey(week),dayKey(gtWeekEnd(week))])).rows
- return r.filter(x=>x.value?.phase==='completed').map(x=>x.value)
+ return r.filter(x=>x.value?.phase==='completed'||(x.value?.phase==='cancelled'&&x.value?.fairness?.length)).map(x=>x.value)
 }
 function sumWeek(days){
  const m=new Map()
- for(const d of days)for(const p of d.results?.standings||[]){
+ for(const d of days)for(const p of d.phase==='completed'?(d.results?.standings||[]):[]){
   const row=m.get(p.jid)||{jid:p.jid,name:p.name,points:0,wins:0,performance:0,days:0}
   row.name=p.name;row.points+=p.points;row.wins+=p.wins;row.performance+=p.performance;row.days++
   m.set(p.jid,row)
  }
+ for(const d of days)for(const a of d.fairness||[]){
+  const row=m.get(a.jid)||{jid:a.jid,name:a.name,points:0,wins:0,performance:0,days:0}
+  row.points+=Number(a.points||0)
+  m.set(a.jid,row)
+ }
+ for(const row of m.values())row.points=Math.max(0,row.points)
  return gtLeaderboard([...m.values()])
 }
 async function settleWeek(sunday){
@@ -564,7 +596,8 @@ async function settleWeek(sunday){
  await mutate(weekKey(week),async(s,c)=>{
   if(s.phase==='completed')return
   const table=sumWeek(await completedDays(week,c)),paid=[]
-  if(table.length>=GT_MIN_DRIVERS)for(const [i,p] of table.slice(0,4).entries()){
+  const raced=table.filter(p=>p.days>0)
+  if(raced.length>=GT_MIN_DRIVERS)for(const [i,p] of raced.slice(0,4).entries()){
    const amount=gtEffectiveWeeklyPrizes()[i]
    const r=await c.query('UPDATE wallets SET cash=cash+$1,updated_at=$2 WHERE jid=$3',[amount,nowSec(),p.jid])
    if(r.rowCount!==1)throw Error('Carteira não encontrada para premiação GT')
@@ -678,7 +711,7 @@ export async function getGtAlphaTable(scope='dia',now=Date.now()){
   (s?.phase==='running'?'\n🏁 Corridas: '+s.stage+'/3':
    s?.phase==='completed'?'\n✅ Etapa encerrada.':
    s?.phase==='cancelled'?'\n⚠️ Etapa não disputada.':
-   '\n⏰ Largada às 20h30 (Brasília).')
+   '\n⏰ Largada às 20h30 (Brasília).')+gtFairnessText(s?.fairness||[])
 }
 export async function getGtAlphaCar(jid){
  const r=(await db.query('SELECT c.id,c.model_id,c.condition,c.upgrades,c.pending_part,c.pending_until,p.xp FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid WHERE c.jid=$1 AND c.equipped=TRUE LIMIT 1',[jid])).rows[0]
