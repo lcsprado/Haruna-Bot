@@ -12,7 +12,7 @@ export async function collarMenu({jid,chat,stage='main',data={},input,reply,setF
  const [pets0,inventory,team]=await Promise.all([api.pets(jid),api.inventory(jid),api.team(jid)])
  const slots=new Map(team.map(p=>[Number(p.id),Number(p.slot)]))
  const pets=pets0.filter(p=>p.id!=null).sort((a,b)=>(slots.get(Number(a.id))||99)-(slots.get(Number(b.id))||99)||Number(a.id)-Number(b.id))
- const count=id=>Number(inventory.find(x=>x.item_id===id)?.quantity||0)
+ const count=id=>{const row=inventory.find(x=>x.item_id===id);return Math.max(0,Number(row?.quantity||0)-Number(row?.bound_quantity||0))}
  const label=c=>ranks[catalog.findIndex(x=>x.id===c.id)]+' • '+c.name
  const current=p=>petCollar(p?.collar_id)
  const nav='\n\n0️⃣ Voltar'
