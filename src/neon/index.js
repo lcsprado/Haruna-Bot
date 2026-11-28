@@ -454,9 +454,10 @@ const text={2:'🔥 *FASE 2 — FÚRIA ESTELAR!* Nharok ganhou +15% ATK.',
 3:'💀 *FASE 3 — COLAPSO!* Nharok ganhou +20% ATK e recebe +10% dano.'}[r.phaseChanged]
 if(text) await reply(text)
 }
-if(Number(r.damage||0)>0){
-await creditDailyActivity(jid,'boss_damage',Number(r.damage),
-'boss:'+String(sessionMode||'common')+':'+String(sessionEndsAt||0)+':'+jid+':'+Date.now(),reply,{skipEnsureUser:true})
+if(r.missionDailyHandled){await notifyDailyActivity(r.missionDaily,reply)}
+else if(Number(r.damage||0)>0||Number(r.missionSupport||0)>0){
+await creditDailyActivity(jid,'boss_damage',Number(r.damage||0)+(r.missionSourceKey&&rebootEconomyEnabled()&&String(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))>='2026-11-28'?Number(r.missionSupport||0):0),
+r.missionSourceKey||('boss:'+String(sessionMode||'common')+':'+String(sessionEndsAt||0)+':'+jid+':'+Date.now()),reply,{skipEnsureUser:true})
 .catch(err=>console.error('[MISSIONS V2 BOSS]',err?.message||err))
 }
 attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
@@ -917,7 +918,7 @@ v.count++
 v.potions.set(potion,(v.potions.get(potion)||0)+1)
 pets.set(pet,v);raidPetHealTally.set(player,pets)
 }
-for(const hit of (r.events||[])){
+if(!r.missionDailyHandled)for(const hit of (r.events||[])){
 if(hit.type==='hit'&&Number(hit.actualDamage??hit.damage)>0){
 await creditDailyActivity(hit.jid,'raid_damage',Number(hit.actualDamage??hit.damage),
 'raid:'+chat+':'+Number(r.config?.level||level)+':'+Number(r.raidId||0)+':'+Number(r.round)+':'+hit.jid)
@@ -1843,13 +1844,16 @@ return out
 }
 async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null,options={}){
 const out=await progressDailyMission(jid,type,amount,sourceKey,options)
+await notifyDailyActivity(out,notify)
+return out
+}
+async function notifyDailyActivity(out,notify){
 if(out?.daily?.ok&&typeof notify==='function'){
 const d=out.daily
 const msg='🔥 *DAILY AUTOMÁTICO!*\n💰 +R$ '+fmt(d.totalCash)+' • ✨ +'+Number(d.exp||0)+' EXP\n🔥 Sequência: '+d.streak+' dia(s)'
 +(d.protectedGap?'\n🛡️ Sua proteção de sequência foi utilizada por um único dia perdido.':'')
 try{await notify(msg)}catch(err){console.warn('[DAILY V2] aviso WhatsApp falhou',err?.message||err)}
 }
-return out
 }
 function dailyResultText(r){
 const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO*\n`:''
