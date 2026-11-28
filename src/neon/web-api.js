@@ -1320,7 +1320,7 @@ async function runAction(session,name,body={}){
     case 'item.box.open': return openLootBoxes(jid,String(body.boxId||'caixa_sorte'),positiveInt(body.qty||1,'Quantidade',50))
     case 'item.lucky.open': return openLuckyBoxes(jid,positiveInt(body.qty||1,'Quantidade',50))
     case 'item.sellDuplicates': return sellDuplicateEquipment(jid)
-    case 'market.create': return createMarketListing(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999),positiveInt(body.price,'Preço'))
+    case 'market.create': return createMarketListing(jid,String(body.itemId||''),positiveInt(body.qty??1,'Quantidade',2147483647),positiveInt(body.price,'Preço'))
     case 'market.buy': return buyMarketListing(jid,positiveInt(body.listingId,'Anúncio'))
     case 'market.cancel': return cancelMarketListing(jid,positiveInt(body.listingId,'Anúncio'))
     case 'sleep.start': return startPlayerSleep(jid)
