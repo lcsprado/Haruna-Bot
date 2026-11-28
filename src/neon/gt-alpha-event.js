@@ -14,9 +14,9 @@ const dayKey=day=>DAY_PREFIX+day
 const weekKey=week=>WEEK_PREFIX+week
 const nowSec=()=>Math.floor(Date.now()/1000)
 const money=gtFormatCash
-function addNotice(s,id,text){
+function addNotice(s,id,text,{mentions=[],expiresAt=0}={}){
  s.noticeQueue=s.noticeQueue||[]
- if(!s.noticeQueue.some(n=>n.id===id))s.noticeQueue.push({id,text,createdAt:Date.now(),deliveredAt:0})
+ if(!s.noticeQueue.some(n=>n.id===id))s.noticeQueue.push({id,text,createdAt:Date.now(),deliveredAt:0,...(mentions.length?{mentions}:{}),...(expiresAt?{expiresAt}:{})})
 }
 async function mutate(key,fn){
  const c=await db.connect()
@@ -40,6 +40,28 @@ async function eligible(c){
  return rows.filter(r=>!r.pending_part&&Number(r.condition)>=RACING_MIN_CONDITION)
   .map(r=>({jid:r.jid,carId:Number(r.car_id),modelId:r.model_id,name:gtCleanName(r.push_name),condition:Number(r.condition),upgrades:r.upgrades||{},driverLevel:racingDriverLevel(r.xp),playerLevel:Number(r.player_level)}))
 }
+// Read-only check using the same condition and workshop rules as the start.
+function gtReadiness(rows,atMs){
+ const now=Math.floor(atMs/1000)
+ const list=rows.map(r=>{
+  const worn=Number(r.condition)<RACING_MIN_CONDITION
+  const workshop=Boolean(r.pending_part)&&!(Number(r.pending_until)>0&&Number(r.pending_until)<=now)
+  const reasons=[...(worn?['reparo necessário — !repararcarro']:[]),...(workshop?['na oficina — equipe outro carro pronto (!equiparcorrida ID)']:[])]
+  const apt=!worn&&!workshop
+  const jid=String(r.jid||'')
+  const mention=!apt&&/^\d+@(?:s\.whatsapp\.net|lid)$/.test(jid)
+  const name=gtCleanName(r.push_name)
+  const label=mention?'@'+jid.split('@')[0]+' ('+name+')':name
+  return {apt,mention:mention?jid:null,line:(apt?'✅ ':'❌ ')+label+' — '+(racingModel(r.model_id)?.name||r.model_id)+' ('+Number(r.condition)+'%) — '+(apt?'APTO':'INAPTO: '+reasons.join('; '))}
+ })
+ const count=list.filter(r=>r.apt).length
+ return {count,total:list.length,mentions:[...new Set(list.map(r=>r.mention).filter(Boolean))],
+  text:(list.length?list.map(r=>r.line).join('\n'):'Nenhum carro equipado.')+'\n🚘 Aptos: '+count+'/'+GT_MIN_DRIVERS+' necessários.'+(count<GT_MIN_DRIVERS?'\n⚠️ Risco de cancelamento: menos de dois pilotos aptos.':'')}
+}
+async function readGtReadiness(c){
+ const rows=(await c.query("SELECT c.jid,c.model_id,c.condition,c.pending_part,c.pending_until,u.push_name FROM racing_cars_alpha c JOIN racing_profiles_alpha p ON p.jid=c.jid JOIN users u ON u.jid=c.jid WHERE c.equipped=TRUE ORDER BY c.jid")).rows
+ return gtReadiness(rows,Date.now())
+}
 function gtPrizeSummary(){return gtEffectiveWeeklyPrizes().map((amount,i)=>(i+1)+'º '+money(amount)).join(', ')}
 function gtXpSummary(){return gtRaceReward(1,1).percent+'% a '+gtRaceReward(5,1).percent+'%'}
 function rankText(rows,title){
@@ -60,8 +82,9 @@ async function prepNotice(day){
  const key=dayKey(day)
  const s=await read(key)
  if(s?.preparationNotice)return
- await mutate(key,state=>{
-  if(state.preparationNotice)return
+ await mutate(key,async(state,c)=>{
+  if(state.preparationNotice||state.phase||Date.now()>=gtDayStartMs(day))return
+  const readiness=await readGtReadiness(c)
   state.preparationNotice=Date.now()
   addNotice(state,'preparation',
    '🏎️ *GT ALPHA BOT — HOJE ÀS 20H30!*\n\n'+
@@ -74,7 +97,19 @@ async function prepNotice(day){
    '🎁 Cada prova: dinheiro, XP do piloto e XP do personagem ('+gtXpSummary()+' do necessário ao próximo nível, conforme posição).\n'+
    '🏆 Prêmios semanais: '+gtPrizeSummary()+'.\n'+
    '✅ Não precisa se inscrever. Tudo é automático.\n'+
-   '📋 Use *!gttabela* e *!gttabela semana*.')
+   '📋 Use *!gttabela* e *!gttabela semana*.\n\n*VERIFICAÇÃO DOS CARROS*\n'+readiness.text,{mentions:readiness.mentions,expiresAt:gtDayStartMs(day)})
+ })
+}
+async function finalReadinessNotice(day){
+ const key=dayKey(day),start=gtDayStartMs(day)
+ const s=await read(key)
+ if(s?.finalReadinessChecked||s?.phase||Date.now()>=start)return
+ await mutate(key,async(state,c)=>{
+  if(state.finalReadinessChecked||state.phase||Date.now()>=start)return
+  const readiness=await readGtReadiness(c)
+  state.finalReadinessChecked=Date.now()
+  if(!readiness.total||(!readiness.mentions.length&&readiness.count>=GT_MIN_DRIVERS&&readiness.count===readiness.total))return
+  addNotice(state,'final-readiness','🏁 *GT ALPHA — ÚLTIMA CHAMADA*\n\n'+readiness.text+'\n\n⏳ Largada às 20h30. Regularize o carro antes da largada.',{mentions:readiness.mentions,expiresAt:start})
  })
 }
 async function runDay(day){
@@ -547,11 +582,11 @@ async function settleWeek(sunday){
 async function flush(key){
  if(!connected()||!socket?.sendMessage)return
  const s=await read(key)
- for(const n of (s?.noticeQueue||[]).filter(x=>!x.deliveredAt).slice(0,5)){
+ for(const n of (s?.noticeQueue||[]).filter(x=>!x.deliveredAt&&(!x.expiresAt||Date.now()<x.expiresAt)).slice(0,5)){
   let timeout
   try{
    const msg=await Promise.race([
-    socket.sendMessage(GT_GROUP,{text:n.text}),
+    socket.sendMessage(GT_GROUP,{text:n.text,...(n.mentions?.length?{mentions:n.mentions}:{})}),
     new Promise((_,rej)=>{timeout=setTimeout(()=>rej(Error('timeout de envio')),8000);timeout.unref?.()})
    ])
    if(!msg?.key?.id)throw Error('WhatsApp sem confirmação de mensagem')
@@ -575,6 +610,7 @@ async function tick(){
   if(!inWindow&&now-lastIdleSweep<30*60000)return
   if(!inWindow)lastIdleSweep=now
   if(now>=start-20*60000&&now<start)await prepNotice(day)
+  if(now>=start-5*60000&&now<start)await finalReadinessNotice(day)
   if(now>=start){
    const s=await read(dayKey(day))
    if(!s || !s.phase || (s.phase==='running'&&now>=Number(s.nextAt)))await runDay(day)
