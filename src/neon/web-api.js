@@ -1244,7 +1244,11 @@ async function runAction(session,name,body={}){
     case 'daily': return claimDaily(jid)
     case 'missions.claim': return claimDailyMissions(jid)
     case 'level.claim': return claimLevelRewards(jid)
-    case 'work': return work(jid)
+    case 'work': {
+      const r=await work(jid)
+      if(r?.ok){await progressDailyMission(jid,'work').catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'work').catch(()=>{})}
+      return r
+    }
     case 'all': return runAllActivities(session)
     case 'deposit': return deposit(jid,body.amount)
     case 'withdraw': return withdraw(jid,positiveInt(body.amount,'Valor'))
@@ -1254,7 +1258,9 @@ async function runAction(session,name,body={}){
     }
     case 'battle': {
       const member=await groupTarget(session,body.targetJid)
-      return withTargetMeta(await battle(jid,member.jid,{expectedHp:body.expectedHp}),member)
+      const r=await battle(jid,member.jid,{expectedHp:body.expectedHp})
+      if(r?.ok){if(r.winner?.jid===jid)await progressDailyMission(jid,'battle').catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'battle').catch(()=>{})}
+      return withTargetMeta(r,member)
     }
     case 'petduel': {
       const member=await groupTarget(session,body.targetJid)
@@ -1264,7 +1270,11 @@ async function runAction(session,name,body={}){
       const member=await groupTarget(session,body.targetJid)
       return withTargetMeta(await robPlayer(jid,member.jid),member)
     }
-    case 'dungeon': return dungeon(jid)
+    case 'dungeon': {
+      const r=await dungeon(jid)
+      if(r?.ok&&r.won){await progressDailyMission(jid,'dungeon').catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'dungeon').catch(()=>{})}
+      return r
+    }
     case 'relationship.propose': {
       const member=await groupTarget(session,body.targetJid)
       return withTargetMeta(await proposeRelationship(jid,member.jid),member)
@@ -1327,7 +1337,11 @@ async function runAction(session,name,body={}){
     case 'pet.adopt': return adoptPet(jid,String(body.species||''),String(body.name||'Alpha'))
     case 'pet.select': return selectPet(jid,positiveInt(body.petId,'Pet'))
     case 'pet.rename': return renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))
-    case 'pet.action': return petAction(jid,String(body.action||''))
+    case 'pet.action': {
+      const action=String(body.action||''),r=await petAction(jid,action)
+      if(action==='treinar'&&r?.last_action){const key='pet_train:'+r.last_action;await progressDailyMission(jid,'pet_train',1,key).catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'pet_train',1,{sourceKey:'pet_train:'+jid+':'+r.last_action}).catch(()=>{})}
+      return r
+    }
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
 
@@ -1350,10 +1364,18 @@ async function runAction(session,name,body={}){
     case 'house.buy': return buyHouse(jid,String(body.id||body.input||''))
     case 'car.buy': return buyCar(jid,String(body.id||body.input||''))
     case 'car.sell': return sellCar(jid,String(body.id||body.input||''))
-    case 'uber': return driveUber(jid)
+    case 'uber': {
+      const r=await driveUber(jid)
+      if(r?.ok){await progressDailyMission(jid,'work').catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'work').catch(()=>{})}
+      return r
+    }
     case 'motorcycle.buy': return buyMotorcycle(jid,String(body.id||body.input||''))
     case 'motorcycle.sell': return sellMotorcycle(jid,String(body.id||body.input||''))
-    case 'ifood': return deliverIfood(jid)
+    case 'ifood': {
+      const r=await deliverIfood(jid)
+      if(r?.ok){await progressDailyMission(jid,'work').catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'work').catch(()=>{})}
+      return r
+    }
     case 'business.buy': return buyBusiness(jid,String(body.id||body.input||''))
     case 'business.collect': return collectBusinesses(jid)
     case 'business.upgrade': return upgradeBusiness(jid,String(body.id||body.input||''),body.targetLevel)
