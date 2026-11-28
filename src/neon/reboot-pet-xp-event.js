@@ -33,10 +33,13 @@ export async function provisionV2OwnerEventBudgets(c,type,eventId){
   if(policy.petBudget)await provision(allowanceKey(type,'',true),policy.petBudget)
   return Number(r.rowCount||0)
 }
-export async function applyV2OwnerEvent(c,jid,types,base,{pet=false,limit=2147483647,now=Date.now(),enabled=classesOnlyRebootEnabled(),roll=false}={}){
+export async function applyV2OwnerEvent(c,jid,types,base,{pet=false,limit=2147483647,now=Date.now(),enabled=classesOnlyRebootEnabled(),roll=false,incomeFloor=base}={}){
   if(!enabled||!Number.isSafeInteger(base)||base<=0||limit<=0)return roll?1:base
+  // In income activities, use the larger of the level reward and the budgeted event reward.
+  const floor=roll?base:Math.max(base,Number.isSafeInteger(incomeFloor)?incomeFloor:base)
+  const levelExtra=floor-base
   const entries=[...new Set(types)].filter(t=>Object.hasOwn(V2_OWNER_EVENT_POLICIES,t))
-  if(!entries.length)return roll?1:base
+  if(!entries.length)return roll?1:floor
   const candidates=await c.query(`
     SELECT b.key,b.value,(b.value->>'remaining')::int AS remaining,
       LEAST(p.max_multiplier,(e.value->>'multiplier')::numeric) AS multiplier
@@ -48,12 +51,12 @@ export async function applyV2OwnerEvent(c,jid,types,base,{pet=false,limit=214748
       AND (e.value->>'multiplier')::numeric>1
     ORDER BY b.key FOR UPDATE OF b
   `,[entries.map(t=>allowanceKey(t,jid,pet&&t==='raid')),entries.map(v2OwnerEventKey),entries.map(t=>V2_OWNER_EVENT_POLICIES[t].max),now])
-  const options=candidates.rows.map(r=>({...r,multiplier:Number(r.multiplier),extra:roll?1:Math.max(0,Math.min(limit,Number(r.remaining),Math.floor(base*(Number(r.multiplier)-1))))})).filter(r=>r.extra>0)
+  const options=candidates.rows.map(r=>({...r,multiplier:Number(r.multiplier),extra:roll?1:Math.max(0,Math.min(limit,Number(r.remaining),Math.floor(base*(Number(r.multiplier)-1)))-levelExtra)})).filter(r=>r.extra>0)
   options.sort((a,b)=>roll?b.multiplier-a.multiplier:b.extra-a.extra||b.multiplier-a.multiplier)
   const best=options[0]
-  if(!best)return roll?1:base
+  if(!best)return roll?1:floor
   await c.query("UPDATE trevo_settings SET value=jsonb_set(value,'{remaining}',to_jsonb($2::int)),updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key=$1",[best.key,Number(best.remaining)-best.extra])
-  return roll?best.multiplier:base+best.extra
+  return roll?best.multiplier:floor+best.extra
 }
 export async function provisionV2PetEventBudgets(c,eventId){
   return provisionV2OwnerEventBudgets(c,'pet',eventId)
