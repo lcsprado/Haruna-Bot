@@ -1504,7 +1504,7 @@ function petCollarControls(p){
 function petCollarShop(){
   const catalog=ui.data?.petCollars||[];
   if(!catalog.length)return '';
-  const pets=collection(),protectedCount=pets.filter(p=>catalog.some(c=>c.id===p.collar_id)).length;
+  const pets=collection().filter(p=>p.id!=null),protectedCount=pets.filter(p=>catalog.some(c=>c.id===p.collar_id)).length;
   const tab=ui.collarTab||'main';
   const tabs=[['shop','🛒 Loja'],['inventory','🎒 Minhas coleiras'],['equip','🐾 Equipar'],['remove','🔓 Remover'],['forge','🔨 Forja mítica'],['info','📖 Informações']];
   const nav='<div class="pet-actions">'+tabs.map(([id,label])=>'<button class="btn '+(tab===id?'primary':'')+'" data-collar-tab="'+id+'">'+label+'</button>').join('')+'</div>';
@@ -1512,7 +1512,7 @@ function petCollarShop(){
   if(tab==='shop')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • -'+Number(c.percent)+'% dano recebido</small></div>'+(c.price?'<button class="btn primary" data-collar-buy="'+esc(c.id)+'">'+money(c.price)+'</button>':'<button class="btn primary" data-collar-tab="forge">Forja</button>')+'</div>').join('')+'</div>';
   if(tab==='inventory')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • '+itemCount(c.id)+' livre(s) • '+pets.filter(p=>p.collar_id===c.id).length+' equipada(s)</small></div></div>').join('')+'</div>';
   if(tab==='forge'){
-    const cash=Number(ui.data?.profile?.cash||0);
+    const cash=Number(ui.data?.profile?.cash||0)+Number(ui.data?.profile?.bank||0);
     content='<h4>🔴 Coração de Adamantium • -25%</h4><div class="list">'+collarMaterials.map(([id,label,n])=>'<div class="list-row"><span>'+esc(label)+'</span><strong>'+(itemCount(id)>=n?'✅ ':'❌ ')+num(itemCount(id))+'/'+num(n)+' • faltam '+num(Math.max(0,n-itemCount(id)))+'</strong></div>').join('')+'<div class="list-row"><span>Custo</span><strong>'+money(500000)+' • Saldo '+money(cash)+'</strong></div></div><button class="btn primary" data-collar-craft>Fabricar</button>';
   }
   if(tab==='equip'||tab==='remove'){
