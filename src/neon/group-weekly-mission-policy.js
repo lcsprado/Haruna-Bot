@@ -19,7 +19,7 @@ export function groupWeeklyChoice(chatJid,weekKey){
   return GROUP_WEEKLY_CHOICES[((ordinal+parity)%2+2)%2]
 }
 
-export const GROUP_WEEKLY_V2_START='2026-11-29';
+export const GROUP_WEEKLY_V2_START='2026-12-05';
 export const GROUP_WEEKLY_V2_CHOICES=Object.freeze([
  {type:'work',title:'Mutirão Alpha — Trabalhar juntos',target:60,reward:100000,unit:'ações'},
  {type:'battle',title:'Arena Alpha — Batalhar juntos',target:30,reward:120000,unit:'duelos'},
@@ -35,6 +35,6 @@ export function groupWeeklyV2Choice(weekKey){
  if(week<1||week>53)throw Error('Semana inválida');
  const ordinal=Math.floor((Math.floor(Date.UTC(year,0,1)/86400000)-new Date(Date.UTC(year,0,1)).getUTCDay())/7)+week-1;
  // Começa pelo Mutirão, depois as seis atividades em sequência.
- const epoch=Math.floor((Math.floor(Date.UTC(2026,0,1)/86400000)-new Date(Date.UTC(2026,0,1)).getUTCDay())/7)+48;
+ const epoch=Math.floor((Math.floor(Date.UTC(2026,0,1)/86400000)-new Date(Date.UTC(2026,0,1)).getUTCDay())/7)+49;
  return GROUP_WEEKLY_V2_CHOICES[((ordinal-epoch)%6+6)%6];
 }
