@@ -42,6 +42,7 @@ import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {chooseEconomicPetPotion} from './pet-potion-economy.js'
 import {petCombatExperience} from './reboot-pet-economy.js'
 import {mitigateRaidPetDamage,estimatedRaidPetHit} from './raid-pet-mitigation.js'
+import {petCollarDamage,petCollarEstimate} from './pet-collars.js'
 import {raidPlayerDefenseCoefficient} from './raid-pet-mitigation.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
@@ -1078,7 +1079,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null,options={}){
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
     const usePet=options.usePet!==false
-    const pet=usePet?((await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null):null
+    const pet=usePet?((await c.query('SELECT p.*,pc.id,pc.collar_id FROM pets p LEFT JOIN pet_collection pc ON pc.jid=p.jid AND pc.active=TRUE AND pc.species=p.species WHERE p.jid=$1 FOR UPDATE OF p',[jid])).rows[0]||null):null
     let reservePet=usePet?await raidReservePet(c,jid):null
     let combatPet=raidCombatPetState(pet,1)
     // O mesmo Pecado nunca luta como personagem e pet.
@@ -1218,6 +1219,7 @@ function raidCombatPetState(pet,slot=1){
   if(!pet||PECADOS_HERO_IDS.includes(String(pet.species||'')))return null
   return {
     collectionId:Number(pet.id||0)||null,teamSlot:Number(slot)||1,
+    collarId:classesOnlyRebootEnabled()?pet.collar_id||null:null,
     name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),
     energy:Math.min(petMaxEnergy(pet.level,pet.species),Math.max(0,Number(pet.energy)||0)),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),
     maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
@@ -1346,7 +1348,7 @@ export async function startRaid(chat,host,level=null,options={}){
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const forgeRows=(await c.query('SELECT jid,item_id,stars,level FROM equipment_star_forges WHERE jid=ANY($1::text[])',[ids])).rows
-    const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    const pets=(await c.query('SELECT p.*,pc.id,pc.collar_id FROM pets p LEFT JOIN pet_collection pc ON pc.jid=p.jid AND pc.active=TRUE AND pc.species=p.species WHERE p.jid=ANY($1::text[]) FOR UPDATE OF p',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const usePet=s.players[jid]?.usePet!==false&&(Boolean(loteAttemptId)||jid!==host||options.usePet!==false)
@@ -1871,7 +1873,7 @@ async function raidRoundCore(chat,level){
       // Se o Principal foi curado fora da Raid enquanto o Reserva estava em campo,
       // a próxima rodada volta a priorizar automaticamente o Slot 1.
       if(p.pet&&Number(p.pet.teamSlot)===3){
-        const primaryRow=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]||null
+        const primaryRow=(await c.query('SELECT p.*,pc.id,pc.collar_id FROM pets p LEFT JOIN pet_collection pc ON pc.jid=p.jid AND pc.active=TRUE AND pc.species=p.species WHERE p.jid=$1 FOR UPDATE OF p',[p.jid])).rows[0]||null
         const primary=raidCombatPetState(primaryRow,1)
         if(primary&&primary.species!==p.heroId&&Number(primary.hp)>0&&Number(primary.energy)>0){
           await persistRaidCombatPet(c,p.jid,p.pet)
@@ -1896,7 +1898,7 @@ async function raidRoundCore(chat,level){
             client:c,jid:p.jid,pet:p.pet,
             maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),
             choosePotion:raidPetPotion,persistPet:persistRaidCombatPet,
-            context:'raid-revive',imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode})
+            context:'raid-revive',imminentDamage:petCollarEstimate(estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),p.pet?.collarId)
           })
           if(healed){
             p.petPotionHealing=Number(p.petPotionHealing||0)+Number(healed.heal)
@@ -2131,7 +2133,7 @@ async function raidRoundCore(chat,level){
       let petDamage=0,petFainted=false,autoPetHeal=preRoundPetHeals.get(p.jid)||null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
-        petDamage=mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))),{mode:s.mode})
+        petDamage=petCollarDamage(mitigateRaidPetDamage(cfg.level,Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense))),{mode:s.mode}),p.pet.collarId)
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
         // Autocura preventiva da Raid, igual ao Boss: abaixo de 35% do HP,
@@ -2141,7 +2143,7 @@ async function raidRoundCore(chat,level){
         if(!petFainted&&!autoPetHeal&&Number(p.pet.hp)/maxPetHp<.35){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
           const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
-            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),context:'raid-preventive'})
+            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:petCollarEstimate(estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),p.pet?.collarId),context:'raid-preventive'})
           if(chosenPet){
             const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-preventive',petName:p.pet.name})
             if(spent.spent){
@@ -2170,7 +2172,7 @@ async function raidRoundCore(chat,level){
           }else if(!autoPetHeal){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
             const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
-              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),context:'raid-fainted'})
+              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:petCollarEstimate(estimatedRaidPetHit(cfg.level,cfg.atk,{mode:s.mode}),p.pet?.collarId),context:'raid-fainted'})
             if(chosenPet){
               const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-fainted',petName:p.pet.name})
               if(spent.spent){
@@ -3583,8 +3585,8 @@ export async function startBoss(chat){
 async function loadBossCombatPet(c,jid,slot=1){
   slot=Number(slot)||1
   if(slot===1){
-    const p=(await c.query('SELECT species,name,level,xp,energy,hp,max_hp FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
-    return p&&!PECADOS_HERO_IDS.includes(String(p.species||''))?{...p,teamSlot:1,collectionId:null}:null
+    const p=(await c.query('SELECT p.*,pc.id,pc.collar_id FROM pets p LEFT JOIN pet_collection pc ON pc.jid=p.jid AND pc.active=TRUE AND pc.species=p.species WHERE p.jid=$1 FOR UPDATE OF p',[jid])).rows[0]||null
+    return p&&!PECADOS_HERO_IDS.includes(String(p.species||''))?{...p,teamSlot:1,collectionId:Number(p.id||0)||null}:null
   }
   const p=(await c.query(`SELECT p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
     WHERE t.jid=$1 AND t.slot=$2 FOR UPDATE OF p`,[jid,slot])).rows[0]||null
@@ -3599,7 +3601,7 @@ function healBossCombatPet(c,jid,pet,bossAtk=0){
     client:c,jid,pet,
     maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
     choosePotion:raidPetPotion,persistPet:persistBossCombatPet,
-    imminentDamage:Math.ceil(Number(bossAtk||0)*.52)
+    imminentDamage:petCollarEstimate(Math.ceil(Number(bossAtk||0)*.52),classesOnlyRebootEnabled()?pet.collar_id:null)
   })
 }
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
@@ -3621,6 +3623,8 @@ async function attackBossCore(chat,jid,name,usePet=true,options={}){
   if(!options.skipEnsureUser) await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
   return retryBossDeadlock(()=>tx(async c=>{
+    // Serialize the first attack against collar changes, before any boss room locks.
+    if(classesOnlyRebootEnabled())await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['raid-membership:'+jid])
     const now=Math.floor(Date.now()/1000)
     // Uma consulta para os dois impedimentos, preservando a prioridade do sono.
     const blocked=await c.query(`
@@ -3909,7 +3913,7 @@ async function attackBossCore(chat,jid,name,usePet=true,options={}){
       php=Math.max(0,php-bossDamage+Number(defResult.healAfter||0))
       missionClassHeal+=Math.max(0,Math.floor(Math.min(php,effectiveMaxHp)-missionBeforeDefenseHeal))
       if(pet){
-        const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
+        const petTaken=petCollarDamage(Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0))))),classesOnlyRebootEnabled()?pet.collar_id:null)
         pet.hp=Math.max(0,Number(pet.hp)-petTaken)
         pet.petDamageTaken=petTaken
         pet.petFainted=pet.hp<=0
