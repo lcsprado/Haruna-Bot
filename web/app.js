@@ -2618,13 +2618,13 @@ function renderMarket(){
   const available=inv.map(i=>({
     ...i,
     market_quantity:Math.max(0,Number(i.regular_sellable_quantity||0))
-  })).filter(i=>i.market_quantity>0 && i.sellable!==false);
+  })).map(i=>({...i,market_quantity:Math.min(i.market_quantity,Number(i.market_max_quantity??i.market_quantity))})).filter(i=>i.market_quantity>0 && i.sellable!==false);
   return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><span class="tag">'+market.length+' ativos</span></div>'+
     '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+
     '<div class="grid cards">'+(market.length?market.map(x=>'<div class="card item-card"><div class="item-icon">📣</div><h3>'+esc(x.name)+'</h3><p>'+esc(x.seller_name||'Jogador')+' • x'+num(x.quantity)+' • expira em '+Math.ceil(Number(x.remaining_seconds||0)/60)+' min</p><strong>'+money(x.price)+'</strong><div class="item-actions">'+(x.seller_jid===ui.data.identity.jid?'<button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button>':'<button class="btn primary" data-market-buy="'+x.id+'">Comprar</button>')+'</div></div>').join(''):'<div class="empty">Nenhum anúncio ativo.</div>')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Meus anúncios</h3><small>'+mine.length+'</small></div><div class="list">'+(mine.length?mine.map(x=>'<div class="list-row"><span>'+esc(x.name)+' x'+num(x.quantity)+'</span><span>'+money(x.price)+' <button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button></span></div>').join(''):'<div class="empty">Você não tem anúncios ativos.</div>')+'</div></div>'+
     '<div class="section card"><div class="section-title"><h3>Anunciar do inventário</h3><small>'+available.length+' itens disponíveis</small></div>'+
-      (available.length?'<div class="market-inventory">'+available.map(i=>'<div class="market-inventory-row"><div><strong>'+esc(i.name)+'</strong><small>x'+num(i.market_quantity)+' livre(s)'+(i.equipped?' • 1 equipada protegida':'')+(Number(i.price)>0?' • referência '+money(i.price)+' cada':'')+'</small></div><button class="btn primary" data-market-announce="'+esc(i.item_id)+'" data-market-max="'+num(i.market_quantity)+'" data-market-ref="'+num(i.price||0)+'">Anunciar</button></div>').join('')+'</div>':'<div class="empty">Você não possui itens anunciáveis.</div>')+
+      (available.length?'<div class="market-inventory">'+available.map(i=>'<div class="market-inventory-row"><div><strong>'+esc(i.name)+'</strong><small>x'+num(i.market_quantity)+' livre(s)'+(i.equipped?' • 1 equipada protegida':'')+(Number(i.price)>0?' • referência '+money(i.price)+' cada':'')+'</small></div><button class="btn primary" data-market-announce="'+esc(i.item_id)+'" data-market-max="'+Number(i.market_quantity)+'" data-market-ref="'+Number(i.price||i.sell_unit||0)+'">Anunciar</button></div>').join('')+'</div>':'<div class="empty">Você não possui itens anunciáveis.</div>')+
     '</div>'+resultPanel();
 }
 
@@ -3776,10 +3776,16 @@ function bind(){
     const itemId=x.dataset.marketAnnounce;
     const maxQty=Math.max(1,Number(x.dataset.marketMax||1));
     const ref=Math.max(0,Number(x.dataset.marketRef||0));
-    const qty=Math.min(maxQty,Math.max(1,Number(prompt('Quantidade para anunciar (máx. '+maxQty+'):','1'))||1));
-    const suggested=ref>0?ref*qty:1000;
-    const price=Number(prompt('Preço total do anúncio:\nSugestão pela referência atual: '+money(suggested),String(suggested)));
-    if(price>0) doAction('market.create',{itemId,qty,price},{});
+    const rawQty=prompt('Quantidade para anunciar (máx. '+maxQty+'):','1');
+    if(rawQty===null)return;
+    const qty=Number(rawQty);
+    if(!Number.isSafeInteger(qty)||qty<1||qty>maxQty){alert('Quantidade inválida.');return;}
+    const suggested=Math.min(5000000,ref>0?ref*qty:1000);
+    const rawPrice=prompt('Preço total do anúncio (máx. R$ 5 milhões):\nSugestão pela referência atual: '+money(suggested),String(suggested));
+    if(rawPrice===null)return;
+    const price=Number(rawPrice);
+    if(!Number.isSafeInteger(price)||price<1||price>5000000){alert('Preço total inválido.');return;}
+    doAction('market.create',{itemId,qty,price},{});
   });
 
   document.querySelectorAll('[data-clan-create]').forEach(x=>x.onclick=()=>{
