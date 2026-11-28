@@ -6,6 +6,18 @@ export const MINING_TICK_SECONDS=300
 export const MINING_HOURLY=Object.freeze({
  madeira:{cash:1500,xp:150},ferro:{cash:2000,xp:200},aco:{cash:3000,xp:300},ouro:{cash:4000,xp:375},diamante:{cash:5000,xp:500}
 })
+// Aço é a referência da nova curva; as demais picaretas preservam sua proporção.
+export const MINING_INCOME_VERSION=3
+const CASH_CURVE=Object.freeze([[0,0],[1800,2000],[3600,4500],[7200,10000],[14400,22000],[28800,48000],[43200,75000]])
+export function miningSessionCash(id,seconds,policyVersion=MINING_INCOME_VERSION){
+ const hourly=MINING_HOURLY[id]?.cash
+ if(!hourly||!Number.isSafeInteger(seconds)||seconds<0||seconds>43200)throw Error('Receita de mineração inválida.')
+ if(Number(policyVersion)!==MINING_INCOME_VERSION)return Math.floor(hourly*seconds/3600)
+ const i=CASH_CURVE.findIndex(([t])=>seconds<=t)
+ if(i===0)return 0
+ const [t0,c0]=CASH_CURVE[i-1], [t1,c1]=CASH_CURVE[i]
+ return Math.floor((c0*(t1-t0)+(c1-c0)*(seconds-t0))*hourly/((t1-t0)*MINING_HOURLY.aco.cash))
+}
 export function parseMiningDuration(raw='1h'){
  const s=String(raw).trim().toLowerCase()
  if(s==='30m'||s==='30min')return 1800
@@ -16,7 +28,7 @@ export function miningSessionQuote(id,uses,duration=3600){
  if(duration!==1800&&(!Number.isInteger(duration)||duration<3600||duration>43200||duration%3600!==0))throw Error('Duração inválida.')
  const repair=miningRepairQuote(id,uses),cost=Math.ceil(duration/3600)
  if(uses<cost)throw Error('Resistência insuficiente. Repare ou escolha um tempo menor.')
- return {...miningQuote(id),durationSeconds:duration,usesBefore:uses,usesAfter:uses-cost,usesCost:cost,cash:Math.floor(MINING_HOURLY[id].cash*duration/3600),xp:Math.floor(MINING_HOURLY[id].xp*duration/3600)}
+ return {...miningQuote(id),durationSeconds:duration,usesBefore:uses,usesAfter:uses-cost,usesCost:cost,cash:miningSessionCash(id,duration),xp:Math.floor(MINING_HOURLY[id].xp*duration/3600)}
 }
 export const miningDurationOptions=uses=>[1800,...Array.from({length:12},(_,i)=>(i+1)*3600)].filter(d=>Math.ceil(d/3600)<=uses)
 export const newMiningSeed=()=>randomBytes(32).toString('hex')
@@ -36,5 +48,5 @@ export function miningSessionOutcome(row,now){
   const stone=miningStoneVariant(base.id,id,roll(seed,i,'rarity'))
   stones[stone]=(stones[stone]||0)+1
  }
- return {ticks,stones,cash:Math.floor(MINING_HOURLY[id].cash*ticks/12),xp:Math.floor(MINING_HOURLY[id].xp*ticks/12)}
+ return {ticks,stones,cash:miningSessionCash(id,ticks*MINING_TICK_SECONDS,Number(row.policy_version)||2),xp:Math.floor(MINING_HOURLY[id].xp*ticks/12)}
 }
