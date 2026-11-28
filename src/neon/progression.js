@@ -4,6 +4,7 @@ import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {applyV2OwnerEvent} from './reboot-pet-xp-event.js'
+import {levelIncomeGross} from './economy-income-v21.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds,businessCollectionCooldownRemainingSeconds} from './business-profit.js'
 import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
@@ -926,7 +927,9 @@ export async function deliverIfood(jid,taxMultiplier=1){
     })
     const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const baseGross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const gross=rebootEconomyEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro','corre'],baseGross):baseGross
+    const level=rebootEconomyEnabled()?Math.max(1,Number((await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level)||1):1
+    const incomeGross=rebootEconomyEnabled()?levelIncomeGross(baseGross,level):baseGross
+    const gross=rebootEconomyEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro','corre'],baseGross,{incomeFloor:incomeGross}):baseGross
     const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
@@ -934,7 +937,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | iFood`])
     if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
-    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:rebootEconomyEnabled()?gross/Math.max(1,baseGross):moneyMultiplier}
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,levelIncomeBonus:incomeGross-baseGross,eventMultiplier:rebootEconomyEnabled()?gross/Math.max(1,incomeGross):moneyMultiplier}
   })
 }
 
@@ -964,7 +967,9 @@ export async function driveUber(jid,taxMultiplier=1){
     })
     const moneyMultiplier=rebootEconomyEnabled()?1:Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const baseGross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
-    const gross=rebootEconomyEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro','corre'],baseGross):baseGross
+    const level=rebootEconomyEnabled()?Math.max(1,Number((await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level)||1):1
+    const incomeGross=rebootEconomyEnabled()?levelIncomeGross(baseGross,level):baseGross
+    const gross=rebootEconomyEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro','corre'],baseGross,{incomeFloor:incomeGross}):baseGross
     const {taxRate,tax,operating,total}=v2TravelSettlement(gross,{legacyTaxMultiplier:taxMultiplier})
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
@@ -972,7 +977,7 @@ export async function driveUber(jid,taxMultiplier=1){
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | Uber`])
     if(operating>0)await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'transport_operation',$3)",[jid,operating,'Custo operacional V2 | transporte'])
-    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,eventMultiplier:rebootEconomyEnabled()?gross/Math.max(1,baseGross):moneyMultiplier}
+    return {ok:true,details,gross,tax,taxRate,operating,total,cooldown,levelIncomeBonus:incomeGross-baseGross,eventMultiplier:rebootEconomyEnabled()?gross/Math.max(1,incomeGross):moneyMultiplier}
   })
 }
 
