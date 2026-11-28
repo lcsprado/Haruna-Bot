@@ -4873,6 +4873,7 @@ const rawInput=String(listSelection || body || '').trim()
 const input=rawInput.toLowerCase()
 if(String(flow.stage||'').startsWith('collar_')){
  if(isGroup&&!isOwner&&!(await groupModuleEnabled(chat,'rpg_enabled'))){clearQuickFlow(chat,sender);await reply('🔒 RPG desativado neste grupo.');return true}
+ if(getQuickFlow(chat,sender)!==flow)return true
  await openCollarMenu(chat,sender,reply,flow.stage.slice(7),flow.data,input)
  return true
 }
