@@ -1489,6 +1489,22 @@ function specialtyText(p){
 function petPortrait(species){
   return '<div class="pet-portrait">'+petVisualMarkup(species,'pet-official-art')+'</div>';
 }
+function petCollarControls(p){
+  const catalog=ui.data?.petCollars||[];
+  if(!catalog.length||!p.id)return '';
+  const equipped=catalog.find(c=>c.id===p.collar_id);
+  const owned=catalog.filter(c=>itemCount(c.id)>0&&c.id!==p.collar_id);
+  return '<div class="section"><p>🛡️ <strong>'+esc(equipped?equipped.name+' • -'+equipped.percent+'% dano recebido':'Sem coleira')+'</strong></p>'+
+    (owned.length?'<select data-collar-select="'+Number(p.id)+'" aria-label="Coleira para o pet">'+owned.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+' (-'+Number(c.percent)+'%) • ×'+itemCount(c.id)+'</option>').join('')+'</select><button class="btn good" data-collar-equip="'+Number(p.id)+'">Equipar</button>':'')+
+    (equipped?'<button class="btn" data-collar-remove="'+Number(p.id)+'">Remover coleira</button>':'')+'</div>';
+}
+function petCollarShop(){
+  const catalog=ui.data?.petCollars||[];
+  if(!catalog.length)return '';
+  return '<div class="section card"><div class="section-title"><h3>🛡️ Coleiras defensivas</h3><small>Somente dano do pet nas Raids e Boss</small></div><div class="list">'+catalog.map(c=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small> -'+Number(c.percent)+'% dano recebido • '+itemCount(c.id)+' livre(s)</small></div>'+
+    (c.price?'<button class="btn primary" data-collar-buy="'+esc(c.id)+'">'+money(c.price)+'</button>':'<button class="btn primary" data-collar-craft>Fabricar</button>')+'</div>').join('')+
+    '</div><p class="muted">Mítica: 1 Égide Primordial + 500 fragmentos Raid 10 + 300 Raid 20 + 150 Raid 30 + 50 Raid 60 + R$ 500.000. Equipe pelo cartão individual do pet.</p></div>';
+}
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
   const active=Boolean(p.active);
@@ -1512,7 +1528,7 @@ function ownedPetCard(p){
     '<div class="pet-vitals"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(maxHp)+'</strong><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
     '<div><span>⚡ Energia</span><strong>'+num(p.energy)+'/'+num(p.max_energy||100)+'</strong><div class="progress"><span style="width:'+pct(Number(p.energy||0)/Math.max(1,Number(p.max_energy||100))*100)+'%"></span></div></div></div>'+
     '<div class="pet-needs"><span>🍗 '+num(p.hunger)+'/100</span><span>🧼 '+num(p.hygiene)+'/100</span></div>'+
-    '<p>'+esc(specialtyText(cat))+'</p>'+
+    '<p>'+esc(specialtyText(cat))+'</p>'+petCollarControls(p)+
     '<div class="pet-actions">'+
       healButton+energyButton+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
@@ -1794,6 +1810,7 @@ function renderPets(){
       '<div class="pet-team-save-bar"><button class="btn primary" type="button" data-pet-team-save '+(!hasChanges||!valid||ui.petTeamSaving?'disabled':'')+'>'+(ui.petTeamSaving?'Salvando…':'✓ Salvar time')+'</button>'+
       (hasChanges?'<button class="btn" type="button" data-pet-team-reset>Desfazer escolhas</button>':'<small>Escolha os pets para comparar as sinergias antes de salvar.</small>')+'</div>'+
     '</div>' : '')+
+    (ui.petTab==='owned'?petCollarShop():'')+
     (ui.petTab==='raid'?'<div class="section-title pet-raid-title"><h3>✨ Invocações lendárias de Raid</h3><small>Raids 10–70 • materiais e chances exibidos em cada pet</small></div>':'')+
     '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">'+(ui.petTab==='raid'?'Catálogo de Raids indisponível. Atualize a Web ou tente novamente.':'Nenhum pet na sua coleção.')+'</div>')+'</div>'+
     petTeamPickerModal();
@@ -3545,6 +3562,20 @@ function bind(){
       return;
     }
     ui.petTeamSaving=false;
+  });
+  document.querySelectorAll('[data-collar-buy]').forEach(x=>x.onclick=()=>{
+    const item=(ui.data?.petCollars||[]).find(c=>c.id===x.dataset.collarBuy);
+    if(item&&confirm('Comprar '+item.name+' por '+money(item.price)+'?'))doAction('pet.collar.buy',{itemId:item.id},{success:'Coleira comprada.'});
+  });
+  document.querySelectorAll('[data-collar-craft]').forEach(x=>x.onclick=()=>{
+    if(confirm('Fabricar a coleira mítica por R$ 500.000 e os materiais indicados?'))doAction('pet.collar.craft',{},{success:'Coleira mítica fabricada.'});
+  });
+  document.querySelectorAll('[data-collar-equip]').forEach(x=>x.onclick=()=>{
+    const petId=Number(x.dataset.collarEquip),itemId=document.querySelector('[data-collar-select="'+petId+'"]')?.value;
+    if(itemId)doAction('pet.collar.equip',{petId,itemId},{success:'Coleira equipada.'});
+  });
+  document.querySelectorAll('[data-collar-remove]').forEach(x=>x.onclick=()=>{
+    doAction('pet.collar.remove',{petId:Number(x.dataset.collarRemove)},{success:'Coleira devolvida ao inventário.'});
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
