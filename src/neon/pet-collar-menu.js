@@ -27,7 +27,7 @@ export async function collarMenu({jid,chat,stage='main',data={},input,reply,setF
  const rows=eligible.slice(page*5,page*5+5)
  return show('pets',{mode,page,itemId,ids:rows.map(p=>p.id)},'🐾 *'+(mode==='remove'?'REMOVER':'EQUIPAR')+' COLEIRA*\n\n'+(rows.map((p,i)=>(i+1)+'. *'+p.name+'*'+(slots.has(Number(p.id))?' • Time '+slots.get(Number(p.id)):'')+'\n🛡️ '+(current(p)?current(p).name+' (-'+current(p).percent+'%)':'Sem coleira')).join('\n\n')||'Nenhum pet disponível.')+'\n\nPágina '+(page+1)+'/'+total+(page>0?'\n8️⃣ Página anterior':'')+(page+1<total?'\n9️⃣ Próxima página':'')+nav)
  }
- const select=(p)=>{const options=catalog.filter(c=>count(c.id)>0&&p.collar_id!==c.id);return show('select',{petId:p.id,ids:options.map(c=>c.id)},'🐾 *'+p.name+'*\n🛡️ Atual: '+(current(p)?current(p).name+' (-'+current(p).percent+'%)':'Sem coleira')+'\n\n'+(options.map((c,i)=>(i+1)+'. '+label(c)+' — '+c.percent+'% • '+count(c.id)+' livre(s)').join('\n')||'Nenhuma coleira livre. Visite a loja.')+nav)}
+ const select=(p)=>{const options=catalog.filter(c=>count(c.id)>0&&p.collar_id!==c.id);return show('select',{petId:p.id,ids:options.map(c=>c.id)},'🐾 *'+p.name+'*\n🛡️ Atual: '+(current(p)?current(p).name+' (-'+current(p).percent+'%)':'Sem coleira')+'\n\n'+(options.map((c,i)=>(i+1)+'. '+label(c)+' — '+c.percent+'% • '+count(c.id)+' livre(s)').join('\n')||'Nenhuma coleira livre. Visite a loja.')+(current(p)?'\n7️⃣ Remover coleira atual':'')+nav)}
  const compare=(p,c)=>show('equip_confirm',{petId:p.id,itemId:c?.id||null,previous:p.collar_id||null},'🛡️ *CONFIRMAR '+(c?'EQUIPAMENTO':'REMOÇÃO')+'*\n\n🐾 '+p.name+'\nAtual: '+(current(p)?.percent||0)+'%\nNova: '+(c?.percent||0)+'%'+(current(p)?'\nA coleira anterior volta ao inventário.':'')+'\n\n1️⃣ Confirmar'+nav)
  const digit=/^[0-9]$/.test(String(input??''))?Number(input):-1
  if(input==null){const p=pets.find(p=>Number(p.id)===Number(data.petId));return p?select(p):main()}
@@ -55,7 +55,7 @@ export async function collarMenu({jid,chat,stage='main',data={},input,reply,setF
  const p=pets.find(p=>Number(p.id)===Number(data.ids?.[digit-1]));if(p){if(data.mode==='remove')return compare(p,null);if(data.itemId){const c=catalog.find(c=>c.id===data.itemId);if(c&&count(c.id)>0)return compare(p,c);return select(p)}return select(p)}
  }
  if(stage==='select'){
- const p=pets.find(p=>Number(p.id)===Number(data.petId));const c=catalog.find(c=>c.id===data.ids?.[digit-1]);if(p&&c&&count(c.id)>0)return compare(p,c)
+ const p=pets.find(p=>Number(p.id)===Number(data.petId));if(p&&digit===7&&current(p))return compare(p,null);const c=catalog.find(c=>c.id===data.ids?.[digit-1]);if(p&&c&&count(c.id)>0)return compare(p,c)
  }
  if(stage==='equip_confirm'&&digit===1){
  const p=pets.find(p=>Number(p.id)===Number(data.petId));if(!p||(p.collar_id||null)!==data.previous){await reply('⚠️ Equipamento mudou. Selecione novamente.');return main()}
