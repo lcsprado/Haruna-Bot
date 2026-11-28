@@ -8,7 +8,7 @@ import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissions
 import {businessIntervalGross,businessCollectionElapsedSeconds,businessCollectionCooldownRemainingSeconds} from './business-profit.js'
 import {rebootEconomyEnabled,V2_BUSINESS_ECONOMY,V2_GROUP_FLASH,v2GroupFlashBudgetRemaining,v2GroupFlashCash,candidateBusinessCatalog,businessIntervalGrossV2,businessSettlementV2,businessV3Enabled} from './reboot-economy-policy.js'
 import {BUSINESS_V3_LEVEL_GROWTH_PERCENT,BUSINESS_V3_UPGRADE_PRICE_RATES} from './business-rebalance-v3.js'
-import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
+import {groupWeeklyChoice,groupWeeklyV2Choice,GROUP_WEEKLY_V2_START} from './group-weekly-mission-policy.js'
 import {v2TransportFare,v2ManualPaidFleet,v2TravelSettlement,v2CltTripNet} from './reboot-transport-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
@@ -1609,7 +1609,8 @@ function groupWeekKey(){
 export async function getGroupMission(chatJid){
   const week=groupWeekKey()
   const base=groupWeeklyChoice(chatJid,week)
-  const m=rebootEconomyEnabled()?{...base,reward:Math.floor(base.reward/10)}:base
+  const scaled=rebootEconomyEnabled()&&new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START
+  const m=scaled?groupWeeklyV2Choice(week):rebootEconomyEnabled()?{...base,reward:Math.floor(base.reward/10)}:base
   // Missões de quiz abertas são convertidas sem apagar progresso, membros ou
   // resgates. Missões concluídas e semanas anteriores são preservadas.
   // Se o progresso legado superar a nova meta, falta uma ação válida para fechar.
@@ -1625,21 +1626,32 @@ export async function getGroupMission(chatJid){
     [chatJid,week,m.type,m.title,m.target,m.reward])
   const {rows}=await db.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2',[chatJid,week])
   const row=rows[0]
-  return rebootEconomyEnabled()?{...row,reward_cash:Math.min(Number(row.reward_cash),m.reward)}:row
+  return rebootEconomyEnabled()&&!scaled?{...row,reward_cash:Math.min(Number(row.reward_cash),m.reward)}:row
 }
 
-export async function progressGroupMission(chatJid,jid,type,amount=1){
+export async function progressGroupMission(chatJid,jid,type,amount=1,options={}){
   if(!String(chatJid).endsWith('@g.us')) return null
   const m=await getGroupMission(chatJid)
   if(m.mission_type!==type || m.completed) return m
+  const add=Math.floor(Number(amount))
+  if(!Number.isSafeInteger(add)||add<1)return m
+  const contributors=[...new Set(Array.isArray(jid)?jid:[jid])].filter(Boolean)
+  if(!contributors.length||(type==='raid_coop'&&contributors.length<2))return m
   return tx(async client=>{
     const {rows}=await client.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2 FOR UPDATE',[chatJid,m.week_key])
-    const cur=rows[0]; if(cur.completed) return cur
-    const add=Math.max(1,Number(amount)||1)
-    await client.query(`INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution)
+    const cur=rows[0]; if(!cur||cur.completed||cur.mission_type!==type) return cur
+    if(options.sourceKey){
+      const marker='group-mission-event:'+chatJid+':'+m.week_key+':'+String(options.sourceKey).slice(0,180)
+      const recorded=await client.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,'{}'::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT DO NOTHING RETURNING key",[marker])
+      if(!recorded.rowCount)return cur
+    }
+    for(const member of contributors)await client.query(`INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution)
       VALUES($1,$2,$3,$4) ON CONFLICT(chat_jid,week_key,jid)
-      DO UPDATE SET contribution=group_mission_members.contribution+EXCLUDED.contribution`,[chatJid,m.week_key,jid,add])
-    const next=Math.min(Number(cur.target),Number(cur.progress)+add), done=next>=Number(cur.target)
+      DO UPDATE SET contribution=group_mission_members.contribution+EXCLUDED.contribution`,[chatJid,m.week_key,member,add])
+    const next=Math.min(Number(cur.target),Number(cur.progress)+add)
+    const scaled=rebootEconomyEnabled()&&Number(cur.reward_cash)>=100000
+    const members=scaled&&next>=Number(cur.target)?Number((await client.query('SELECT count(*) AS total FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND contribution>0',[chatJid,m.week_key])).rows[0]?.total||0):0
+    const done=next>=Number(cur.target)&&(!scaled||members>=2)
     const r=await client.query('UPDATE group_missions SET progress=$1,completed=$2 WHERE chat_jid=$3 AND week_key=$4 RETURNING *',[next,done,chatJid,m.week_key])
     return r.rows[0]
   })
