@@ -16,7 +16,7 @@ import {
   petStyleLabel, getEquipmentInfo, equipmentStatsAtLevel, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
+  setPetTeam, summonLegendaryPet, getPetCollarCatalog,buyPetCollar,craftPetCollar,equipPetCollar,getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment, sellItemsBatch,
@@ -578,6 +578,7 @@ async function playerBootstrap(session){
   return {
     syncedAt:now(),
     rebootV2:classesOnlyRebootEnabled(),
+    petCollars:getPetCollarCatalog(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,combatProfile,activeHeroCombat,inventory,appliedStoneUpgrades,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
@@ -1342,6 +1343,10 @@ async function runAction(session,name,body={}){
       if(action==='treinar'&&r?.last_action){const key='pet_train:'+r.last_action;await progressDailyMission(jid,'pet_train',1,key).catch(()=>{});if(session.chatJid)await progressGroupMission(session.chatJid,jid,'pet_train',1,{sourceKey:'pet_train:'+jid+':'+r.last_action}).catch(()=>{})}
       return r
     }
+    case 'pet.collar.buy': return buyPetCollar(jid,String(body.itemId||''))
+    case 'pet.collar.craft': return craftPetCollar(jid)
+    case 'pet.collar.equip': return equipPetCollar(jid,positiveInt(body.petId,'Pet'),String(body.itemId||''))
+    case 'pet.collar.remove': return equipPetCollar(jid,positiveInt(body.petId,'Pet'),null)
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
 
