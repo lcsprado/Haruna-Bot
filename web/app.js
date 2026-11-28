@@ -1219,7 +1219,7 @@ async function logout(remote){
   }
   if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
   ui.avatarUrl=''; ui.avatarFetchedAt=0;
-  ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
+  ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0; ui.collarTab='main';ui.collarPage=0;ui.collarBought=null;
   ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
   ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';
   localStorage.removeItem(TOKEN_KEY);
@@ -1489,21 +1489,39 @@ function specialtyText(p){
 function petPortrait(species){
   return '<div class="pet-portrait">'+petVisualMarkup(species,'pet-official-art')+'</div>';
 }
+const collarRanks=['⚪ Comum','🟢 Incomum','🔵 Rara','🟣 Épica','🟠 Lendária','🔴 Mítica'];
+const collarMaterials=[['coleira_egide_primordial','Égide Primordial',1],['nucleo_pedra','Fragmentos Raid 10',500],['olho_abissal','Fragmentos Raid 20',300],['essencia_rei_abissal','Fragmentos Raid 30',150],['fragmento_caos','Fragmentos Raid 60',50]];
+function collarName(c){return c?c.name+' (-'+Number(c.percent)+'%)':'Sem coleira'}
 function petCollarControls(p){
   const catalog=ui.data?.petCollars||[];
   if(!catalog.length||!p.id)return '';
   const equipped=catalog.find(c=>c.id===p.collar_id);
   const owned=catalog.filter(c=>itemCount(c.id)>0&&c.id!==p.collar_id);
-  return '<div class="section"><p>🛡️ <strong>'+esc(equipped?equipped.name+' • -'+equipped.percent+'% dano recebido':'Sem coleira')+'</strong></p>'+
-    (owned.length?'<select data-collar-select="'+Number(p.id)+'" aria-label="Coleira para o pet">'+owned.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+' (-'+Number(c.percent)+'%) • ×'+itemCount(c.id)+'</option>').join('')+'</select><button class="btn good" data-collar-equip="'+Number(p.id)+'">Equipar</button>':'')+
+  return '<div class="section"><p>🛡️ <strong>'+esc(collarName(equipped))+'</strong></p>'+
+    (owned.length?'<select data-collar-select="'+Number(p.id)+'" aria-label="Coleira para o pet">'+owned.map(c=>'<option value="'+esc(c.id)+'" '+(ui.collarBought===c.id?'selected':'')+'>'+esc(collarName(c))+' • ×'+itemCount(c.id)+'</option>').join('')+'</select><button class="btn good" data-collar-equip="'+Number(p.id)+'">Equipar</button>':'<small>Nenhuma coleira livre para equipar.</small>')+
     (equipped?'<button class="btn" data-collar-remove="'+Number(p.id)+'">Remover coleira</button>':'')+'</div>';
 }
 function petCollarShop(){
   const catalog=ui.data?.petCollars||[];
   if(!catalog.length)return '';
-  return '<div class="section card"><div class="section-title"><h3>🛡️ Coleiras defensivas</h3><small>Somente dano do pet nas Raids e Boss</small></div><div class="list">'+catalog.map(c=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small> -'+Number(c.percent)+'% dano recebido • '+itemCount(c.id)+' livre(s)</small></div>'+
-    (c.price?'<button class="btn primary" data-collar-buy="'+esc(c.id)+'">'+money(c.price)+'</button>':'<button class="btn primary" data-collar-craft>Fabricar</button>')+'</div>').join('')+
-    '</div><p class="muted">Mítica: 1 Égide Primordial + 500 fragmentos Raid 10 + 300 Raid 20 + 150 Raid 30 + 50 Raid 60 + R$ 500.000. Equipe pelo cartão individual do pet.</p></div>';
+  const pets=collection(),protectedCount=pets.filter(p=>catalog.some(c=>c.id===p.collar_id)).length;
+  const tab=ui.collarTab||'main';
+  const tabs=[['shop','🛒 Loja'],['inventory','🎒 Minhas coleiras'],['equip','🐾 Equipar'],['remove','🔓 Remover'],['forge','🔨 Forja mítica'],['info','📖 Informações']];
+  const nav='<div class="pet-actions">'+tabs.map(([id,label])=>'<button class="btn '+(tab===id?'primary':'')+'" data-collar-tab="'+id+'">'+label+'</button>').join('')+'</div>';
+  let content='';
+  if(tab==='shop')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • -'+Number(c.percent)+'% dano recebido</small></div>'+(c.price?'<button class="btn primary" data-collar-buy="'+esc(c.id)+'">'+money(c.price)+'</button>':'<button class="btn primary" data-collar-tab="forge">Forja</button>')+'</div>').join('')+'</div>';
+  if(tab==='inventory')content='<div class="list">'+catalog.map((c,i)=>'<div class="list-row"><div><strong>'+esc(c.name)+'</strong><small>'+collarRanks[i]+' • '+itemCount(c.id)+' livre(s) • '+pets.filter(p=>p.collar_id===c.id).length+' equipada(s)</small></div></div>').join('')+'</div>';
+  if(tab==='forge'){
+    const cash=Number(ui.data?.profile?.cash||0);
+    content='<h4>🔴 Coração de Adamantium • -25%</h4><div class="list">'+collarMaterials.map(([id,label,n])=>'<div class="list-row"><span>'+esc(label)+'</span><strong>'+(itemCount(id)>=n?'✅ ':'❌ ')+num(itemCount(id))+'/'+num(n)+' • faltam '+num(Math.max(0,n-itemCount(id)))+'</strong></div>').join('')+'<div class="list-row"><span>Custo</span><strong>'+money(500000)+' • Saldo '+money(cash)+'</strong></div></div><button class="btn primary" data-collar-craft>Fabricar</button>';
+  }
+  if(tab==='equip'||tab==='remove'){
+    const slots=petTeamSavedIds(),eligible=pets.filter(p=>tab!=='remove'||p.collar_id).sort((a,b)=>(slots.includes(Number(a.id))?slots.indexOf(Number(a.id)):99)-(slots.includes(Number(b.id))?slots.indexOf(Number(b.id)):99)||Number(a.id)-Number(b.id));
+    const pages=Math.max(1,Math.ceil(eligible.length/5)),page=Math.min(Math.max(0,Number(ui.collarPage||0)),pages-1);
+    content='<div class="list">'+(eligible.slice(page*5,page*5+5).map(p=>'<div class="list-row"><div><strong>'+esc(p.name)+'</strong>'+(tab==='equip'?petCollarControls(p):'<p>'+esc(collarName(catalog.find(c=>c.id===p.collar_id)))+'</p><button class="btn" data-collar-remove="'+Number(p.id)+'">Remover coleira</button>')+'</div></div>').join('')||'<p>Nenhum pet disponível.</p>')+'</div><div class="pet-actions">'+(page>0?'<button class="btn" data-collar-page="'+(page-1)+'">Anterior</button>':'')+'<span>Página '+(page+1)+'/'+pages+'</span>'+(page+1<pages?'<button class="btn" data-collar-page="'+(page+1)+'">Próxima</button>':'')+'</div>';
+  }
+  if(tab==='info')content='<p>Uma coleira por pet. Reduz somente o dano recebido pelo próprio companheiro nas Raids e Boss. Não transfere atributos ao jogador. Trocas durante atividades bloqueadas pelo sistema.</p>';
+  return '<div class="section card" id="petCollarCentral"><div class="section-title"><h3>🛡️ Central de coleiras</h3><small>'+protectedCount+'/'+pets.length+' pets protegidos • '+(protectedCount+catalog.reduce((n,c)=>n+itemCount(c.id),0))+' coleiras adquiridas</small></div>'+nav+content+'</div>';
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
@@ -3563,19 +3581,27 @@ function bind(){
     }
     ui.petTeamSaving=false;
   });
-  document.querySelectorAll('[data-collar-buy]').forEach(x=>x.onclick=()=>{
+  document.querySelectorAll('[data-collar-tab]').forEach(x=>x.onclick=()=>{ui.collarTab=x.dataset.collarTab;ui.collarPage=0;ui.collarBought=null;render();$('#petCollarCentral')?.scrollIntoView({block:'start'});});
+  document.querySelectorAll('[data-collar-page]').forEach(x=>x.onclick=()=>{ui.collarPage=Number(x.dataset.collarPage);render();$('#petCollarCentral')?.scrollIntoView({block:'start'});});
+  document.querySelectorAll('[data-collar-buy]').forEach(x=>x.onclick=async()=>{
     const item=(ui.data?.petCollars||[]).find(c=>c.id===x.dataset.collarBuy);
-    if(item&&confirm('Comprar '+item.name+' por '+money(item.price)+'?'))doAction('pet.collar.buy',{itemId:item.id},{success:'Coleira comprada.'});
+    if(!item||ui.collarBusy||!confirm('Comprar '+item.name+' por '+money(item.price)+'?'))return;
+    ui.collarBusy=true;try{await doAction('pet.collar.buy',{itemId:item.id},{success:'Coleira comprada.'});if(confirm('Equipar '+item.name+' agora?')){ui.collarBought=item.id;ui.collarTab='equip';ui.collarPage=0;render();$('#petCollarCentral')?.scrollIntoView({block:'start'});}}catch{}finally{ui.collarBusy=false;}
   });
-  document.querySelectorAll('[data-collar-craft]').forEach(x=>x.onclick=()=>{
-    if(confirm('Fabricar a coleira mítica por R$ 500.000 e os materiais indicados?'))doAction('pet.collar.craft',{},{success:'Coleira mítica fabricada.'});
+  document.querySelectorAll('[data-collar-craft]').forEach(x=>x.onclick=async()=>{
+    if(ui.collarBusy||!confirm('Fabricar a coleira mítica por R$ 500.000 e os materiais indicados?'))return;
+    ui.collarBusy=true;try{const result=await doAction('pet.collar.craft',{},{success:'Coleira mítica fabricada.'});if(confirm('Equipar a coleira mítica agora?')){ui.collarBought=result.item.id;ui.collarTab='equip';ui.collarPage=0;render();$('#petCollarCentral')?.scrollIntoView({block:'start'});}}catch{}finally{ui.collarBusy=false;}
   });
-  document.querySelectorAll('[data-collar-equip]').forEach(x=>x.onclick=()=>{
-    const petId=Number(x.dataset.collarEquip),itemId=document.querySelector('[data-collar-select="'+petId+'"]')?.value;
-    if(itemId)doAction('pet.collar.equip',{petId,itemId},{success:'Coleira equipada.'});
+  document.querySelectorAll('[data-collar-equip]').forEach(x=>x.onclick=async()=>{
+    const petId=Number(x.dataset.collarEquip),itemId=x.parentElement.querySelector('[data-collar-select="'+petId+'"]')?.value;
+    const pet=collection().find(p=>Number(p.id)===petId),catalog=ui.data?.petCollars||[],item=catalog.find(c=>c.id===itemId),old=catalog.find(c=>c.id===pet?.collar_id);
+    if(ui.collarBusy||!item||!pet||!confirm(pet.name+': '+collarName(old)+' → '+collarName(item)+'?'+(old?' A anterior volta ao inventário.':'')))return;
+    ui.collarBusy=true;try{await doAction('pet.collar.equip',{petId,itemId},{success:'Coleira equipada.'});ui.collarBought=null;}catch{}finally{ui.collarBusy=false;}
   });
-  document.querySelectorAll('[data-collar-remove]').forEach(x=>x.onclick=()=>{
-    doAction('pet.collar.remove',{petId:Number(x.dataset.collarRemove)},{success:'Coleira devolvida ao inventário.'});
+  document.querySelectorAll('[data-collar-remove]').forEach(x=>x.onclick=async()=>{
+    const petId=Number(x.dataset.collarRemove),pet=collection().find(p=>Number(p.id)===petId);
+    if(ui.collarBusy||!pet||!confirm('Remover a coleira de '+pet.name+' e devolver ao inventário?'))return;
+    ui.collarBusy=true;try{await doAction('pet.collar.remove',{petId},{success:'Coleira devolvida ao inventário.'});}catch{}finally{ui.collarBusy=false;}
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
