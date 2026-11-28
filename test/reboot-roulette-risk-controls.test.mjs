@@ -47,28 +47,30 @@ function fixture(v2=true){
  return {d,games,balances,stakes,credits,setClock:n=>clock=n,setRoll:n=>roll=n}
 }
 
-test('V2: teto de aposta limita o prêmio máximo sem manipular probabilidades',async()=>{
- assert.deepEqual({
-  red:V2_ROULETTE.maxRedBlackBet,green:V2_ROULETTE.maxGreenBet,
-  hourly:V2_ROULETTE.maxRoundsPerHour
- },{red:1000,green:100,hourly:20})
+test('V2: apostas sem teto por cor, com saldo e precisão preservados',async()=>{
+ assert.equal(V2_ROULETTE.maxRoundsPerHour,20)
+ for(const color of ['vermelho','preto','verde']) {
+  assert.equal(assertV2RouletteBet(1000000,color,{enabled:true}),true)
+  assert.throws(()=>assertV2RouletteBet(Number.MAX_SAFE_INTEGER,color,{enabled:true}),/precisão/)
+ }
+ for(const amount of [0,9,10.5,NaN,Infinity,-100])assert.throws(()=>assertV2RouletteBet(amount,'preto',{enabled:true}),/inválida/)
+ assert.throws(()=>assertV2RouletteBet(1000,'azul',{enabled:true}),/Cor inválida/)
  const f=fixture()
- await assert.rejects(f.d.roulette('alice',1001,'vermelho'),/máxima/)
- await assert.rejects(f.d.roulette('alice',101,'verde'),/máxima/)
- await assert.rejects(f.d.createGroupRoulette('g@g.us','alice',1001,'preto'),/máxima/)
- await assert.rejects(f.d.joinGroupRoulette('g@g.us','alice',101,'verde'),/máxima/)
+ await assert.rejects(f.d.roulette('alice',100001,'preto'),/Saldo insuficiente/)
  assert.equal(f.stakes.length,0)
  assert.equal(f.balances.alice,100000)
  f.setRoll(0)
- const green=await f.d.roulette('alice',100,'verde')
- assert.equal(green.payout,3600)
- assert.equal(green.profit,3500)
+ const green=await f.d.roulette('alice',10000,'verde')
+ assert.equal(green.payout,360000)
+ assert.equal(green.profit,350000)
  f.setRoll(1/37)
- const red=await f.d.roulette('alice',1000,'vermelho')
- assert.equal(red.payout,2000)
- assert.equal(red.profit,1000)
- assert.equal(f.stakes.length,2)
- assert.deepEqual(f.stakes.map(x=>x.amount),[100,1000])
+ const red=await f.d.roulette('alice',20000,'vermelho')
+ assert.equal(red.payout,40000)
+ assert.equal(red.profit,20000)
+ f.setRoll(2/37)
+ const black=await f.d.roulette('alice',30000,'preto')
+ assert.equal(black.payout,60000)
+ assert.deepEqual(f.stakes.map(x=>x.amount),[10000,20000,30000])
 })
 
 test('V2: 20 apostas por 60min compartilhadas entre roleta solo e coletiva',async()=>{
@@ -90,17 +92,17 @@ test('V2: 20 apostas por 60min compartilhadas entre roleta solo e coletiva',asyn
 test('V2: coletiva reserva apostas, credita o vencedor e mantém rastro contábil',async()=>{
  const f=fixture()
  f.setRoll(0)
- await f.d.createGroupRoulette('g@g.us','alice',1000,'vermelho')
- await f.d.joinGroupRoulette('g@g.us','bob',100,'verde')
+ await f.d.createGroupRoulette('g@g.us','alice',10000,'vermelho')
+ await f.d.joinGroupRoulette('g@g.us','bob',2000,'verde')
  const result=await f.d.spinGroupRoulette('g@g.us','alice')
  assert.equal(result.color,'verde')
  assert.equal(result.results[0].payout,0)
- assert.equal(result.results[1].payout,3600)
- assert.equal(f.balances.alice,99000)
- assert.equal(f.balances.bob,103500)
+ assert.equal(result.results[1].payout,72000)
+ assert.equal(f.balances.alice,90000)
+ assert.equal(f.balances.bob,170000)
  assert.deepEqual(f.stakes.map(x=>[x.jid,x.amount,x.kind]),
-  [['alice',1000,'roleta-coletiva'],['bob',100,'roleta-coletiva']])
- assert.deepEqual(f.credits,[{jid:'bob',amount:3600,note:'roleta-coletiva'}])
+  [['alice',10000,'roleta-coletiva'],['bob',2000,'roleta-coletiva']])
+ assert.deepEqual(f.credits,[{jid:'bob',amount:72000,note:'roleta-coletiva'}])
  await assert.rejects(f.d.spinGroupRoulette('g@g.us','alice'),/Não existe roleta/)
 })
 
