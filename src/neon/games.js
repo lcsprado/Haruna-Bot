@@ -1,3 +1,7 @@
+import {progressGroupMission} from './progression.js'
+import {progressDailyMissionV2} from './daily-v2.js'
+import {DAILY_V2_SCALED_START} from './daily-mission-rotation.js'
+import {GROUP_WEEKLY_V2_START} from './group-weekly-mission-policy.js'
 import {v2EpicRaidBoxChance} from './v2-raid-epic-box-policy.js'
 import {assertNoActiveMining,assertNoActiveRest} from './torre-mineracao-activity.js'
 import {expandV2RaidWeapons,expandedV2GearChance} from './v2-raid-weapon-builds.js'
@@ -1766,6 +1770,22 @@ export async function getPlayerDamageStats(jid,heroId=null,{historical=false}={}
 }
 
 export async function raidRound(chat,level){
+ const r=await raidRoundCore(chat,level)
+ if(!rebootEconomyEnabled()||!String(chat).endsWith('@g.us')||!r?.victory)return r
+ const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())
+ const key='raid-victory:'+r.config?.level+':'+r.raidId
+ const qualified=(r.rewards||[]).filter(p=>p.jid)
+ if(day>=DAILY_V2_SCALED_START){
+  for(const p of qualified){
+   const support=Math.floor(Number(p.classHealing||0)+Number(p.alliedHealing||0)+Number(p.alliedProtection||0)+Number(p.curseTeamDamage||0))
+   if(support>0)await progressDailyMissionV2(p.jid,'raid_damage',support,key+':support:'+chat).catch(e=>console.warn('[MISSIONS V2 SUPPORT]',e?.message||e))
+  }
+ }
+ if(new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START&&qualified.length>=2)
+  await progressGroupMission(chat,qualified.map(p=>p.jid),'raid_coop',1,{sourceKey:key}).catch(e=>console.warn('[GROUP MISSION RAID]',e?.message||e))
+ return r
+}
+async function raidRoundCore(chat,level){
   return tx(async c=>{
     const rooms=await resolveRaidRoom(c,chat,level||null,{activeOnly:true})
     const s=rooms.find(r=>r.status==='active'&&(!level||Number(r.level)===Number(level)))
@@ -3565,6 +3585,12 @@ function healBossCombatPet(c,jid,pet,bossAtk=0){
   })
 }
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
+ const r=await attackBossCore(chat,jid,name,usePet,options)
+ if(rebootEconomyEnabled()&&String(chat).endsWith('@g.us')&&new Date().toISOString().slice(0,10)>=GROUP_WEEKLY_V2_START&&Number(r?.damage)>0)
+  await progressGroupMission(chat,jid,'boss_damage',Math.floor(r.damage)).catch(e=>console.warn('[GROUP MISSION BOSS]',e?.message||e))
+ return r
+}
+async function attackBossCore(chat,jid,name,usePet=true,options={}){
   // O runner já garantiu users/wallets/stats na primeira chamada desta sessão.
   // Chamadas diretas e sessões retomadas mantêm o cadastro inicial obrigatório.
   if(!options.skipEnsureUser) await ensureUser(jid,name||'')
