@@ -1466,7 +1466,7 @@ function renderHome(){
 
 function renderMissionList(board){
   const missions=Array.isArray(board)?board:(board?.missions||[]);
-  const bonus=board?.bonusAllSix?'<div class="list-row"><div><strong>Bônus do quadro completo</strong><small>R$ '+num(board.bonusCash)+' • '+num(board.bonusXp)+' EXP • '+num(board.bonusQty)+' Fragmentos Universais de Raid</small></div><span class="tag '+(board.bonusClaimed?'good':'')+'">'+(board.bonusClaimed?'RESGATADO':'6 MISSÕES')+'</span></div>':'';
+  const bonus=board?.bonusAllSix?'<div class="list-row"><div><strong>Bônus do quadro completo</strong><small>R$ '+num(board.bonusCash)+' • '+num(board.bonusXp)+' EXP • '+num(board.bonusQty)+' Fragmentos Universais de Raid'+(board.bonusBoxQty?' • '+num(board.bonusBoxQty)+'x '+(board.bonusBoxId==='caixa_rara'?'Caixa Rara':'Caixa Épica'):'')+'</small></div><span class="tag '+(board.bonusClaimed?'good':'')+'">'+(board.bonusClaimed?'RESGATADO':'6 MISSÕES')+'</span></div>':'';
   if(!missions.length) return '<div class="empty">Nenhuma missão diária carregada.</div>';
   return '<div class="list">'+missions.map(m=>{
     const done=Number(m.progress||0)>=Number(m.target||1);
@@ -2767,7 +2767,7 @@ function renderGroupMissionCard(ex){
   const target=Math.max(1,Number(mission.target||1)), progress=Number(mission.progress||0);
   return '<div class="section-title"><div><h3>Missão coletiva</h3><small>'+esc(mission.title||mission.mission_type||'Missão')+'</small></div><span class="tag '+(mission.completed?'good':'')+'">'+num(progress)+'/'+num(target)+'</span></div>'+
     '<div class="progress"><span style="width:'+pct(progress/target*100)+'%"></span></div>'+
-    '<p>Recompensa total: <strong>'+money(mission.reward_cash||0)+'</strong> • distribuição proporcional à contribuição.</p>'+
+    '<p>Recompensa total: <strong>'+money(mission.reward_cash||0)+'</strong> • distribuição proporcional à contribuição.'+(Number(mission.reward_cash)>=100000?' Mínimo de dois contribuintes.':'')+'</p>'+
     (rows.length?'<div class="list">'+rows.slice(0,10).map(r=>'<div class="list-row"><span>#'+num(r.position)+' '+esc(r.push_name||'Jogador')+'</span><strong>'+num(r.contribution)+' • '+money(r.share||0)+'</strong></div>').join('')+'</div>':'<div class="empty">Ainda sem contribuição registrada.</div>')+
     '<div class="hero-actions"><button class="btn good" data-group-mission-claim>Resgatar minha parte</button></div>';
 }
