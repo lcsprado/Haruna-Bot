@@ -1,6 +1,6 @@
 // Comandos em homologação isolada; nunca ativar na produção sem nova aprovação.
 import {STONES,MINING_RARITY_WEIGHTS} from './enchantment-stones-catalog.js'
-import {MINING_HOURLY,parseMiningDuration,miningSessionQuote,miningDurationOptions} from './mining-session-v2.js'
+import {MINING_HOURLY,miningSessionCash,parseMiningDuration,miningSessionQuote,miningDurationOptions} from './mining-session-v2.js'
 import {createHash} from 'node:crypto'
 import {MINING_PICKAXES,miningPickaxesBySource,miningQuote,miningRepairQuote} from './torre-mineracao-4h.js'
 import {getMiningPickaxes,getMiningStatus,buyMiningPickaxe,repairMiningPickaxe,startMiningExpedition,cancelMiningExpedition,claimMiningExpedition} from './torre-mineracao-store.js'
@@ -44,7 +44,7 @@ export async function handleMiningCommand({db,cmd,args=[],sender,chat,messageId,
     for(const [id,p] of Object.entries(MINING_PICKAXES)){
       const got=owned.get(id)
       output+=`• *${label(p)}* — chance ${p.stoneChancePercent}% a cada 5min • ${p.maxUses} usos${p.source==='cerco'?' • 🏰 Cerco':p.source==='evento_inaugural'?' • 🎁 Evento inaugural':''}\n`
-      output+=`  💰 R$ ${money(MINING_HOURLY[id].cash)}/h • ${money(MINING_HOURLY[id].xp)} XP base/h\n`
+      output+=`  💰 R$ ${money(miningSessionCash(id,3600))} em 1h • ${money(MINING_HOURLY[id].xp)} XP base/h\n`
       output+='  💎 Se cair pedra: '+MINING_RARITY_WEIGHTS[id].map((n,i)=>['Comum','Rara','Épica','Lendária'][i]+' '+n+'%').join(' • ')+'\n'
       output+=got?`  ✅ Sua resistência: ${got.usesRemaining}/${p.maxUses} • reparo agora R$ ${money(miningRepairQuote(id,got.usesRemaining).costCash)}\n`
         :p.source==='loja'?`  🛒 R$ ${money(p.purchaseCash)} • !comprarpicareta ${id}\n`
