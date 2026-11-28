@@ -53,6 +53,7 @@ import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
 import {careerWorkGross,careerWorkXp} from './reboot-career-policy.js'
+import {levelIncomeGross} from './economy-income-v21.js'
 import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
 import {ascensionAwardedPlayerXp} from './ascension-week-20261102.js'
 const { Pool, Client } = pg
@@ -1224,7 +1225,8 @@ if(roll<.08){event=classesOnlyRebootEnabled()?'🌟 Excelente desempenho! Bônus
 else if(roll<.15){event=classesOnlyRebootEnabled()?'⏰ Hora extra! Bônus de 15%.':'⏰ Hora extra! Bônus de 25%.';factor=1.25}
 else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
 const baseGross=careerWorkGross({level,legacyPayCap:payCap,careerMultiplier:newRank.mult,performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
-const gross=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro'],baseGross):baseGross
+const incomeGross=classesOnlyRebootEnabled()?levelIncomeGross(baseGross,level):baseGross
+const gross=classesOnlyRebootEnabled()?await applyV2OwnerEvent(client,jid,['dinheiro'],baseGross,{incomeFloor:incomeGross}):baseGross
 const taxRate=classesOnlyRebootEnabled()?10:Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
 const tax=Math.floor(gross*(taxRate/100))
 const amount=gross-tax
@@ -1235,7 +1237,7 @@ await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) V
 if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
 const promoted=newRank.name!==oldRank.name
 const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:classesOnlyRebootEnabled()?gross/Math.max(1,baseGross):Math.max(moneyMultiplier,xpMultiplier)}
+return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,levelIncomeBonus:incomeGross-baseGross,eventMultiplier:classesOnlyRebootEnabled()?gross/Math.max(1,incomeGross):Math.max(moneyMultiplier,xpMultiplier)}
 })
 }
 export async function deposit(jid, amount) {
