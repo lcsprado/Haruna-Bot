@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {seedPetCollars,PET_COLLARS,MYTHIC_COLLAR,MYTHIC_COLLAR_MATERIALS} from '../src/neon/pet-collars.js';
 const isolated=process.env.ALPHA_COLLAR_TEST_DB;
 test('PostgreSQL integration: conservation of inventory, ownership, activity locks and atomic crafting',{skip:!isolated},async()=>{
@@ -19,7 +20,7 @@ test('PostgreSQL integration: conservation of inventory, ownership, activity loc
    CREATE TABLE inventories(jid text,item_id text REFERENCES items(id),quantity integer CHECK(quantity>=0),PRIMARY KEY(jid,item_id));
    CREATE TABLE bound_inventory_items(jid text,item_id text,quantity integer);
    CREATE TABLE transactions(from_jid text,to_jid text,amount bigint,type text,note text);
-   CREATE TABLE pet_collection(id bigserial PRIMARY KEY,jid text,name text,species text,active boolean DEFAULT false,collar_id text REFERENCES items(id));
+   CREATE TABLE pet_collection(id bigserial PRIMARY KEY,jid text,name text,species text,active boolean DEFAULT false);
    CREATE TABLE pet_expeditions(jid text,pet_id bigint,resolved boolean);
    CREATE TABLE raid_lote_jobs(jid text,status text);
    CREATE TABLE trevo_games(game_type text,state jsonb);
@@ -33,6 +34,9 @@ test('PostgreSQL integration: conservation of inventory, ownership, activity loc
   await seedPetCollars(db);await seedPetCollars(db);
   assert.equal(Number((await db.query("SELECT COUNT(*) n FROM items")).rows[0].n),6);
   const [p1,p2,foreign]= (await db.query("INSERT INTO pet_collection(jid,name,species) VALUES($1,'Pet 1','golem_ancestral'),($1,'Pet 2','golem_ancestral'),($2,'Outro','golem_ancestral') RETURNING id",[jid,buyer])).rows.map(x=>Number(x.id));
+  const migration=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8').match(/ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS collar_id TEXT REFERENCES items\(id\);/)[0];
+  await db.query(migration);await db.query(migration);
+  assert.equal(Number((await db.query('SELECT count(*) AS n FROM pet_collection WHERE collar_id IS NULL')).rows[0].n),3);
   const first=PET_COLLARS[0].id,legend=PET_COLLARS[4].id;
   const qty=async(owner,id)=>Number((await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[owner,id])).rows[0]?.quantity||0);
   const cash=async(owner)=>Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[owner])).rows[0].cash);
@@ -81,5 +85,22 @@ test('PostgreSQL integration: conservation of inventory, ownership, activity loc
   await equipPetCollar(jid,p1,MYTHIC_COLLAR);
   assert.equal(await equipped(p1),MYTHIC_COLLAR);
   assert.equal(await qty(jid,MYTHIC_COLLAR),0);
+  await buyPetCollar(jid,first);
+  await equipPetCollar(jid,p2,first);
+  await buyPetCollar(jid,first);
+  await equipPetCollar(jid,p1,first);
+  assert.equal(await equipped(p1),first);assert.equal(await equipped(p2),first);
+  assert.equal(await qty(jid,MYTHIC_COLLAR),1);
+  assert.equal(await qty(jid,first),0);
+  const mythicListing=await createMarketListing(jid,MYTHIC_COLLAR,1,1500000);
+  await buyMarketListing(buyer,mythicListing.id);
+  assert.equal(await qty(jid,MYTHIC_COLLAR),0);assert.equal(await qty(buyer,MYTHIC_COLLAR),1);
+  await db.query('INSERT INTO pet_expeditions VALUES($1,$2,FALSE)',[jid,p2]);
+  await assert.rejects(()=>equipPetCollar(jid,p2,null),/expedição/);
+  await db.query('DELETE FROM pet_expeditions');
+  await equipPetCollar(jid,p1,null);
+  const concurrentMarket=await Promise.allSettled([equipPetCollar(jid,p1,first),createMarketListing(jid,first,1,50000)]);
+  assert.equal(concurrentMarket.filter(x=>x.status==='fulfilled').length,1);
+  assert.equal(await qty(jid,first),0);
  }finally{await db.end()}
 });
