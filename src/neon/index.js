@@ -1,6 +1,7 @@
 import {potionHpReceipt} from './potion-hp-receipt.js'
 import {sellQuantityOptions} from './inventory-sell-menu-copy.js'
 import {V2_MARKET_MAX_PRICE} from './reboot-assets-policy.js'
+import {MYTHIC_COLLAR_MATERIALS,MYTHIC_COLLAR_FEE,petCollar} from './pet-collars.js'
 import {profilePvpHp,profileHpLines} from './profile-pvp-hp.js'
 import {classesOnlyRebootEnabled,REBOOT_HERO_MESSAGE,assertRebootWhatsappPermission} from './reboot-classes-policy.js'
 import {candidateBusinessCatalog,rebootEconomyEnabled,V2_BUSINESS_ECONOMY,businessV3Enabled,businessV4Enabled} from './reboot-economy-policy.js'
@@ -64,6 +65,7 @@ resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolveP
 adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, summonLegendaryPetsBulk, LEGENDARY_PET_BULK_LIMIT, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, cancelAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
 proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
 createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
+getPetCollarCatalog,buyPetCollar,craftPetCollar,equipPetCollar,
 listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
 recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel, setPlayerGroupContext
 } from './db.js'
@@ -5496,6 +5498,7 @@ ${classesOnlyRebootEnabled()?'':'*!heroi status* — mesma consulta da base do c
 *!equiparpet* — abre o gerenciador do time; monte 1,2,3 de uma vez ou troque um slot
 *!timepet* — mostra os 3 slots, estilos e a sinergia ativa
 *!sinergia* — lista times recomendados, estilos e bônus de sinergia
+*!coleiras* — catálogo, compra, fabricação e equipamento defensivo do pet
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* / *!petnome NovoNome* — troca o nome por R$ 1.000
@@ -11442,7 +11445,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 }
 if(isGroup && !isOwner){
 const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
-const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
+const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel','coleiras','comprarcoleira','fabricarcoleira','equiparcoleira','removercoleira'])
 const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
 const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','minerar','picaretas','comprarpicareta','repararpicareta','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
 let key=null,label=null
@@ -11606,7 +11609,7 @@ try{
 await sock.groupSettingUpdate(chat,cmd==='fechargrupo'?'announcement':'not_announcement')
 await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
 }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
-} else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet','expedicaopetsair'].includes(cmd)){
+} else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet','expedicaopetsair','coleiras','comprarcoleira','fabricarcoleira','equiparcoleira','removercoleira'].includes(cmd)){
 try{
 const expeditionTraitText=t=>{
 const itemNames={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
@@ -11714,8 +11717,37 @@ return await reply(text)
 const r=await startPetExpedition(sender,petId,hours)
 return await reply(`🧭 *EXPEDIÇÃO INICIADA!*\n\n🐾 *${r.pet_name}* — ${r.trait.label}\n⏱️ Tempo: *${r.hours}h*\n\n🎯 *GARANTIDO NO RETORNO*\n✨ Pet XP: *+${r.pet_xp}*\n💰 Dinheiro: *R$ ${fmt(r.cash_reward)}*\n\n🎁 *BÔNUS DA ESPÉCIE*\n${expeditionTraitText(r.trait)}\n\n📌 O pet fica indisponível durante a expedição. Quando o tempo acabar, use *!expedicoespet* para receber e conferir as recompensas.`)
 }
+if(['coleiras','comprarcoleira','fabricarcoleira','equiparcoleira','removercoleira'].includes(cmd)){
+const catalog=getPetCollarCatalog()
+if(!catalog.length)return await reply('Coleiras disponíveis somente na V2.')
+if(cmd==='coleiras'){
+ const [pets,inventory]=await Promise.all([listPets(sender),getInventory(sender)])
+ let out='🐾 *COLEIRAS DEFENSIVAS — ALPHA V2*\n\nUma por pet. Reduz somente o dano recebido pelo próprio pet nas Raids e Boss.\n\n'
+ for(const [n,c] of catalog.entries()){
+  const owned=Number(inventory.find(x=>x.item_id===c.id)?.quantity||0)
+  out+=(n+1)+'. *'+c.name+'* — -'+c.percent+'% dano recebido • '+(c.price?'R$ '+fmt(c.price):'Mítica — fabricação')+' • livres: '+owned+'\n'
+ }
+ out+='\n🔨 *Fabricação mítica:* 1 Égide Primordial + 500 fragmentos Raid 10 + 300 Raid 20 + 150 Raid 30 + 50 Raid 60 + R$ '+fmt(MYTHIC_COLLAR_FEE)+'.\n\n🐾 *Seus pets (ID)*\n'
+ out+=pets.filter(p=>p.id!=null).map(p=>'#'+p.id+' • '+p.name+' — '+(petCollar(p.collar_id)?.name||'Sem coleira')).join('\n')||'Nenhum pet.'
+ out+='\n\n*!comprarcoleira 1*\n*!fabricarcoleira confirmar*\n*!equiparcoleira ID 1*\n*!removercoleira ID*'
+ return await reply(out)
+}
+const selected=n=>catalog[Number(n)-1]?.id
+if(cmd==='comprarcoleira'){
+ const id=selected(args[0]);if(!id)return await reply('Escolha o número da coleira em !coleiras.')
+ const r=await buyPetCollar(sender,id);return await reply('✅ '+r.message)
+}
+if(cmd==='fabricarcoleira'){
+ if(args[0]!=='confirmar')return await reply('A fabricação custa R$ 500.000 e os materiais de !coleiras. Confirme com !fabricarcoleira confirmar.')
+ const r=await craftPetCollar(sender);return await reply('✅ '+r.message)
+}
+const petId=Number(args[0])
+const id=cmd==='removercoleira'?null:selected(args[1])
+if(!Number.isSafeInteger(petId)||petId<1||id===undefined)return await reply('Use os IDs e números exibidos em !coleiras.')
+const r=await equipPetCollar(sender,petId,id);return await reply('✅ '+r.message)
+}
 if(cmd==='pet'){
-return await reply('🐾 *PETS DO ALPHA*\n\n🔮 *!invocarpet* — Altar de Pets Lendários\n🐾 *!meuspets* — sua coleção\n⚔️ *!equiparpet* — montar o time\n🧬 *!sinergia* — bônus dos times\n\n🔒 A adoção de pets comuns foi desativada. Pets existentes foram preservados.')
+return await reply('🐾 *PETS DO ALPHA*\n\n🔮 *!invocarpet* — Altar de Pets Lendários\n🐾 *!meuspets* — sua coleção\n⚔️ *!equiparpet* — montar o time\n🧬 *!sinergia* — bônus dos times\n🛡️ *!coleiras* — equipamentos defensivos\n\n🔒 A adoção de pets comuns foi desativada. Pets existentes foram preservados.')
 }
 if(cmd==='pets'){
 const pets=await listPets(sender)
